@@ -304,12 +304,11 @@ size_t microdb_kv_live_bytes(const microdb_t *db) {
 }
 
 #if MICRODB_ENABLE_KV
-microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, size_t len, uint32_t ttl) {
+microdb_err_t microdb_kv_set_at(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
     microdb_core_t *core;
     microdb_kv_bucket_t *bucket;
     uint32_t slot;
     bool found;
-    uint32_t expires_at = 0u;
     microdb_err_t err;
 
     if (db == NULL || val == NULL || !microdb_kv_key_valid(key)) {
@@ -324,14 +323,6 @@ microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, si
     if (core->magic != MICRODB_MAGIC) {
         return MICRODB_ERR_INVALID;
     }
-
-#if MICRODB_KV_ENABLE_TTL
-    if (ttl != 0u) {
-        expires_at = (uint32_t)(microdb_now(core) + ttl);
-    }
-#else
-    (void)ttl;
-#endif
 
     err = microdb_kv_find_slot(core, key, &slot, &found);
     if (err != MICRODB_OK && err != MICRODB_ERR_FULL) {
@@ -376,7 +367,35 @@ microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, si
     bucket->expires_at = expires_at;
     bucket->last_access = core->kv.access_clock++;
     core->live_bytes = microdb_kv_live_bytes(db);
+    err = microdb_persist_kv_set(db, key, val, len, expires_at);
+    if (err != MICRODB_OK) {
+        return err;
+    }
     return MICRODB_OK;
+}
+
+microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, size_t len, uint32_t ttl) {
+    microdb_core_t *core;
+    uint32_t expires_at = 0u;
+
+    if (db == NULL) {
+        return MICRODB_ERR_INVALID;
+    }
+
+    core = microdb_core(db);
+    if (core->magic != MICRODB_MAGIC) {
+        return MICRODB_ERR_INVALID;
+    }
+
+#if MICRODB_KV_ENABLE_TTL
+    if (ttl != 0u) {
+        expires_at = (uint32_t)(microdb_now(core) + ttl);
+    }
+#else
+    (void)ttl;
+#endif
+
+    return microdb_kv_set_at(db, key, val, len, expires_at);
 }
 
 microdb_err_t microdb_kv_get(microdb_t *db, const char *key, void *buf, size_t buf_len, size_t *out_len) {
@@ -447,7 +466,7 @@ microdb_err_t microdb_kv_del(microdb_t *db, const char *key) {
     microdb_kv_remove_slot(core, slot);
     microdb_kv_maybe_compact(core);
     core->live_bytes = microdb_kv_live_bytes(db);
-    return MICRODB_OK;
+    return microdb_persist_kv_del(db, key);
 }
 
 microdb_err_t microdb_kv_exists(microdb_t *db, const char *key) {
@@ -563,6 +582,6 @@ microdb_err_t microdb_kv_clear(microdb_t *db) {
     core->kv.value_used = 0u;
     core->kv.access_clock = 1u;
     core->live_bytes = microdb_kv_live_bytes(db);
-    return MICRODB_OK;
+    return microdb_persist_kv_clear(db);
 }
 #endif

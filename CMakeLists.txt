@@ -61,16 +61,48 @@ add_library(microdb_ts_downsample STATIC
 target_include_directories(microdb_ts_downsample PUBLIC include port/ram port/posix PRIVATE src)
 target_compile_definitions(microdb_ts_downsample PRIVATE MICRODB_TS_OVERFLOW_POLICY=MICRODB_TS_POLICY_DOWNSAMPLE)
 
+add_library(microdb_no_wal STATIC
+    src/microdb.c
+    src/microdb_kv.c
+    src/microdb_ts.c
+    src/microdb_rel.c
+    src/microdb_wal.c
+    src/microdb_crc.c
+    port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
+)
+
+target_include_directories(microdb_no_wal PUBLIC include port/ram port/posix PRIVATE src)
+target_compile_definitions(microdb_no_wal PRIVATE MICRODB_ENABLE_WAL=0)
+
+add_library(microdb_kv128 STATIC
+    src/microdb.c
+    src/microdb_kv.c
+    src/microdb_ts.c
+    src/microdb_rel.c
+    src/microdb_wal.c
+    src/microdb_crc.c
+    port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
+)
+
+target_include_directories(microdb_kv128 PUBLIC include port/ram port/posix PRIVATE src)
+target_compile_definitions(microdb_kv128 PRIVATE MICRODB_KV_MAX_KEYS=128)
+
 if(MSVC)
     target_compile_options(microdb PRIVATE /W4)
     target_compile_options(microdb_reject PRIVATE /W4)
     target_compile_options(microdb_ts_reject PRIVATE /W4)
     target_compile_options(microdb_ts_downsample PRIVATE /W4)
+    target_compile_options(microdb_no_wal PRIVATE /W4)
+    target_compile_options(microdb_kv128 PRIVATE /W4)
 else()
     target_compile_options(microdb PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_reject PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_ts_reject PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_ts_downsample PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(microdb_no_wal PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(microdb_kv128 PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 if(MICRODB_BUILD_TESTS)
@@ -104,4 +136,19 @@ if(MICRODB_BUILD_TESTS)
     target_include_directories(test_rel PRIVATE include tests port/ram src)
     target_link_libraries(test_rel PRIVATE microdb)
     add_test(NAME test_rel COMMAND test_rel)
+
+    add_executable(test_wal tests/test_wal.c)
+    target_include_directories(test_wal PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_wal PRIVATE microdb)
+    add_test(NAME test_wal COMMAND test_wal)
+
+    add_executable(test_wal_no_wal tests/test_wal_no_wal.c)
+    target_include_directories(test_wal_no_wal PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_wal_no_wal PRIVATE microdb_no_wal)
+    add_test(NAME test_wal_no_wal COMMAND test_wal_no_wal)
+
+    add_executable(test_wal_kv128 tests/test_wal_kv128.c)
+    target_include_directories(test_wal_kv128 PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_wal_kv128 PRIVATE microdb_kv128)
+    add_test(NAME test_wal_kv128 COMMAND test_wal_kv128)
 endif()

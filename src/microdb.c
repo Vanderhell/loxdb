@@ -101,12 +101,18 @@ microdb_err_t microdb_init(microdb_t *db, const microdb_cfg_t *cfg) {
         return err;
     }
 
+    err = microdb_storage_bootstrap(db);
+    if (err != MICRODB_OK) {
+        free(core->heap);
+        memset(db, 0, sizeof(*db));
+        return err;
+    }
+
     core->live_bytes = microdb_kv_live_bytes(db);
     return MICRODB_OK;
 }
 
 microdb_err_t microdb_flush(microdb_t *db) {
-    microdb_core_t *core;
     microdb_err_t status;
 
     status = microdb_validate_handle(db);
@@ -114,12 +120,7 @@ microdb_err_t microdb_flush(microdb_t *db) {
         return status;
     }
 
-    core = microdb_core(db);
-    if (core->storage == NULL || core->storage->sync == NULL) {
-        return MICRODB_OK;
-    }
-
-    return core->storage->sync(core->storage->ctx);
+    return microdb_storage_flush(db);
 }
 
 microdb_err_t microdb_deinit(microdb_t *db) {

@@ -84,6 +84,18 @@ typedef struct {
 } microdb_rel_state_t;
 
 typedef struct {
+    uint32_t wal_offset;
+    uint32_t wal_size;
+    uint32_t kv_offset;
+    uint32_t kv_size;
+    uint32_t ts_offset;
+    uint32_t ts_size;
+    uint32_t rel_offset;
+    uint32_t rel_size;
+    uint32_t total_size;
+} microdb_storage_layout_t;
+
+typedef struct {
     uint32_t magic;
     uint8_t *heap;
     size_t heap_size;
@@ -99,6 +111,12 @@ typedef struct {
     microdb_kv_state_t kv;
     microdb_ts_state_t ts;
     microdb_rel_state_t rel;
+    microdb_storage_layout_t layout;
+    uint32_t wal_sequence;
+    uint32_t wal_entry_count;
+    uint32_t wal_used;
+    bool storage_loading;
+    bool wal_replaying;
 } microdb_core_t;
 
 typedef struct {
@@ -120,5 +138,14 @@ const microdb_core_t *microdb_core_const(const microdb_t *db);
 microdb_err_t microdb_kv_init(microdb_t *db);
 microdb_err_t microdb_ts_init(microdb_t *db);
 size_t microdb_kv_live_bytes(const microdb_t *db);
+microdb_err_t microdb_kv_set_at(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at);
+microdb_err_t microdb_storage_bootstrap(microdb_t *db);
+microdb_err_t microdb_storage_flush(microdb_t *db);
+microdb_err_t microdb_persist_kv_set(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at);
+microdb_err_t microdb_persist_kv_del(microdb_t *db, const char *key);
+microdb_err_t microdb_persist_kv_clear(microdb_t *db);
+microdb_err_t microdb_persist_ts_insert(microdb_t *db, const char *name, microdb_timestamp_t ts, const void *val, size_t val_len);
+microdb_err_t microdb_persist_rel_insert(microdb_t *db, const microdb_table_t *table, const void *row_buf);
+microdb_err_t microdb_persist_rel_delete(microdb_t *db, const microdb_table_t *table, const void *search_val);
 
 #endif

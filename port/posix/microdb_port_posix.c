@@ -1,26 +1,51 @@
 #include "microdb_port_posix.h"
 
+#if defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
+#define MICRODB_POSIX_CLOSE _close
+#define MICRODB_POSIX_READ _read
+#define MICRODB_POSIX_WRITE _write
+#define MICRODB_POSIX_LSEEK _lseek
+#define MICRODB_POSIX_SYNC _commit
+#define MICRODB_POSIX_FLAGS (_O_BINARY | _O_RDWR | _O_CREAT)
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#define MICRODB_POSIX_CLOSE close
+#define MICRODB_POSIX_OPEN open
+#define MICRODB_POSIX_READ read
+#define MICRODB_POSIX_WRITE write
+#define MICRODB_POSIX_LSEEK lseek
+#define MICRODB_POSIX_SYNC fsync
+#define MICRODB_POSIX_FLAGS (O_RDWR | O_CREAT)
+#endif
+
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static FILE *posix_file(void *ctx) {
-    return (FILE *)((microdb_port_posix_ctx_t *)ctx)->file;
+static int posix_fd(void *ctx) {
+    return (int)(intptr_t)((microdb_port_posix_ctx_t *)ctx)->file;
 }
 
 static microdb_err_t microdb_port_posix_read(void *ctx, uint32_t offset, void *buf, size_t len) {
     microdb_port_posix_ctx_t *posix = (microdb_port_posix_ctx_t *)ctx;
-    FILE *fp;
+    int fd;
 
     if (posix == NULL || buf == NULL || ((size_t)offset + len) > posix->capacity) {
         return MICRODB_ERR_STORAGE;
     }
 
-    fp = posix_file(ctx);
-    if (fseek(fp, (long)offset, SEEK_SET) != 0) {
+    fd = posix_fd(ctx);
+    if (fd < 0 || MICRODB_POSIX_LSEEK(fd, (long)offset, SEEK_SET) < 0) {
         return MICRODB_ERR_STORAGE;
     }
-    if (fread(buf, 1u, len, fp) != len) {
+    if ((size_t)MICRODB_POSIX_READ(fd, buf, (unsigned int)len) != len) {
         return MICRODB_ERR_STORAGE;
     }
     return MICRODB_OK;
@@ -28,17 +53,17 @@ static microdb_err_t microdb_port_posix_read(void *ctx, uint32_t offset, void *b
 
 static microdb_err_t microdb_port_posix_write(void *ctx, uint32_t offset, const void *buf, size_t len) {
     microdb_port_posix_ctx_t *posix = (microdb_port_posix_ctx_t *)ctx;
-    FILE *fp;
+    int fd;
 
     if (posix == NULL || buf == NULL || ((size_t)offset + len) > posix->capacity) {
         return MICRODB_ERR_STORAGE;
     }
 
-    fp = posix_file(ctx);
-    if (fseek(fp, (long)offset, SEEK_SET) != 0) {
+    fd = posix_fd(ctx);
+    if (fd < 0 || MICRODB_POSIX_LSEEK(fd, (long)offset, SEEK_SET) < 0) {
         return MICRODB_ERR_STORAGE;
     }
-    if (fwrite(buf, 1u, len, fp) != len) {
+    if ((size_t)MICRODB_POSIX_WRITE(fd, buf, (unsigned int)len) != len) {
         return MICRODB_ERR_STORAGE;
     }
     return MICRODB_OK;
@@ -46,7 +71,7 @@ static microdb_err_t microdb_port_posix_write(void *ctx, uint32_t offset, const 
 
 static microdb_err_t microdb_port_posix_erase(void *ctx, uint32_t offset) {
     microdb_port_posix_ctx_t *posix = (microdb_port_posix_ctx_t *)ctx;
-    FILE *fp;
+    int fd;
     uint8_t *ff;
     uint32_t block_start;
 
@@ -60,8 +85,9 @@ static microdb_err_t microdb_port_posix_erase(void *ctx, uint32_t offset) {
     }
     memset(ff, 0xFF, posix->erase_size);
     block_start = (offset / posix->erase_size) * posix->erase_size;
-    fp = posix_file(ctx);
-    if (fseek(fp, (long)block_start, SEEK_SET) != 0 || fwrite(ff, 1u, posix->erase_size, fp) != posix->erase_size) {
+    fd = posix_fd(ctx);
+    if (fd < 0 || MICRODB_POSIX_LSEEK(fd, (long)block_start, SEEK_SET) < 0 ||
+        (size_t)MICRODB_POSIX_WRITE(fd, ff, posix->erase_size) != posix->erase_size) {
         free(ff);
         return MICRODB_ERR_STORAGE;
     }
@@ -74,14 +100,15 @@ static microdb_err_t microdb_port_posix_sync(void *ctx) {
     if (posix == NULL) {
         return MICRODB_ERR_STORAGE;
     }
-    return fflush(posix_file(ctx)) == 0 ? MICRODB_OK : MICRODB_ERR_STORAGE;
+    return MICRODB_POSIX_SYNC(posix_fd(ctx)) == 0 ? MICRODB_OK : MICRODB_ERR_STORAGE;
 }
 
 microdb_err_t microdb_port_posix_init(microdb_storage_t *storage, const char *path, uint32_t capacity) {
     microdb_port_posix_ctx_t *ctx;
-    FILE *fp;
+    int fd;
     uint8_t ff = 0xFFu;
-    uint32_t i;
+    long current_size = 0;
+    uint32_t i = 0u;
 
     if (storage == NULL || path == NULL || path[0] == '\0' || capacity == 0u) {
         return MICRODB_ERR_INVALID;
@@ -101,29 +128,46 @@ microdb_err_t microdb_port_posix_init(microdb_storage_t *storage, const char *pa
     ctx->capacity = capacity;
     ctx->erase_size = 256u;
 
-#if defined(_MSC_VER)
-    if (fopen_s(&fp, path, "w+b") != 0) {
-        free(ctx);
-        return MICRODB_ERR_STORAGE;
+#if defined(_WIN32)
+    {
+        errno_t open_err = _sopen_s(&fd, path, MICRODB_POSIX_FLAGS, _SH_DENYNO, _S_IREAD | _S_IWRITE);
+        if (open_err != 0) {
+            free(ctx);
+            return MICRODB_ERR_STORAGE;
+        }
     }
 #else
-    fp = fopen(path, "w+b");
-    if (fp == NULL) {
+    fd = MICRODB_POSIX_OPEN(path, MICRODB_POSIX_FLAGS, 0666);
+    if (fd < 0) {
         free(ctx);
         return MICRODB_ERR_STORAGE;
     }
 #endif
 
-    for (i = 0; i < capacity; ++i) {
-        if (fwrite(&ff, 1u, 1u, fp) != 1u) {
-            fclose(fp);
+    current_size = MICRODB_POSIX_LSEEK(fd, 0L, SEEK_END);
+    if (current_size < 0) {
+        MICRODB_POSIX_CLOSE(fd);
+        free(ctx);
+        return MICRODB_ERR_STORAGE;
+    }
+
+    if ((uint32_t)current_size < capacity) {
+        if (MICRODB_POSIX_LSEEK(fd, current_size, SEEK_SET) < 0) {
+            MICRODB_POSIX_CLOSE(fd);
             free(ctx);
             return MICRODB_ERR_STORAGE;
         }
+        for (i = (uint32_t)current_size; i < capacity; ++i) {
+            if (MICRODB_POSIX_WRITE(fd, &ff, 1u) != 1) {
+                MICRODB_POSIX_CLOSE(fd);
+                free(ctx);
+                return MICRODB_ERR_STORAGE;
+            }
+        }
     }
-    fflush(fp);
+    (void)MICRODB_POSIX_SYNC(fd);
 
-    ctx->file = fp;
+    ctx->file = (void *)(intptr_t)fd;
     storage->read = microdb_port_posix_read;
     storage->write = microdb_port_posix_write;
     storage->erase = microdb_port_posix_erase;
@@ -143,8 +187,28 @@ void microdb_port_posix_deinit(microdb_storage_t *storage) {
     }
 
     ctx = (microdb_port_posix_ctx_t *)storage->ctx;
-    fclose(posix_file(ctx));
-    remove(ctx->path);
+    if (ctx->file != NULL) {
+        MICRODB_POSIX_CLOSE(posix_fd(ctx));
+    }
     free(ctx);
     memset(storage, 0, sizeof(*storage));
+}
+
+void microdb_port_posix_simulate_power_loss(microdb_storage_t *storage) {
+    microdb_port_posix_ctx_t *ctx;
+    if (storage == NULL || storage->ctx == NULL) {
+        return;
+    }
+
+    ctx = (microdb_port_posix_ctx_t *)storage->ctx;
+    if (ctx->file != NULL) {
+        (void)MICRODB_POSIX_CLOSE(posix_fd(ctx));
+    }
+    ctx->file = NULL;
+}
+
+void microdb_port_posix_remove(const char *path) {
+    if (path != NULL) {
+        (void)remove(path);
+    }
 }

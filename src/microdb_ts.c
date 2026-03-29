@@ -167,7 +167,7 @@ microdb_err_t microdb_ts_register(microdb_t *db, const char *name, microdb_ts_ty
             stream->count = 0u;
             stream->registered = true;
             core->ts.registered_streams++;
-            return MICRODB_OK;
+            return microdb_storage_flush(db);
         }
     }
 
@@ -211,7 +211,7 @@ microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timesta
     sample.ts = ts;
     microdb_ts_set_value(stream, &sample, val);
     microdb_ts_rb_insert(stream, &sample);
-    return MICRODB_OK;
+    return microdb_persist_ts_insert(db, name, ts, val, (stream->type == MICRODB_TS_RAW) ? stream->raw_size : 4u);
 }
 
 microdb_err_t microdb_ts_last(microdb_t *db, const char *name, microdb_ts_sample_t *out) {
@@ -385,6 +385,6 @@ microdb_err_t microdb_ts_clear(microdb_t *db, const char *name) {
     stream->head = 0u;
     stream->tail = 0u;
     stream->count = 0u;
-    return MICRODB_OK;
+    return microdb_storage_flush(db);
 }
 #endif

@@ -12,5 +12,7 @@ typedef struct {
 
 microdb_err_t microdb_port_posix_init(microdb_storage_t *storage, const char *path, uint32_t capacity);
 void microdb_port_posix_deinit(microdb_storage_t *storage);
+void microdb_port_posix_simulate_power_loss(microdb_storage_t *storage);
+void microdb_port_posix_remove(const char *path);
 
 #endif

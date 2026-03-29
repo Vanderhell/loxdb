@@ -419,7 +419,7 @@ microdb_err_t microdb_table_create(microdb_t *db, microdb_schema_t *schema) {
             memset(table->order, 0, (size_t)table->max_rows * sizeof(uint32_t));
             table->registered = true;
             core->rel.registered_tables++;
-            return MICRODB_OK;
+            return microdb_storage_flush(db);
         }
     }
 
@@ -542,7 +542,7 @@ microdb_err_t microdb_rel_insert(microdb_t *db, microdb_table_t *table, const vo
         rel_index_insert(table, row_idx, key_bytes);
     }
 
-    return MICRODB_OK;
+    return microdb_persist_rel_insert(db, table, row_buf);
 }
 
 microdb_err_t microdb_rel_find(microdb_t *db,
@@ -659,7 +659,10 @@ microdb_err_t microdb_rel_delete(microdb_t *db, microdb_table_t *table, const vo
     if (out_deleted != NULL) {
         *out_deleted = deleted;
     }
-    return MICRODB_OK;
+    if (deleted == 0u) {
+        return MICRODB_OK;
+    }
+    return microdb_persist_rel_delete(db, table, search_val);
 }
 
 microdb_err_t microdb_rel_iter(microdb_t *db, microdb_table_t *table, microdb_rel_iter_cb_t cb, void *ctx) {
@@ -715,6 +718,6 @@ microdb_err_t microdb_rel_clear(microdb_t *db, microdb_table_t *table) {
     table->live_count = 0u;
     table->index_count = 0u;
     table->order_count = 0u;
-    return MICRODB_OK;
+    return microdb_storage_flush(db);
 }
 #endif

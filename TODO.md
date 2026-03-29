@@ -38,11 +38,21 @@ Rozpracovane / dalsie kroky:
 - schema seal/alignment, table create/get, row set/get, insert/find/find_by/delete/iter/count/clear
 - sorted index + binary search + alive bitmap
 - REL test suite rozsirena na 40/40 passing testov
-- implementovat WAL recovery a flush do storage pages
-- pripravit `port/posix/` pre WAL testy
+- `port/posix/` HAL dokonceny pre file-backed persistence a power-loss simulaciu
+- WAL engine dokonceny pre aktualny scope:
+- WAL header + entry format
+- write-ahead logging pre KV/TS/REL mutacie
+- recovery po power-loss, stop na corrupt/partial entry, reset WAL po replay
+- compaction do KV/TS/REL page regionov
+- persistence metadata pre TS streamy a REL tabulky
+- build variant bez WAL a samostatny stress variant s `MICRODB_KV_MAX_KEYS=128`
+- WAL test coverage doplnena:
+- `tests/test_wal.c` 25/25 passing
+- `tests/test_wal_no_wal.c` passing
+- `tests/test_wal_kv128.c` passing
 - doplnit porty (`posix`, `ram`, `esp32`)
-- doplnit testy a examples podla spec
+- doplnit integration + limits testy podla spec
+- potom ist na `port/esp32/`, examples a README
 
 Poznamky:
-- TS/REL API je momentalne placeholder a vracia `MICRODB_ERR_DISABLED`
-- WAL hook je pripraveny, ale persistence este nie je implementovana
+- KV/TS/REL/WAL milestone su hotove; dalsi krok je integration + limits
