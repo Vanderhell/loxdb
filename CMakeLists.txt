@@ -14,9 +14,10 @@ add_library(microdb
     src/microdb_wal.c
     src/microdb_crc.c
     port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
 )
 
-target_include_directories(microdb PUBLIC include port/ram PRIVATE src)
+target_include_directories(microdb PUBLIC include port/ram port/posix PRIVATE src)
 
 add_library(microdb_reject STATIC
     src/microdb.c
@@ -26,9 +27,10 @@ add_library(microdb_reject STATIC
     src/microdb_wal.c
     src/microdb_crc.c
     port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
 )
 
-target_include_directories(microdb_reject PUBLIC include port/ram PRIVATE src)
+target_include_directories(microdb_reject PUBLIC include port/ram port/posix PRIVATE src)
 target_compile_definitions(microdb_reject PRIVATE MICRODB_KV_OVERFLOW_POLICY=MICRODB_KV_POLICY_REJECT)
 
 add_library(microdb_ts_reject STATIC
@@ -39,9 +41,10 @@ add_library(microdb_ts_reject STATIC
     src/microdb_wal.c
     src/microdb_crc.c
     port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
 )
 
-target_include_directories(microdb_ts_reject PUBLIC include port/ram PRIVATE src)
+target_include_directories(microdb_ts_reject PUBLIC include port/ram port/posix PRIVATE src)
 target_compile_definitions(microdb_ts_reject PRIVATE MICRODB_TS_OVERFLOW_POLICY=MICRODB_TS_POLICY_REJECT)
 
 add_library(microdb_ts_downsample STATIC
@@ -52,9 +55,10 @@ add_library(microdb_ts_downsample STATIC
     src/microdb_wal.c
     src/microdb_crc.c
     port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
 )
 
-target_include_directories(microdb_ts_downsample PUBLIC include port/ram PRIVATE src)
+target_include_directories(microdb_ts_downsample PUBLIC include port/ram port/posix PRIVATE src)
 target_compile_definitions(microdb_ts_downsample PRIVATE MICRODB_TS_OVERFLOW_POLICY=MICRODB_TS_POLICY_DOWNSAMPLE)
 
 if(MSVC)
