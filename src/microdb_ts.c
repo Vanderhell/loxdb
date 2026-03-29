@@ -44,6 +44,61 @@ static microdb_err_t microdb_ts_sample_capacity(const microdb_core_t *core, uint
     return MICRODB_OK;
 }
 
+static void microdb_ts_set_value(microdb_ts_stream_t *stream, microdb_ts_sample_t *sample, const void *val) {
+    if (stream->type == MICRODB_TS_F32) {
+        sample->v.f32 = *(const float *)val;
+    } else if (stream->type == MICRODB_TS_I32) {
+        sample->v.i32 = *(const int32_t *)val;
+    } else if (stream->type == MICRODB_TS_U32) {
+        sample->v.u32 = *(const uint32_t *)val;
+    } else {
+        memcpy(sample->v.raw, val, stream->raw_size);
+    }
+}
+
+static void microdb_ts_rb_insert(microdb_ts_stream_t *stream, const microdb_ts_sample_t *sample) {
+    stream->buf[stream->head] = *sample;
+    stream->head = (stream->head + 1u) % stream->capacity;
+
+    if (stream->count < stream->capacity) {
+        stream->count++;
+    } else {
+        stream->tail = (stream->tail + 1u) % stream->capacity;
+    }
+}
+
+static void microdb_ts_downsample_oldest(microdb_ts_stream_t *stream) {
+    uint32_t i0 = stream->tail;
+    uint32_t i1 = (stream->tail + 1u) % stream->capacity;
+    uint32_t idx;
+    uint32_t next;
+    microdb_ts_sample_t *a = &stream->buf[i0];
+    microdb_ts_sample_t *b = &stream->buf[i1];
+
+    a->ts = (a->ts / 2u) + (b->ts / 2u);
+
+    if (stream->type == MICRODB_TS_F32) {
+        a->v.f32 = (a->v.f32 + b->v.f32) * 0.5f;
+    } else if (stream->type == MICRODB_TS_I32) {
+        a->v.i32 = (a->v.i32 / 2) + (b->v.i32 / 2);
+    } else if (stream->type == MICRODB_TS_U32) {
+        a->v.u32 = (a->v.u32 / 2u) + (b->v.u32 / 2u);
+    }
+
+    idx = i1;
+    while (idx != stream->head) {
+        next = (idx + 1u) % stream->capacity;
+        if (next == stream->head) {
+            break;
+        }
+        stream->buf[idx] = stream->buf[next];
+        idx = next;
+    }
+
+    stream->head = (stream->head + stream->capacity - 1u) % stream->capacity;
+    stream->count--;
+}
+
 microdb_err_t microdb_ts_init(microdb_t *db) {
     microdb_core_t *core = microdb_core(db);
     uint32_t capacity;
@@ -60,7 +115,8 @@ microdb_err_t microdb_ts_init(microdb_t *db) {
     }
 
     for (i = 0; i < MICRODB_TS_MAX_STREAMS; ++i) {
-        core->ts.streams[i].buf = (microdb_ts_sample_t *)(core->ts_arena.base + (i * capacity * sizeof(microdb_ts_sample_t)));
+        core->ts.streams[i].buf =
+            (microdb_ts_sample_t *)(core->ts_arena.base + (i * capacity * sizeof(microdb_ts_sample_t)));
         core->ts.streams[i].capacity = capacity;
     }
 
@@ -121,7 +177,7 @@ microdb_err_t microdb_ts_register(microdb_t *db, const char *name, microdb_ts_ty
 microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timestamp_t ts, const void *val) {
     microdb_core_t *core;
     microdb_ts_stream_t *stream;
-    microdb_ts_sample_t *sample;
+    microdb_ts_sample_t sample;
 
     if (db == NULL || val == NULL) {
         return MICRODB_ERR_INVALID;
@@ -145,29 +201,16 @@ microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timesta
     if (stream->count == stream->capacity) {
         return MICRODB_ERR_FULL;
     }
+#elif MICRODB_TS_OVERFLOW_POLICY == MICRODB_TS_POLICY_DOWNSAMPLE
+    if (stream->count == stream->capacity) {
+        microdb_ts_downsample_oldest(stream);
+    }
 #endif
 
-    sample = &stream->buf[stream->head];
-    memset(sample, 0, sizeof(*sample));
-    sample->ts = ts;
-
-    if (stream->type == MICRODB_TS_F32) {
-        sample->v.f32 = *(const float *)val;
-    } else if (stream->type == MICRODB_TS_I32) {
-        sample->v.i32 = *(const int32_t *)val;
-    } else if (stream->type == MICRODB_TS_U32) {
-        sample->v.u32 = *(const uint32_t *)val;
-    } else {
-        memcpy(sample->v.raw, val, stream->raw_size);
-    }
-
-    stream->head = (stream->head + 1u) % stream->capacity;
-    if (stream->count < stream->capacity) {
-        stream->count++;
-    } else {
-        stream->tail = (stream->tail + 1u) % stream->capacity;
-    }
-
+    memset(&sample, 0, sizeof(sample));
+    sample.ts = ts;
+    microdb_ts_set_value(stream, &sample, val);
+    microdb_ts_rb_insert(stream, &sample);
     return MICRODB_OK;
 }
 

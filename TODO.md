@@ -29,9 +29,11 @@ Rozpracovane / dalsie kroky:
 - persistence cez WAL a storage HAL
 - testy pre KV edge cases a limity
 - TS engine zacaty:
-- zakladne API `register/insert/last/query/query_buf/count/clear` je rozbehnute
-- pridane prve TS smoke testy
-- chyba este plne pokrytie spec, overflow policy detaily a kompletna test suite
+- TS engine dokonceny pre aktualny scope:
+- `register/insert/last/query/query_buf/count/clear`
+- overflow policy build varianty: `DROP_OLDEST`, `REJECT`, `DOWNSAMPLE`
+- downsample merge pre dve najstarsie samples
+- TS test suite rozsirena na 35/35 passing testov
 - implementovat REL schema/table/row engine
 - implementovat WAL recovery a flush do storage pages
 - doplnit porty (`posix`, `ram`, `esp32`)
