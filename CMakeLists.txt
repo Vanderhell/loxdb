@@ -89,6 +89,69 @@ add_library(microdb_kv128 STATIC
 target_include_directories(microdb_kv128 PUBLIC include port/ram port/posix PRIVATE src)
 target_compile_definitions(microdb_kv128 PRIVATE MICRODB_KV_MAX_KEYS=128)
 
+add_library(microdb_kv_off STATIC
+    src/microdb.c
+    src/microdb_kv.c
+    src/microdb_ts.c
+    src/microdb_rel.c
+    src/microdb_wal.c
+    src/microdb_crc.c
+    port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
+)
+
+target_include_directories(microdb_kv_off PUBLIC include port/ram port/posix PRIVATE src)
+target_compile_definitions(microdb_kv_off PRIVATE MICRODB_ENABLE_KV=0)
+
+add_library(microdb_ts_off STATIC
+    src/microdb.c
+    src/microdb_kv.c
+    src/microdb_ts.c
+    src/microdb_rel.c
+    src/microdb_wal.c
+    src/microdb_crc.c
+    port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
+)
+
+target_include_directories(microdb_ts_off PUBLIC include port/ram port/posix PRIVATE src)
+target_compile_definitions(microdb_ts_off PRIVATE MICRODB_ENABLE_TS=0)
+
+add_library(microdb_rel_off STATIC
+    src/microdb.c
+    src/microdb_kv.c
+    src/microdb_ts.c
+    src/microdb_rel.c
+    src/microdb_wal.c
+    src/microdb_crc.c
+    port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
+)
+
+target_include_directories(microdb_rel_off PUBLIC include port/ram port/posix PRIVATE src)
+target_compile_definitions(microdb_rel_off PRIVATE MICRODB_ENABLE_REL=0)
+
+add_library(microdb_small_limits STATIC
+    src/microdb.c
+    src/microdb_kv.c
+    src/microdb_ts.c
+    src/microdb_rel.c
+    src/microdb_wal.c
+    src/microdb_crc.c
+    port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
+)
+
+target_include_directories(microdb_small_limits PUBLIC include port/ram port/posix PRIVATE src)
+target_compile_definitions(
+    microdb_small_limits
+    PRIVATE
+        MICRODB_KV_MAX_KEYS=8
+        MICRODB_TS_MAX_STREAMS=2
+        MICRODB_REL_MAX_TABLES=1
+        MICRODB_REL_MAX_COLS=4
+)
+
 if(MSVC)
     target_compile_options(microdb PRIVATE /W4)
     target_compile_options(microdb_reject PRIVATE /W4)
@@ -96,6 +159,10 @@ if(MSVC)
     target_compile_options(microdb_ts_downsample PRIVATE /W4)
     target_compile_options(microdb_no_wal PRIVATE /W4)
     target_compile_options(microdb_kv128 PRIVATE /W4)
+    target_compile_options(microdb_kv_off PRIVATE /W4)
+    target_compile_options(microdb_ts_off PRIVATE /W4)
+    target_compile_options(microdb_rel_off PRIVATE /W4)
+    target_compile_options(microdb_small_limits PRIVATE /W4)
 else()
     target_compile_options(microdb PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_reject PRIVATE -Wall -Wextra -Wpedantic)
@@ -103,6 +170,10 @@ else()
     target_compile_options(microdb_ts_downsample PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_no_wal PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_kv128 PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(microdb_kv_off PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(microdb_ts_off PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(microdb_rel_off PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(microdb_small_limits PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 if(MICRODB_BUILD_TESTS)
@@ -151,4 +222,71 @@ if(MICRODB_BUILD_TESTS)
     target_include_directories(test_wal_kv128 PRIVATE include tests port/ram port/posix src)
     target_link_libraries(test_wal_kv128 PRIVATE microdb_kv128)
     add_test(NAME test_wal_kv128 COMMAND test_wal_kv128)
+
+    add_executable(test_integration tests/test_integration.c)
+    target_include_directories(test_integration PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_integration PRIVATE microdb)
+    add_test(NAME test_integration COMMAND test_integration)
+
+    add_executable(test_integration_8kb tests/test_integration.c)
+    target_include_directories(test_integration_8kb PRIVATE include tests port/ram port/posix src)
+    target_compile_definitions(
+        test_integration_8kb
+        PRIVATE
+            MICRODB_TEST_WITH_8KB=1
+            MICRODB_KV_MAX_KEYS=8
+            MICRODB_TS_MAX_STREAMS=2
+            MICRODB_REL_MAX_TABLES=1
+            MICRODB_REL_MAX_COLS=4
+    )
+    target_link_libraries(test_integration_8kb PRIVATE microdb_small_limits)
+    add_test(NAME test_integration_8kb COMMAND test_integration_8kb)
+
+    add_executable(test_integration_kv_off tests/test_integration.c)
+    target_include_directories(test_integration_kv_off PRIVATE include tests port/ram port/posix src)
+    target_compile_definitions(test_integration_kv_off PRIVATE MICRODB_ENABLE_KV=0)
+    target_link_libraries(test_integration_kv_off PRIVATE microdb_kv_off)
+    add_test(NAME test_integration_kv_off COMMAND test_integration_kv_off)
+
+    add_executable(test_integration_ts_off tests/test_integration.c)
+    target_include_directories(test_integration_ts_off PRIVATE include tests port/ram port/posix src)
+    target_compile_definitions(test_integration_ts_off PRIVATE MICRODB_ENABLE_TS=0)
+    target_link_libraries(test_integration_ts_off PRIVATE microdb_ts_off)
+    add_test(NAME test_integration_ts_off COMMAND test_integration_ts_off)
+
+    add_executable(test_integration_rel_off tests/test_integration.c)
+    target_include_directories(test_integration_rel_off PRIVATE include tests port/ram port/posix src)
+    target_compile_definitions(test_integration_rel_off PRIVATE MICRODB_ENABLE_REL=0)
+    target_link_libraries(test_integration_rel_off PRIVATE microdb_rel_off)
+    add_test(NAME test_integration_rel_off COMMAND test_integration_rel_off)
+
+    add_executable(test_limits tests/test_limits.c)
+    target_include_directories(test_limits PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_limits PRIVATE microdb)
+    add_test(NAME test_limits COMMAND test_limits)
+
+    add_executable(test_limits_8kb tests/test_limits.c)
+    target_include_directories(test_limits_8kb PRIVATE include tests port/ram port/posix src)
+    target_compile_definitions(
+        test_limits_8kb
+        PRIVATE
+            MICRODB_TEST_WITH_8KB=1
+            MICRODB_KV_MAX_KEYS=8
+            MICRODB_TS_MAX_STREAMS=2
+            MICRODB_REL_MAX_TABLES=1
+            MICRODB_REL_MAX_COLS=4
+    )
+    target_link_libraries(test_limits_8kb PRIVATE microdb_small_limits)
+    add_test(NAME test_limits_8kb COMMAND test_limits_8kb)
+
+    add_test(
+        NAME test_limits_pct_sum_invalid
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/invalid_pct_sum.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/invalid_pct_sum.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_invalid_pct_sum.cmake
+    )
 endif()

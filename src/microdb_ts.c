@@ -387,4 +387,78 @@ microdb_err_t microdb_ts_clear(microdb_t *db, const char *name) {
     stream->count = 0u;
     return microdb_storage_flush(db);
 }
+#else
+microdb_err_t microdb_ts_register(microdb_t *db, const char *name, microdb_ts_type_t type, size_t raw_size) {
+    (void)db;
+    (void)name;
+    (void)type;
+    (void)raw_size;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timestamp_t ts, const void *val) {
+    (void)db;
+    (void)name;
+    (void)ts;
+    (void)val;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_ts_last(microdb_t *db, const char *name, microdb_ts_sample_t *out) {
+    (void)db;
+    (void)name;
+    (void)out;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_ts_query(microdb_t *db,
+                               const char *name,
+                               microdb_timestamp_t from,
+                               microdb_timestamp_t to,
+                               microdb_ts_query_cb_t cb,
+                               void *ctx) {
+    (void)db;
+    (void)name;
+    (void)from;
+    (void)to;
+    (void)cb;
+    (void)ctx;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_ts_query_buf(microdb_t *db,
+                                   const char *name,
+                                   microdb_timestamp_t from,
+                                   microdb_timestamp_t to,
+                                   microdb_ts_sample_t *buf,
+                                   size_t max_count,
+                                   size_t *out_count) {
+    (void)db;
+    (void)name;
+    (void)from;
+    (void)to;
+    (void)buf;
+    (void)max_count;
+    (void)out_count;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_ts_count(microdb_t *db,
+                               const char *name,
+                               microdb_timestamp_t from,
+                               microdb_timestamp_t to,
+                               size_t *out_count) {
+    (void)db;
+    (void)name;
+    (void)from;
+    (void)to;
+    (void)out_count;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_ts_clear(microdb_t *db, const char *name) {
+    (void)db;
+    (void)name;
+    return MICRODB_ERR_DISABLED;
+}
 #endif

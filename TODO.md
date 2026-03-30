@@ -52,7 +52,12 @@ Rozpracovane / dalsie kroky:
 - `tests/test_wal_kv128.c` passing
 - doplnit porty (`posix`, `ram`, `esp32`)
 - doplnit integration + limits testy podla spec
+- integration + limits testy doplnene:
+- `tests/test_integration.c` passing
+- `tests/test_limits.c` passing
+- disabled-engine build varianty pre `MICRODB_ERR_DISABLED`
+- small-limits 8KB build variant + compile-fail check pre zly sum PCT
 - potom ist na `port/esp32/`, examples a README
 
 Poznamky:
-- KV/TS/REL/WAL milestone su hotove; dalsi krok je integration + limits
+- KV/TS/REL/WAL/integration/limits milestone su hotove; dalsi krok je `port/esp32/`

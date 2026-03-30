@@ -185,7 +185,6 @@ microdb_err_t microdb_deinit(microdb_t *db);
 microdb_err_t microdb_flush(microdb_t *db);
 microdb_err_t microdb_stats(const microdb_t *db, microdb_stats_t *out);
 
-#if MICRODB_ENABLE_KV
 typedef bool (*microdb_kv_iter_cb_t)(const char *key, const void *val, size_t val_len, uint32_t ttl_remaining, void *ctx);
 microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, size_t len, uint32_t ttl);
 microdb_err_t microdb_kv_get(microdb_t *db, const char *key, void *buf, size_t buf_len, size_t *out_len);
@@ -195,9 +194,7 @@ microdb_err_t microdb_kv_iter(microdb_t *db, microdb_kv_iter_cb_t cb, void *ctx)
 microdb_err_t microdb_kv_purge_expired(microdb_t *db);
 microdb_err_t microdb_kv_clear(microdb_t *db);
 #define microdb_kv_put(db, key, val, len) microdb_kv_set((db), (key), (val), (len), 0u)
-#endif
 
-#if MICRODB_ENABLE_TS
 typedef bool (*microdb_ts_query_cb_t)(const microdb_ts_sample_t *sample, void *ctx);
 microdb_err_t microdb_ts_register(microdb_t *db, const char *name, microdb_ts_type_t type, size_t raw_size);
 microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timestamp_t ts, const void *val);
@@ -206,9 +203,7 @@ microdb_err_t microdb_ts_query(microdb_t *db, const char *name, microdb_timestam
 microdb_err_t microdb_ts_query_buf(microdb_t *db, const char *name, microdb_timestamp_t from, microdb_timestamp_t to, microdb_ts_sample_t *buf, size_t max_count, size_t *out_count);
 microdb_err_t microdb_ts_count(microdb_t *db, const char *name, microdb_timestamp_t from, microdb_timestamp_t to, size_t *out_count);
 microdb_err_t microdb_ts_clear(microdb_t *db, const char *name);
-#endif
 
-#if MICRODB_ENABLE_REL
 typedef bool (*microdb_rel_iter_cb_t)(const void *row_buf, void *ctx);
 microdb_err_t microdb_schema_init(microdb_schema_t *schema, const char *name, uint32_t max_rows);
 microdb_err_t microdb_schema_add(microdb_schema_t *schema, const char *col_name, microdb_col_type_t type, size_t size, bool is_index);
@@ -225,6 +220,5 @@ microdb_err_t microdb_rel_delete(microdb_t *db, microdb_table_t *table, const vo
 microdb_err_t microdb_rel_iter(microdb_t *db, microdb_table_t *table, microdb_rel_iter_cb_t cb, void *ctx);
 microdb_err_t microdb_rel_count(const microdb_table_t *table, uint32_t *out_count);
 microdb_err_t microdb_rel_clear(microdb_t *db, microdb_table_t *table);
-#endif
 
 #endif

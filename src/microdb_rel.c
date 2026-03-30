@@ -720,4 +720,129 @@ microdb_err_t microdb_rel_clear(microdb_t *db, microdb_table_t *table) {
     table->order_count = 0u;
     return microdb_storage_flush(db);
 }
+#else
+microdb_err_t microdb_schema_init(microdb_schema_t *schema, const char *name, uint32_t max_rows) {
+    (void)schema;
+    (void)name;
+    (void)max_rows;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_schema_add(microdb_schema_t *schema,
+                                 const char *col_name,
+                                 microdb_col_type_t type,
+                                 size_t size,
+                                 bool is_index) {
+    (void)schema;
+    (void)col_name;
+    (void)type;
+    (void)size;
+    (void)is_index;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_schema_seal(microdb_schema_t *schema) {
+    (void)schema;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_table_create(microdb_t *db, microdb_schema_t *schema) {
+    (void)db;
+    (void)schema;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_table_get(microdb_t *db, const char *name, microdb_table_t **out_table) {
+    (void)db;
+    (void)name;
+    (void)out_table;
+    return MICRODB_ERR_DISABLED;
+}
+
+size_t microdb_table_row_size(const microdb_table_t *table) {
+    (void)table;
+    return 0u;
+}
+
+microdb_err_t microdb_row_set(const microdb_table_t *table, void *row_buf, const char *col_name, const void *val) {
+    (void)table;
+    (void)row_buf;
+    (void)col_name;
+    (void)val;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_row_get(const microdb_table_t *table,
+                              const void *row_buf,
+                              const char *col_name,
+                              void *out,
+                              size_t *out_len) {
+    (void)table;
+    (void)row_buf;
+    (void)col_name;
+    (void)out;
+    (void)out_len;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_rel_insert(microdb_t *db, microdb_table_t *table, const void *row_buf) {
+    (void)db;
+    (void)table;
+    (void)row_buf;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_rel_find(microdb_t *db,
+                               microdb_table_t *table,
+                               const void *search_val,
+                               microdb_rel_iter_cb_t cb,
+                               void *ctx) {
+    (void)db;
+    (void)table;
+    (void)search_val;
+    (void)cb;
+    (void)ctx;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_rel_find_by(microdb_t *db,
+                                  microdb_table_t *table,
+                                  const char *col_name,
+                                  const void *search_val,
+                                  void *out_buf) {
+    (void)db;
+    (void)table;
+    (void)col_name;
+    (void)search_val;
+    (void)out_buf;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_rel_delete(microdb_t *db, microdb_table_t *table, const void *search_val, uint32_t *out_deleted) {
+    (void)db;
+    (void)table;
+    (void)search_val;
+    (void)out_deleted;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_rel_iter(microdb_t *db, microdb_table_t *table, microdb_rel_iter_cb_t cb, void *ctx) {
+    (void)db;
+    (void)table;
+    (void)cb;
+    (void)ctx;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_rel_count(const microdb_table_t *table, uint32_t *out_count) {
+    (void)table;
+    (void)out_count;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_rel_clear(microdb_t *db, microdb_table_t *table) {
+    (void)db;
+    (void)table;
+    return MICRODB_ERR_DISABLED;
+}
 #endif

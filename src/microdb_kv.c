@@ -584,4 +584,60 @@ microdb_err_t microdb_kv_clear(microdb_t *db) {
     core->live_bytes = microdb_kv_live_bytes(db);
     return microdb_persist_kv_clear(db);
 }
+#else
+microdb_err_t microdb_kv_set_at(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+    (void)db;
+    (void)key;
+    (void)val;
+    (void)len;
+    (void)expires_at;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, size_t len, uint32_t ttl) {
+    (void)db;
+    (void)key;
+    (void)val;
+    (void)len;
+    (void)ttl;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_kv_get(microdb_t *db, const char *key, void *buf, size_t buf_len, size_t *out_len) {
+    (void)db;
+    (void)key;
+    (void)buf;
+    (void)buf_len;
+    (void)out_len;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_kv_del(microdb_t *db, const char *key) {
+    (void)db;
+    (void)key;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_kv_exists(microdb_t *db, const char *key) {
+    (void)db;
+    (void)key;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_kv_iter(microdb_t *db, microdb_kv_iter_cb_t cb, void *ctx) {
+    (void)db;
+    (void)cb;
+    (void)ctx;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_kv_purge_expired(microdb_t *db) {
+    (void)db;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_kv_clear(microdb_t *db) {
+    (void)db;
+    return MICRODB_ERR_DISABLED;
+}
 #endif
