@@ -1,3 +1,5 @@
+![microdb](docs/banner.svg)
+
 # microdb
 
 > Embedded database for microcontrollers.
