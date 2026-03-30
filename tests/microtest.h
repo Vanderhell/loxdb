@@ -22,6 +22,42 @@ static int mdb_test_total = 0;
         }                                                                                   \
     } while (0)
 
+#define ASSERT_GT(actual, expected)                                                         \
+    do {                                                                                    \
+        long long mdb_actual_value = (long long)(actual);                                   \
+        long long mdb_expected_value = (long long)(expected);                               \
+        if (mdb_actual_value <= mdb_expected_value) {                                       \
+            fprintf(stderr, "%s:%d ASSERT_GT failed: got %lld expected > %lld\n",           \
+                    __FILE__, __LINE__, mdb_actual_value, mdb_expected_value);              \
+            mdb_test_failures++;                                                            \
+            return;                                                                         \
+        }                                                                                   \
+    } while (0)
+
+#define ASSERT_GE(actual, expected)                                                         \
+    do {                                                                                    \
+        long long mdb_actual_value = (long long)(actual);                                   \
+        long long mdb_expected_value = (long long)(expected);                               \
+        if (mdb_actual_value < mdb_expected_value) {                                        \
+            fprintf(stderr, "%s:%d ASSERT_GE failed: got %lld expected >= %lld\n",          \
+                    __FILE__, __LINE__, mdb_actual_value, mdb_expected_value);              \
+            mdb_test_failures++;                                                            \
+            return;                                                                         \
+        }                                                                                   \
+    } while (0)
+
+#define ASSERT_LE(actual, expected)                                                         \
+    do {                                                                                    \
+        long long mdb_actual_value = (long long)(actual);                                   \
+        long long mdb_expected_value = (long long)(expected);                               \
+        if (mdb_actual_value > mdb_expected_value) {                                        \
+            fprintf(stderr, "%s:%d ASSERT_LE failed: got %lld expected <= %lld\n",          \
+                    __FILE__, __LINE__, mdb_actual_value, mdb_expected_value);              \
+            mdb_test_failures++;                                                            \
+            return;                                                                         \
+        }                                                                                   \
+    } while (0)
+
 #define ASSERT_MEM_EQ(actual, expected, len)                                                \
     do {                                                                                    \
         if (memcmp((actual), (expected), (len)) != 0) {                                     \

@@ -7,10 +7,16 @@
 #ifndef MICRODB_TEST_WITH_8KB
 #define MICRODB_TEST_WITH_8KB 0
 #endif
+#ifndef MICRODB_TEST_LARGE_RAM_VARIANT
+#define MICRODB_TEST_LARGE_RAM_VARIANT 0
+#endif
+#ifndef MICRODB_TEST_DB_PATH
+#define MICRODB_TEST_DB_PATH "integration_test.bin"
+#endif
 
 static microdb_t g_db;
 static microdb_storage_t g_storage;
-static const char *g_path = "integration_test.bin";
+static const char *g_path = MICRODB_TEST_DB_PATH;
 static uint32_t g_now = 1000u;
 
 typedef struct {
@@ -24,10 +30,15 @@ static microdb_timestamp_t mock_now(void) {
 
 static void open_storage_db(microdb_t *db, microdb_storage_t *storage, uint32_t ram_kb) {
     microdb_cfg_t cfg;
+    uint32_t capacity = 131072u;
+
+    if (ram_kb > 64u) {
+        capacity = ram_kb * 2048u;
+    }
 
     memset(db, 0, sizeof(*db));
     memset(storage, 0, sizeof(*storage));
-    ASSERT_EQ(microdb_port_posix_init(storage, g_path, 131072u), MICRODB_OK);
+    ASSERT_EQ(microdb_port_posix_init(storage, g_path, capacity), MICRODB_OK);
 
     memset(&cfg, 0, sizeof(cfg));
     cfg.storage = storage;
@@ -50,7 +61,7 @@ static void open_ram_db(microdb_t *db, uint32_t ram_kb) {
 static void setup_db(void) {
     g_now = 1000u;
     microdb_port_posix_remove(g_path);
-    open_storage_db(&g_db, &g_storage, 32u);
+    open_storage_db(&g_db, &g_storage, MICRODB_RAM_KB);
 }
 
 static void teardown_db(void) {
@@ -151,7 +162,7 @@ MDB_TEST(integration_flush_between_operations) {
     ASSERT_EQ(microdb_row_set(table, row, "age", &age), MICRODB_OK);
     ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
     ASSERT_EQ(microdb_flush(&g_db), MICRODB_OK);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     ASSERT_EQ(microdb_kv_get(&g_db, "a", &kv, 1u, NULL), MICRODB_OK);
     ASSERT_EQ(microdb_ts_last(&g_db, "f", &(microdb_ts_sample_t){ 0 }), MICRODB_OK);
     ASSERT_EQ(microdb_table_get(&g_db, "users", &table), MICRODB_OK);
@@ -159,7 +170,7 @@ MDB_TEST(integration_flush_between_operations) {
 
 MDB_TEST(integration_storage_reinit_persists_all_engines) {
     populate_all_engines(&g_db, 0u);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     assert_all_engines_present(&g_db);
 }
 
@@ -168,10 +179,10 @@ MDB_TEST(integration_ram_only_loses_state_after_deinit) {
     uint8_t value = 3u;
     uint8_t out = 0u;
 
-    open_ram_db(&db, 32u);
+    open_ram_db(&db, MICRODB_RAM_KB);
     ASSERT_EQ(microdb_kv_set(&db, "volatile", &value, 1u, 0u), MICRODB_OK);
     ASSERT_EQ(microdb_deinit(&db), MICRODB_OK);
-    open_ram_db(&db, 32u);
+    open_ram_db(&db, MICRODB_RAM_KB);
     ASSERT_EQ(microdb_kv_get(&db, "volatile", &out, 1u, NULL), MICRODB_ERR_NOT_FOUND);
     ASSERT_EQ(microdb_deinit(&db), MICRODB_OK);
 }
@@ -183,7 +194,7 @@ MDB_TEST(integration_budget_8kb_functional) {
 #endif
 
 MDB_TEST(integration_budget_32kb_functional) {
-    run_budget_smoke(32u);
+    run_budget_smoke(MICRODB_RAM_KB);
 }
 
 MDB_TEST(integration_budget_64kb_functional) {
@@ -199,7 +210,7 @@ MDB_TEST(integration_repeated_flush_idempotent) {
     ASSERT_EQ(microdb_flush(&g_db), MICRODB_OK);
     ASSERT_EQ(microdb_flush(&g_db), MICRODB_OK);
     ASSERT_EQ(microdb_flush(&g_db), MICRODB_OK);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     assert_all_engines_present(&g_db);
 }
 
@@ -217,7 +228,7 @@ MDB_TEST(integration_delete_then_reload) {
     ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
     ASSERT_EQ(microdb_kv_del(&g_db, "gone"), MICRODB_OK);
     ASSERT_EQ(microdb_rel_delete(&g_db, table, &id, NULL), MICRODB_OK);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     ASSERT_EQ(microdb_kv_exists(&g_db, "gone"), MICRODB_ERR_NOT_FOUND);
     ASSERT_EQ(microdb_table_get(&g_db, "users", &table), MICRODB_OK);
     ASSERT_EQ(microdb_rel_find_by(&g_db, table, "id", &id, row), MICRODB_ERR_NOT_FOUND);
@@ -238,7 +249,7 @@ MDB_TEST(integration_rel_order_persists_with_other_engines) {
         ASSERT_EQ(microdb_row_set(table, row, "age", &age), MICRODB_OK);
         ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
     }
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     ASSERT_EQ(microdb_table_get(&g_db, "users", &table), MICRODB_OK);
     ASSERT_EQ(microdb_rel_iter(&g_db, table, collect_rel_ids, &ids), MICRODB_OK);
     ASSERT_EQ(ids.count, 4u);
@@ -252,7 +263,7 @@ MDB_TEST(integration_kv_ttl_persists_after_reload) {
     uint8_t out = 0u;
 
     populate_all_engines(&g_db, 5u);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     g_now = 1004u;
     ASSERT_EQ(microdb_kv_get(&g_db, "mode", &out, 1u, NULL), MICRODB_OK);
     g_now = 1005u;
@@ -261,9 +272,9 @@ MDB_TEST(integration_kv_ttl_persists_after_reload) {
 
 MDB_TEST(integration_multiple_reinit_cycles_preserve_data) {
     populate_all_engines(&g_db, 0u);
-    reopen_db(32u);
-    reopen_db(32u);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
+    reopen_db(MICRODB_RAM_KB);
+    reopen_db(MICRODB_RAM_KB);
     assert_all_engines_present(&g_db);
 }
 
@@ -287,7 +298,7 @@ MDB_TEST(integration_clear_then_reload_empty_state) {
     ASSERT_EQ(microdb_ts_clear(&g_db, "temp"), MICRODB_OK);
     ASSERT_EQ(microdb_table_get(&g_db, "users", &table), MICRODB_OK);
     ASSERT_EQ(microdb_rel_clear(&g_db, table), MICRODB_OK);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     ASSERT_EQ(microdb_kv_exists(&g_db, "mode"), MICRODB_ERR_NOT_FOUND);
     ASSERT_EQ(microdb_ts_last(&g_db, "temp", &(microdb_ts_sample_t){ 0 }), MICRODB_ERR_NOT_FOUND);
     ASSERT_EQ(microdb_table_get(&g_db, "users", &table), MICRODB_OK);
@@ -309,7 +320,7 @@ MDB_TEST(integration_reload_without_explicit_flush_uses_wal) {
     populate_all_engines(&g_db, 0u);
     microdb_port_posix_simulate_power_loss(&g_storage);
     microdb_port_posix_deinit(&g_storage);
-    open_storage_db(&g_db, &g_storage, 32u);
+    open_storage_db(&g_db, &g_storage, MICRODB_RAM_KB);
     assert_all_engines_present(&g_db);
 }
 
@@ -318,7 +329,7 @@ MDB_TEST(integration_ts_query_after_reload) {
     size_t count = 0u;
 
     populate_all_engines(&g_db, 0u);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     ASSERT_EQ(microdb_ts_query_buf(&g_db, "temp", 100u, 200u, buf, 4u, &count), MICRODB_OK);
     ASSERT_EQ(count, 1u);
     ASSERT_EQ(buf[0].ts, 123u);
@@ -330,16 +341,16 @@ MDB_TEST(integration_rel_find_after_reload) {
     uint32_t id = 11u;
 
     populate_all_engines(&g_db, 0u);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     ASSERT_EQ(microdb_table_get(&g_db, "users", &table), MICRODB_OK);
     ASSERT_EQ(microdb_rel_find_by(&g_db, table, "id", &id, row), MICRODB_OK);
 }
 
 MDB_TEST(integration_flush_after_reload_keeps_data) {
     populate_all_engines(&g_db, 0u);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     ASSERT_EQ(microdb_flush(&g_db), MICRODB_OK);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     assert_all_engines_present(&g_db);
 }
 
@@ -348,7 +359,7 @@ MDB_TEST(integration_rel_count_after_reload) {
     uint32_t count = 0u;
 
     populate_all_engines(&g_db, 0u);
-    reopen_db(32u);
+    reopen_db(MICRODB_RAM_KB);
     ASSERT_EQ(microdb_table_get(&g_db, "users", &table), MICRODB_OK);
     ASSERT_EQ(microdb_rel_count(table, &count), MICRODB_OK);
     ASSERT_EQ(count, 1u);
@@ -405,6 +416,12 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, integration_ts_disabled_returns_err_disabled);
 #elif !MICRODB_ENABLE_REL
     MDB_RUN_TEST(setup_db, teardown_db, integration_rel_disabled_returns_err_disabled);
+#elif MICRODB_TEST_LARGE_RAM_VARIANT
+    MDB_RUN_TEST(setup_db, teardown_db, integration_all_three_engines_same_session);
+    MDB_RUN_TEST(setup_db, teardown_db, integration_storage_reinit_persists_all_engines);
+    MDB_RUN_TEST(setup_db, teardown_db, integration_repeated_flush_idempotent);
+    MDB_RUN_TEST(setup_db, teardown_db, integration_stats_track_mixed_usage);
+    MDB_RUN_TEST(setup_db, teardown_db, integration_flush_after_reload_keeps_data);
 #else
     MDB_RUN_TEST(setup_db, teardown_db, integration_all_three_engines_same_session);
     MDB_RUN_TEST(setup_db, teardown_db, integration_flush_between_operations);

@@ -152,6 +152,31 @@ target_compile_definitions(
         MICRODB_REL_MAX_COLS=4
 )
 
+function(create_microdb_ram_variant target_name ram_kb)
+    add_library(${target_name} STATIC
+        src/microdb.c
+        src/microdb_kv.c
+        src/microdb_ts.c
+        src/microdb_rel.c
+        src/microdb_wal.c
+        src/microdb_crc.c
+        port/ram/microdb_port_ram.c
+        port/posix/microdb_port_posix.c
+    )
+    target_include_directories(${target_name} PUBLIC include port/ram port/posix PRIVATE src)
+    target_compile_definitions(${target_name} PRIVATE MICRODB_RAM_KB=${ram_kb})
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /W4)
+    else()
+        target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()
+
+create_microdb_ram_variant(microdb_128kb 128)
+create_microdb_ram_variant(microdb_256kb 256)
+create_microdb_ram_variant(microdb_512kb 512)
+create_microdb_ram_variant(microdb_1024kb 1024)
+
 if(MSVC)
     target_compile_options(microdb PRIVATE /W4)
     target_compile_options(microdb_reject PRIVATE /W4)
@@ -225,6 +250,7 @@ if(MICRODB_BUILD_TESTS)
 
     add_executable(test_integration tests/test_integration.c)
     target_include_directories(test_integration PRIVATE include tests port/ram port/posix src)
+    target_compile_definitions(test_integration PRIVATE MICRODB_TEST_DB_PATH="integration_default.bin")
     target_link_libraries(test_integration PRIVATE microdb)
     add_test(NAME test_integration COMMAND test_integration)
 
@@ -234,6 +260,7 @@ if(MICRODB_BUILD_TESTS)
         test_integration_8kb
         PRIVATE
             MICRODB_TEST_WITH_8KB=1
+            MICRODB_TEST_DB_PATH="integration_8kb.bin"
             MICRODB_KV_MAX_KEYS=8
             MICRODB_TS_MAX_STREAMS=2
             MICRODB_REL_MAX_TABLES=1
@@ -242,21 +269,50 @@ if(MICRODB_BUILD_TESTS)
     target_link_libraries(test_integration_8kb PRIVATE microdb_small_limits)
     add_test(NAME test_integration_8kb COMMAND test_integration_8kb)
 
+    foreach(RAM_KB 128 256 512 1024)
+        add_executable(test_integration_${RAM_KB}kb tests/test_integration.c)
+        target_include_directories(test_integration_${RAM_KB}kb PRIVATE include tests port/ram port/posix src)
+        target_compile_definitions(
+            test_integration_${RAM_KB}kb
+            PRIVATE
+                MICRODB_TEST_LARGE_RAM_VARIANT=1
+                MICRODB_RAM_KB=${RAM_KB}
+                MICRODB_TEST_DB_PATH="integration_${RAM_KB}kb.bin"
+        )
+        target_link_libraries(test_integration_${RAM_KB}kb PRIVATE microdb_${RAM_KB}kb)
+        add_test(NAME integration_${RAM_KB}kb COMMAND test_integration_${RAM_KB}kb)
+    endforeach()
+
     add_executable(test_integration_kv_off tests/test_integration.c)
     target_include_directories(test_integration_kv_off PRIVATE include tests port/ram port/posix src)
-    target_compile_definitions(test_integration_kv_off PRIVATE MICRODB_ENABLE_KV=0)
+    target_compile_definitions(
+        test_integration_kv_off
+        PRIVATE
+            MICRODB_ENABLE_KV=0
+            MICRODB_TEST_DB_PATH="integration_kv_off.bin"
+    )
     target_link_libraries(test_integration_kv_off PRIVATE microdb_kv_off)
     add_test(NAME test_integration_kv_off COMMAND test_integration_kv_off)
 
     add_executable(test_integration_ts_off tests/test_integration.c)
     target_include_directories(test_integration_ts_off PRIVATE include tests port/ram port/posix src)
-    target_compile_definitions(test_integration_ts_off PRIVATE MICRODB_ENABLE_TS=0)
+    target_compile_definitions(
+        test_integration_ts_off
+        PRIVATE
+            MICRODB_ENABLE_TS=0
+            MICRODB_TEST_DB_PATH="integration_ts_off.bin"
+    )
     target_link_libraries(test_integration_ts_off PRIVATE microdb_ts_off)
     add_test(NAME test_integration_ts_off COMMAND test_integration_ts_off)
 
     add_executable(test_integration_rel_off tests/test_integration.c)
     target_include_directories(test_integration_rel_off PRIVATE include tests port/ram port/posix src)
-    target_compile_definitions(test_integration_rel_off PRIVATE MICRODB_ENABLE_REL=0)
+    target_compile_definitions(
+        test_integration_rel_off
+        PRIVATE
+            MICRODB_ENABLE_REL=0
+            MICRODB_TEST_DB_PATH="integration_rel_off.bin"
+    )
     target_link_libraries(test_integration_rel_off PRIVATE microdb_rel_off)
     add_test(NAME test_integration_rel_off COMMAND test_integration_rel_off)
 
@@ -278,6 +334,14 @@ if(MICRODB_BUILD_TESTS)
     )
     target_link_libraries(test_limits_8kb PRIVATE microdb_small_limits)
     add_test(NAME test_limits_8kb COMMAND test_limits_8kb)
+
+    foreach(RAM_KB 128 256 512 1024)
+        add_executable(test_limits_${RAM_KB}kb tests/test_limits.c)
+        target_include_directories(test_limits_${RAM_KB}kb PRIVATE include tests port/ram port/posix src)
+        target_compile_definitions(test_limits_${RAM_KB}kb PRIVATE MICRODB_RAM_KB=${RAM_KB})
+        target_link_libraries(test_limits_${RAM_KB}kb PRIVATE microdb_${RAM_KB}kb)
+        add_test(NAME limits_${RAM_KB}kb COMMAND test_limits_${RAM_KB}kb)
+    endforeach()
 
     add_test(
         NAME test_limits_pct_sum_invalid

@@ -14,7 +14,7 @@ static void setup_db(void) {
 
     memset(&g_db, 0, sizeof(g_db));
     memset(&cfg, 0, sizeof(cfg));
-    cfg.ram_kb = 32u;
+    cfg.ram_kb = MICRODB_RAM_KB;
     ASSERT_EQ(microdb_init(&g_db, &cfg), MICRODB_OK);
 }
 
@@ -61,6 +61,91 @@ MDB_TEST(limits_ram_4096kb_functional) {
     ASSERT_EQ(microdb_stats(&db, &stats), MICRODB_OK);
     ASSERT_EQ(stats.ram_total_bytes, 4096u * 1024u);
     ASSERT_EQ(microdb_deinit(&db), MICRODB_OK);
+}
+
+MDB_TEST(large_ram_kv_capacity_scales) {
+    microdb_stats_t stats;
+
+    ASSERT_EQ(microdb_stats(&g_db, &stats), MICRODB_OK);
+    ASSERT_GT(stats.kv_capacity, 0u);
+
+#if MICRODB_RAM_KB >= 128
+    ASSERT_GE(stats.ram_total_bytes, 128u * 1024u);
+#endif
+#if MICRODB_RAM_KB >= 256
+    ASSERT_GE(stats.ram_total_bytes, 256u * 1024u);
+#endif
+#if MICRODB_RAM_KB >= 512
+    ASSERT_GE(stats.ram_total_bytes, 512u * 1024u);
+#endif
+#if MICRODB_RAM_KB >= 1024
+    ASSERT_GE(stats.ram_total_bytes, 1024u * 1024u);
+#endif
+}
+
+MDB_TEST(large_ram_no_integer_overflow) {
+    microdb_stats_t stats;
+
+    ASSERT_EQ(microdb_stats(&g_db, &stats), MICRODB_OK);
+    ASSERT_LE(stats.ram_used_bytes, stats.ram_total_bytes);
+    ASSERT_GT(stats.kv_capacity, 0u);
+}
+
+MDB_TEST(large_ram_ts_stream_capacity_scales) {
+    uint32_t inserted = 0u;
+    uint32_t i;
+
+    ASSERT_EQ(microdb_ts_register(&g_db, "scale_test", MICRODB_TS_F32, 0u), MICRODB_OK);
+    for (i = 0u; i < 10000u; ++i) {
+        float val = (float)i;
+        microdb_err_t err = microdb_ts_insert(&g_db, "scale_test", (microdb_timestamp_t)i, &val);
+        if (err != MICRODB_OK) {
+            break;
+        }
+        inserted++;
+    }
+
+#if MICRODB_RAM_KB >= 128
+    ASSERT_GE(inserted, 4000u);
+#endif
+#if MICRODB_RAM_KB >= 512
+    ASSERT_GE(inserted, 10000u);
+#endif
+}
+
+MDB_TEST(large_ram_rel_more_rows) {
+    microdb_schema_t schema;
+    microdb_table_t *table = NULL;
+    uint8_t row[64] = { 0 };
+    uint32_t inserted = 0u;
+    uint32_t i;
+
+    ASSERT_EQ(microdb_schema_init(&schema, "scale_rel", 10000u), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&schema, "id", MICRODB_COL_U32, 4u, true), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&schema, "val", MICRODB_COL_F32, 4u, false), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_seal(&schema), MICRODB_OK);
+
+    if (microdb_table_create(&g_db, &schema) != MICRODB_OK) {
+        return;
+    }
+
+    ASSERT_EQ(microdb_table_get(&g_db, "scale_rel", &table), MICRODB_OK);
+    for (i = 0u; i < 10000u; ++i) {
+        float val = (float)i;
+        ASSERT_EQ(microdb_row_set(table, row, "id", &i), MICRODB_OK);
+        ASSERT_EQ(microdb_row_set(table, row, "val", &val), MICRODB_OK);
+        if (microdb_rel_insert(&g_db, table, row) != MICRODB_OK) {
+            break;
+        }
+        inserted++;
+    }
+
+#if MICRODB_RAM_KB >= 256
+    ASSERT_GE(inserted, 500u);
+#endif
+#if MICRODB_RAM_KB >= 1024
+    ASSERT_GE(inserted, 2000u);
+#endif
 }
 
 MDB_TEST(limits_kv_key_max_minus_one_accepted) {
@@ -207,6 +292,10 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, limits_ram_8kb_functional);
 #endif
     MDB_RUN_TEST(setup_db, teardown_db, limits_ram_4096kb_functional);
+    MDB_RUN_TEST(setup_db, teardown_db, large_ram_kv_capacity_scales);
+    MDB_RUN_TEST(setup_db, teardown_db, large_ram_no_integer_overflow);
+    MDB_RUN_TEST(setup_db, teardown_db, large_ram_ts_stream_capacity_scales);
+    MDB_RUN_TEST(setup_db, teardown_db, large_ram_rel_more_rows);
     MDB_RUN_TEST(setup_db, teardown_db, limits_kv_key_max_minus_one_accepted);
     MDB_RUN_TEST(setup_db, teardown_db, limits_kv_key_max_rejected);
     MDB_RUN_TEST(setup_db, teardown_db, limits_kv_value_max_accepted);
