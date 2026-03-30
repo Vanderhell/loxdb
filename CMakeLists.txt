@@ -354,3 +354,21 @@ if(MICRODB_BUILD_TESTS)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_invalid_pct_sum.cmake
     )
 endif()
+
+if(DEFINED IDF_TARGET)
+    idf_component_register(
+        SRCS
+            "src/microdb.c"
+            "src/microdb_kv.c"
+            "src/microdb_ts.c"
+            "src/microdb_rel.c"
+            "src/microdb_wal.c"
+            "src/microdb_crc.c"
+            "port/esp32/microdb_port_esp32.c"
+        INCLUDE_DIRS
+            "include"
+            "port/esp32"
+        REQUIRES
+            esp_partition
+    )
+endif()
