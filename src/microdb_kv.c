@@ -285,14 +285,13 @@ static microdb_err_t microdb_kv_evict_lru(microdb_core_t *core) {
 
 microdb_err_t microdb_kv_init(microdb_t *db) {
     microdb_core_t *core = microdb_core(db);
+#if MICRODB_ENABLE_KV
     size_t bucket_bytes;
+#endif
 
     memset(&core->kv, 0, sizeof(core->kv));
 
-#if !MICRODB_ENABLE_KV
-    return MICRODB_OK;
-#endif
-
+#if MICRODB_ENABLE_KV
     core->kv.bucket_count = microdb_kv_bucket_count();
     bucket_bytes = (size_t)core->kv.bucket_count * sizeof(microdb_kv_bucket_t);
 
@@ -305,6 +304,8 @@ microdb_err_t microdb_kv_init(microdb_t *db) {
     core->kv.value_store = core->kv_arena.base + bucket_bytes;
     core->kv.value_capacity = (uint32_t)(core->kv_arena.capacity - bucket_bytes);
     core->kv.access_clock = 1u;
+#endif
+
     return MICRODB_OK;
 }
 

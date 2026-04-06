@@ -114,15 +114,14 @@ static void microdb_ts_downsample_oldest(microdb_ts_stream_t *stream) {
 
 microdb_err_t microdb_ts_init(microdb_t *db) {
     microdb_core_t *core = microdb_core(db);
+#if MICRODB_ENABLE_TS
     uint32_t capacity;
     uint32_t i;
+#endif
 
     memset(&core->ts, 0, sizeof(core->ts));
 
-#if !MICRODB_ENABLE_TS
-    return MICRODB_OK;
-#endif
-
+#if MICRODB_ENABLE_TS
     if (microdb_ts_sample_capacity(core, &capacity) != MICRODB_OK) {
         return MICRODB_ERR_NO_MEM;
     }
@@ -132,6 +131,7 @@ microdb_err_t microdb_ts_init(microdb_t *db) {
             (microdb_ts_sample_t *)(core->ts_arena.base + (i * capacity * sizeof(microdb_ts_sample_t)));
         core->ts.streams[i].capacity = capacity;
     }
+#endif
 
     return MICRODB_OK;
 }
