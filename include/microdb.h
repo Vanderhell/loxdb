@@ -35,6 +35,10 @@
 #ifndef MICRODB_KV_VAL_MAX_LEN
 #define MICRODB_KV_VAL_MAX_LEN 128u
 #endif
+/* Transaction staging reserves this many KV slots from kv_arena at init time. */
+#ifndef MICRODB_TXN_STAGE_KEYS
+#define MICRODB_TXN_STAGE_KEYS 8u
+#endif
 #ifndef MICRODB_KV_ENABLE_TTL
 #define MICRODB_KV_ENABLE_TTL 1
 #endif
@@ -76,6 +80,9 @@
 #ifndef MICRODB_TIMESTAMP_TYPE
 #define MICRODB_TIMESTAMP_TYPE uint32_t
 #endif
+#ifndef MICRODB_THREAD_SAFE
+#define MICRODB_THREAD_SAFE 0
+#endif
 
 /* Debug logging
  * Define MICRODB_LOG before #include "microdb.h" to enable internal logging.
@@ -98,6 +105,7 @@
 MICRODB_STATIC_ASSERT(ram_pct_sum, (MICRODB_RAM_KV_PCT + MICRODB_RAM_TS_PCT + MICRODB_RAM_REL_PCT) == 100u);
 MICRODB_STATIC_ASSERT(ram_kb_min, MICRODB_RAM_KB >= 8u);
 MICRODB_STATIC_ASSERT(ram_kb_max, MICRODB_RAM_KB <= 4096u);
+MICRODB_STATIC_ASSERT(txn_stage_lt_kv_keys, MICRODB_TXN_STAGE_KEYS < MICRODB_KV_MAX_KEYS);
 
 typedef MICRODB_TIMESTAMP_TYPE microdb_timestamp_t;
 
@@ -116,6 +124,7 @@ typedef struct {
 } microdb_t;
 
 typedef struct {
+    uint16_t schema_version;
     uint8_t _opaque[MICRODB_SCHEMA_SIZE];
 } microdb_schema_t;
 
@@ -134,8 +143,25 @@ typedef enum {
     MICRODB_ERR_EXISTS = -9,
     MICRODB_ERR_DISABLED = -10,
     MICRODB_ERR_OVERFLOW = -11,
-    MICRODB_ERR_SCHEMA = -12
+    MICRODB_ERR_SCHEMA = -12,
+    MICRODB_ERR_TXN_ACTIVE = -13
 } microdb_err_t;
+
+typedef struct {
+    uint32_t kv_entries_used;
+    uint32_t kv_entries_max;
+    uint8_t kv_fill_pct;
+    uint32_t kv_collision_count;
+    uint32_t kv_eviction_count;
+    uint32_t ts_streams_registered;
+    uint32_t ts_samples_total;
+    uint8_t ts_fill_pct;
+    uint32_t wal_bytes_used;
+    uint32_t wal_bytes_total;
+    uint8_t wal_fill_pct;
+    uint32_t rel_tables_count;
+    uint32_t rel_rows_total;
+} microdb_stats_t;
 
 typedef enum {
     MICRODB_TS_F32 = 0,
@@ -178,17 +204,14 @@ typedef struct {
     uint8_t kv_pct;
     uint8_t ts_pct;
     uint8_t rel_pct;
+    void *(*lock_create)(void);
+    void (*lock)(void *hdl);
+    void (*unlock)(void *hdl);
+    void (*lock_destroy)(void *hdl);
+    uint8_t wal_compact_auto;
+    uint8_t wal_compact_threshold_pct;
+    microdb_err_t (*on_migrate)(microdb_t *db, const char *table_name, uint16_t old_version, uint16_t new_version);
 } microdb_cfg_t;
-
-typedef struct {
-    size_t ram_total_bytes;
-    size_t ram_used_bytes;
-    uint32_t kv_entries;
-    uint32_t kv_capacity;
-    uint32_t ts_streams;
-    uint32_t rel_tables;
-    uint32_t storage_bytes_written;
-} microdb_stats_t;
 
 typedef struct {
     microdb_timestamp_t ts;
@@ -204,6 +227,8 @@ microdb_err_t microdb_init(microdb_t *db, const microdb_cfg_t *cfg);
 microdb_err_t microdb_deinit(microdb_t *db);
 microdb_err_t microdb_flush(microdb_t *db);
 microdb_err_t microdb_stats(const microdb_t *db, microdb_stats_t *out);
+microdb_err_t microdb_inspect(microdb_t *db, microdb_stats_t *out);
+microdb_err_t microdb_compact(microdb_t *db);
 
 typedef bool (*microdb_kv_iter_cb_t)(const char *key, const void *val, size_t val_len, uint32_t ttl_remaining, void *ctx);
 microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, size_t len, uint32_t ttl);
@@ -214,6 +239,9 @@ microdb_err_t microdb_kv_iter(microdb_t *db, microdb_kv_iter_cb_t cb, void *ctx)
 microdb_err_t microdb_kv_purge_expired(microdb_t *db);
 microdb_err_t microdb_kv_clear(microdb_t *db);
 #define microdb_kv_put(db, key, val, len) microdb_kv_set((db), (key), (val), (len), 0u)
+microdb_err_t microdb_txn_begin(microdb_t *db);
+microdb_err_t microdb_txn_commit(microdb_t *db);
+microdb_err_t microdb_txn_rollback(microdb_t *db);
 
 typedef bool (*microdb_ts_query_cb_t)(const microdb_ts_sample_t *sample, void *ctx);
 microdb_err_t microdb_ts_register(microdb_t *db, const char *name, microdb_ts_type_t type, size_t raw_size);

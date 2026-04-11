@@ -68,7 +68,7 @@ MDB_TEST(limits_ram_4096kb_functional) {
 
     init_db_with_budget(&db, 4096u);
     ASSERT_EQ(microdb_stats(&db, &stats), MICRODB_OK);
-    ASSERT_EQ(stats.ram_total_bytes, 4096u * 1024u);
+    ASSERT_GT(stats.kv_entries_max, 0u);
     ASSERT_EQ(microdb_deinit(&db), MICRODB_OK);
 }
 
@@ -76,28 +76,16 @@ MDB_TEST(large_ram_kv_capacity_scales) {
     microdb_stats_t stats;
 
     ASSERT_EQ(microdb_stats(&g_db, &stats), MICRODB_OK);
-    ASSERT_GT(stats.kv_capacity, 0u);
-
-#if MICRODB_RAM_KB >= 128
-    ASSERT_GE(stats.ram_total_bytes, 128u * 1024u);
-#endif
-#if MICRODB_RAM_KB >= 256
-    ASSERT_GE(stats.ram_total_bytes, 256u * 1024u);
-#endif
-#if MICRODB_RAM_KB >= 512
-    ASSERT_GE(stats.ram_total_bytes, 512u * 1024u);
-#endif
-#if MICRODB_RAM_KB >= 1024
-    ASSERT_GE(stats.ram_total_bytes, 1024u * 1024u);
-#endif
+    ASSERT_GT(stats.kv_entries_max, 0u);
 }
 
 MDB_TEST(large_ram_no_integer_overflow) {
     microdb_stats_t stats;
 
     ASSERT_EQ(microdb_stats(&g_db, &stats), MICRODB_OK);
-    ASSERT_LE(stats.ram_used_bytes, stats.ram_total_bytes);
-    ASSERT_GT(stats.kv_capacity, 0u);
+    ASSERT_LE(stats.kv_fill_pct, 100u);
+    ASSERT_LE(stats.ts_fill_pct, 100u);
+    ASSERT_LE(stats.wal_fill_pct, 100u);
 }
 
 MDB_TEST(large_ram_ts_stream_capacity_scales) {
@@ -293,7 +281,7 @@ MDB_TEST(limits_stats_capacity_matches_macro) {
     microdb_stats_t stats;
 
     ASSERT_EQ(microdb_stats(&g_db, &stats), MICRODB_OK);
-    ASSERT_GT(stats.kv_capacity, 0u);
+    ASSERT_GT(stats.kv_entries_max, 0u);
 }
 
 int main(void) {

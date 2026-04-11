@@ -1,4 +1,5 @@
 #include "microdb_internal.h"
+#include "microdb_lock.h"
 
 #include <string.h>
 
@@ -191,23 +192,28 @@ microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timesta
     microdb_core_t *core;
     microdb_ts_stream_t *stream;
     microdb_ts_sample_t sample;
+    microdb_err_t rc = MICRODB_OK;
 
     if (db == NULL || val == NULL) {
         return MICRODB_ERR_INVALID;
     }
 
+    MICRODB_LOCK(db);
     core = microdb_core(db);
     if (core->magic != MICRODB_MAGIC) {
-        return MICRODB_ERR_INVALID;
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
     }
 
     stream = microdb_ts_find(core, name);
     if (stream == NULL) {
-        return MICRODB_ERR_NOT_FOUND;
+        rc = MICRODB_ERR_NOT_FOUND;
+        goto unlock;
     }
 
     if (stream->capacity == 0u) {
-        return MICRODB_ERR_NO_MEM;
+        rc = MICRODB_ERR_NO_MEM;
+        goto unlock;
     }
 
 #if MICRODB_TS_OVERFLOW_POLICY == MICRODB_TS_POLICY_REJECT
@@ -215,7 +221,8 @@ microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timesta
         MICRODB_LOG("WARN",
                     "TS stream '%s' full: rejecting new sample (REJECT policy)",
                     stream->name);
-        return MICRODB_ERR_FULL;
+        rc = MICRODB_ERR_FULL;
+        goto unlock;
     }
 #elif MICRODB_TS_OVERFLOW_POLICY == MICRODB_TS_POLICY_DOWNSAMPLE
     if (stream->count == stream->capacity) {
@@ -227,7 +234,14 @@ microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timesta
     sample.ts = ts;
     microdb_ts_set_value(stream, &sample, val);
     microdb_ts_rb_insert(stream, &sample);
-    return microdb_persist_ts_insert(db, name, ts, val, (stream->type == MICRODB_TS_RAW) ? stream->raw_size : 4u);
+    rc = microdb_persist_ts_insert(db, name, ts, val, (stream->type == MICRODB_TS_RAW) ? stream->raw_size : 4u);
+    if (rc == MICRODB_OK) {
+        microdb__maybe_compact(db);
+    }
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
 }
 
 microdb_err_t microdb_ts_last(microdb_t *db, const char *name, microdb_ts_sample_t *out) {
@@ -264,19 +278,23 @@ microdb_err_t microdb_ts_query(microdb_t *db,
     microdb_ts_stream_t *stream;
     uint32_t i;
     uint32_t idx;
+    microdb_err_t rc = MICRODB_OK;
 
     if (db == NULL || cb == NULL) {
         return MICRODB_ERR_INVALID;
     }
 
+    MICRODB_LOCK(db);
     core = microdb_core(db);
     if (core->magic != MICRODB_MAGIC) {
-        return MICRODB_ERR_INVALID;
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
     }
 
     stream = microdb_ts_find(core, name);
     if (stream == NULL) {
-        return MICRODB_ERR_NOT_FOUND;
+        rc = MICRODB_ERR_NOT_FOUND;
+        goto unlock;
     }
 
     idx = stream->tail;
@@ -290,7 +308,11 @@ microdb_err_t microdb_ts_query(microdb_t *db,
         idx = (idx + 1u) % stream->capacity;
     }
 
-    return MICRODB_OK;
+    rc = MICRODB_OK;
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
 }
 
 microdb_err_t microdb_ts_query_buf(microdb_t *db,

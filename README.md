@@ -137,6 +137,7 @@ Persistent layout starts with a WAL region and then separate KV, TS, and REL reg
 | 256 KB        | ~600              | ~12 000                  | ~320            | ESP32-S3 + PSRAM |
 | 512 KB        | ~1 200            | ~24 000                  | ~640            | Linux embedded |
 | 1024 KB       | ~2 500            | ~48 000                  | ~1 300          | Resource-rich MCU |
+| txn staging overhead | `MICRODB_TXN_STAGE_KEYS * sizeof(microdb_txn_stage_entry_t)` bytes | same | same | Reserved from KV slice |
 
 Estimates assume default 40/40/20 RAM split and default column sizes.
 Override with `MICRODB_RAM_KV_PCT`, `MICRODB_RAM_TS_PCT`, `MICRODB_RAM_REL_PCT`.
@@ -166,9 +167,9 @@ When KV store is full and overflow policy is OVERWRITE, finding the LRU entry
 requires scanning all buckets. At `MICRODB_KV_MAX_KEYS=64` this is 64 comparisons.
 For embedded use cases this is negligible. Not suitable for `MICRODB_KV_MAX_KEYS > 1000`.
 
-**No thread safety.**
-All functions assume single-threaded access. Wrap with mutex at application level
-for multi-core MCUs (e.g. dual-core ESP32-S3).
+**Optional hook-based thread safety.**
+Enable `MICRODB_THREAD_SAFE=1` and provide `lock_create/lock/unlock/lock_destroy`
+hooks in `microdb_cfg_t` to integrate your RTOS/application mutex.
 
 **No compression, no encryption.**
 Use `microcodec` for compression and `microcrypt` for encryption before storing.

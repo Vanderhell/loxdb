@@ -23,6 +23,10 @@ static microdb_core_t *test_core(void) {
     return microdb_core(&g_db);
 }
 
+static uint32_t test_kv_capacity(void) {
+    return MICRODB_KV_MAX_KEYS - MICRODB_TXN_STAGE_KEYS;
+}
+
 static const microdb_kv_bucket_t *test_find_bucket(const char *key) {
     microdb_core_t *core = test_core();
     uint32_t i;
@@ -336,7 +340,7 @@ MDB_TEST(kv_lru_evicts_oldest_entry_when_full) {
     char key[16];
     uint32_t i;
 
-    for (i = 0; i < MICRODB_KV_MAX_KEYS; ++i) {
+    for (i = 0; i < test_kv_capacity(); ++i) {
         test_make_key(key, sizeof(key), i);
         ASSERT_EQ(microdb_kv_put(&g_db, key, &value, sizeof(value)), MICRODB_OK);
     }
@@ -352,7 +356,7 @@ MDB_TEST(kv_lru_get_refreshes_recentness) {
     char key[16];
     uint32_t i;
 
-    for (i = 0; i < MICRODB_KV_MAX_KEYS; ++i) {
+    for (i = 0; i < test_kv_capacity(); ++i) {
         test_make_key(key, sizeof(key), i);
         ASSERT_EQ(microdb_kv_put(&g_db, key, &value, sizeof(value)), MICRODB_OK);
     }
@@ -371,7 +375,7 @@ MDB_TEST(kv_lru_exists_refreshes_recentness) {
     char key[16];
     uint32_t i;
 
-    for (i = 0; i < MICRODB_KV_MAX_KEYS; ++i) {
+    for (i = 0; i < test_kv_capacity(); ++i) {
         test_make_key(key, sizeof(key), i);
         ASSERT_EQ(microdb_kv_put(&g_db, key, &value, sizeof(value)), MICRODB_OK);
     }

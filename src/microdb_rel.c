@@ -1,4 +1,5 @@
 #include "microdb_internal.h"
+#include "microdb_lock.h"
 #include "microdb_arena.h"
 
 #include <string.h>
@@ -253,8 +254,10 @@ microdb_err_t microdb_schema_init(microdb_schema_t *schema, const char *name, ui
     }
 
     memset(schema, 0, sizeof(*schema));
+    schema->schema_version = 0u;
     impl = (microdb_schema_impl_t *)&schema->_opaque[0];
     memcpy(impl->name, name, strlen(name) + 1u);
+    impl->schema_version = schema->schema_version;
     impl->max_rows = max_rows;
     impl->index_col = UINT32_MAX;
     return MICRODB_OK;
@@ -346,6 +349,7 @@ microdb_err_t microdb_schema_seal(microdb_schema_t *schema) {
     }
 
     impl->row_size = (offset + 3u) & ~3u;
+    impl->schema_version = schema->schema_version;
     impl->sealed = true;
     return MICRODB_OK;
 }
@@ -354,27 +358,48 @@ microdb_err_t microdb_table_create(microdb_t *db, microdb_schema_t *schema) {
     microdb_core_t *core;
     microdb_schema_impl_t *impl;
     microdb_table_t *table;
+    microdb_table_t *existing;
     uint32_t alive_bytes;
     uint32_t i;
+    microdb_err_t rc = MICRODB_OK;
 
     if (db == NULL || schema == NULL) {
         return MICRODB_ERR_INVALID;
     }
 
+    MICRODB_LOCK(db);
     core = microdb_core(db);
     if (core->magic != MICRODB_MAGIC) {
-        return MICRODB_ERR_INVALID;
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
     }
 
     impl = (microdb_schema_impl_t *)&schema->_opaque[0];
     if (!impl->sealed) {
-        return MICRODB_ERR_INVALID;
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
     }
-    if (rel_find_table(core, impl->name) != NULL) {
-        return MICRODB_ERR_EXISTS;
+    existing = rel_find_table(core, impl->name);
+    if (existing != NULL) {
+        if (existing->schema_version == impl->schema_version) {
+            rc = MICRODB_OK;
+            goto unlock;
+        }
+        if (core->on_migrate == NULL) {
+            rc = MICRODB_ERR_SCHEMA;
+            goto unlock;
+        }
+        rc = core->on_migrate(db, impl->name, existing->schema_version, impl->schema_version);
+        if (rc != MICRODB_OK) {
+            goto unlock;
+        }
+        existing->schema_version = impl->schema_version;
+        rc = microdb_storage_flush(db);
+        goto unlock;
     }
     if (core->rel.registered_tables >= MICRODB_REL_MAX_TABLES) {
-        return MICRODB_ERR_FULL;
+        rc = MICRODB_ERR_FULL;
+        goto unlock;
     }
 
     for (i = 0; i < MICRODB_REL_MAX_TABLES; ++i) {
@@ -387,6 +412,7 @@ microdb_err_t microdb_table_create(microdb_t *db, microdb_schema_t *schema) {
             table->max_rows = impl->max_rows;
             table->row_size = impl->row_size;
             table->index_col = impl->index_col;
+            table->schema_version = impl->schema_version;
             if (impl->index_col != UINT32_MAX) {
                 table->index_key_size = impl->cols[impl->index_col].size;
             }
@@ -408,7 +434,8 @@ microdb_err_t microdb_table_create(microdb_t *db, microdb_schema_t *schema) {
             if (table->rows == NULL || table->alive_bitmap == NULL || table->order == NULL ||
                 (table->index_key_size != 0u && table->index == NULL)) {
                 memset(table, 0, sizeof(*table));
-                return MICRODB_ERR_NO_MEM;
+                rc = MICRODB_ERR_NO_MEM;
+                goto unlock;
             }
 
             memset(table->rows, 0, (size_t)table->max_rows * table->row_size);
@@ -419,11 +446,16 @@ microdb_err_t microdb_table_create(microdb_t *db, microdb_schema_t *schema) {
             memset(table->order, 0, (size_t)table->max_rows * sizeof(uint32_t));
             table->registered = true;
             core->rel.registered_tables++;
-            return microdb_storage_flush(db);
+            rc = microdb_storage_flush(db);
+            goto unlock;
         }
     }
 
-    return MICRODB_ERR_FULL;
+    rc = MICRODB_ERR_FULL;
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
 }
 
 microdb_err_t microdb_table_get(microdb_t *db, const char *name, microdb_table_t **out_table) {
@@ -513,21 +545,31 @@ microdb_err_t microdb_rel_insert(microdb_t *db, microdb_table_t *table, const vo
     microdb_err_t err;
     uint32_t row_idx;
     const microdb_col_desc_t *idx_col;
+    microdb_err_t rc = MICRODB_OK;
+
+    if (db == NULL) {
+        return MICRODB_ERR_INVALID;
+    }
+    MICRODB_LOCK(db);
 
     err = rel_validate_table_and_handle(db, table);
     if (err != MICRODB_OK) {
-        return err;
+        rc = err;
+        goto unlock;
     }
     if (row_buf == NULL) {
-        return MICRODB_ERR_INVALID;
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
     }
     if (table->live_count >= table->max_rows) {
-        return MICRODB_ERR_FULL;
+        rc = MICRODB_ERR_FULL;
+        goto unlock;
     }
 
     row_idx = rel_find_free_row(table);
     if (row_idx == UINT32_MAX) {
-        return MICRODB_ERR_FULL;
+        rc = MICRODB_ERR_FULL;
+        goto unlock;
     }
 
     memcpy(rel_row_ptr_mut(table, row_idx), row_buf, table->row_size);
@@ -542,7 +584,14 @@ microdb_err_t microdb_rel_insert(microdb_t *db, microdb_table_t *table, const vo
         rel_index_insert(table, row_idx, key_bytes);
     }
 
-    return microdb_persist_rel_insert(db, table, row_buf);
+    rc = microdb_persist_rel_insert(db, table, row_buf);
+    if (rc == MICRODB_OK) {
+        microdb__maybe_compact(db);
+    }
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
 }
 
 microdb_err_t microdb_rel_find(microdb_t *db,
@@ -631,16 +680,25 @@ microdb_err_t microdb_rel_delete(microdb_t *db, microdb_table_t *table, const vo
     uint32_t deleted = 0u;
     uint32_t idx;
     microdb_err_t err;
+    microdb_err_t rc = MICRODB_OK;
+
+    if (db == NULL) {
+        return MICRODB_ERR_INVALID;
+    }
+    MICRODB_LOCK(db);
 
     err = rel_validate_table_and_handle(db, table);
     if (err != MICRODB_OK) {
-        return err;
+        rc = err;
+        goto unlock;
     }
     if (search_val == NULL) {
-        return MICRODB_ERR_INVALID;
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
     }
     if (table->index_col == UINT32_MAX) {
-        return MICRODB_ERR_INVALID;
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
     }
 
     idx = rel_index_find_first(table, search_val);
@@ -660,9 +718,14 @@ microdb_err_t microdb_rel_delete(microdb_t *db, microdb_table_t *table, const vo
         *out_deleted = deleted;
     }
     if (deleted == 0u) {
-        return MICRODB_OK;
+        rc = MICRODB_OK;
+        goto unlock;
     }
-    return microdb_persist_rel_delete(db, table, search_val);
+    rc = microdb_persist_rel_delete(db, table, search_val);
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
 }
 
 microdb_err_t microdb_rel_iter(microdb_t *db, microdb_table_t *table, microdb_rel_iter_cb_t cb, void *ctx) {

@@ -172,11 +172,11 @@ MDB_TEST(rel_table_create_unsealed_invalid) {
     ASSERT_EQ(microdb_table_create(&g_db, &schema), MICRODB_ERR_INVALID);
 }
 
-MDB_TEST(rel_table_create_duplicate_exists) {
+MDB_TEST(rel_table_create_duplicate_ok) {
     microdb_schema_t schema;
     ASSERT_EQ(make_indexed_schema(&schema, "users", 16u), MICRODB_OK);
     ASSERT_EQ(microdb_table_create(&g_db, &schema), MICRODB_OK);
-    ASSERT_EQ(microdb_table_create(&g_db, &schema), MICRODB_ERR_EXISTS);
+    ASSERT_EQ(microdb_table_create(&g_db, &schema), MICRODB_OK);
 }
 
 MDB_TEST(rel_table_create_beyond_max_tables_full) {
@@ -636,7 +636,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, rel_schema_scalar_size_mismatch_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_sealed_ok);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_unsealed_invalid);
-    MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_duplicate_exists);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_duplicate_ok);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_beyond_max_tables_full);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_get_existing_ok);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_get_unknown_not_found);

@@ -17,6 +17,10 @@ static void make_key(char *buf, size_t buf_len, uint32_t index) {
     (void)snprintf(buf, buf_len, "r%03u", (unsigned)index);
 }
 
+static uint32_t kv_capacity(void) {
+    return MICRODB_KV_MAX_KEYS - MICRODB_TXN_STAGE_KEYS;
+}
+
 static void setup_basic(void) {
     microdb_cfg_t cfg;
 
@@ -50,7 +54,7 @@ MDB_TEST(kv_reject_policy_returns_full_when_store_is_full) {
     char key[16];
     uint32_t i;
 
-    for (i = 0; i < MICRODB_KV_MAX_KEYS; ++i) {
+    for (i = 0; i < kv_capacity(); ++i) {
         make_key(key, sizeof(key), i);
         ASSERT_EQ(microdb_kv_put(&g_db, key, &value, sizeof(value)), MICRODB_OK);
     }
@@ -65,7 +69,7 @@ MDB_TEST(kv_reject_policy_allows_overwrite_when_full) {
     char key[16];
     uint32_t i;
 
-    for (i = 0; i < MICRODB_KV_MAX_KEYS; ++i) {
+    for (i = 0; i < kv_capacity(); ++i) {
         make_key(key, sizeof(key), i);
         ASSERT_EQ(microdb_kv_put(&g_db, key, &value, sizeof(value)), MICRODB_OK);
     }
@@ -81,7 +85,7 @@ MDB_TEST(kv_reject_policy_insert_succeeds_after_delete) {
     char key[16];
     uint32_t i;
 
-    for (i = 0; i < MICRODB_KV_MAX_KEYS; ++i) {
+    for (i = 0; i < kv_capacity(); ++i) {
         make_key(key, sizeof(key), i);
         ASSERT_EQ(microdb_kv_put(&g_db, key, &value, sizeof(value)), MICRODB_OK);
     }
@@ -96,7 +100,7 @@ MDB_TEST(kv_reject_policy_clear_allows_refill) {
     char key[16];
     uint32_t i;
 
-    for (i = 0; i < MICRODB_KV_MAX_KEYS; ++i) {
+    for (i = 0; i < kv_capacity(); ++i) {
         make_key(key, sizeof(key), i);
         ASSERT_EQ(microdb_kv_put(&g_db, key, &value, sizeof(value)), MICRODB_OK);
     }
@@ -110,7 +114,7 @@ MDB_TEST(kv_reject_policy_expired_key_frees_slot_for_insert) {
     char key[16];
     uint32_t i;
 
-    for (i = 0; i < MICRODB_KV_MAX_KEYS - 1u; ++i) {
+    for (i = 0; i < kv_capacity() - 1u; ++i) {
         make_key(key, sizeof(key), i);
         ASSERT_EQ(microdb_kv_put(&g_db, key, &value, sizeof(value)), MICRODB_OK);
     }

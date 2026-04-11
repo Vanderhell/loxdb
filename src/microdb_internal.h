@@ -24,11 +24,21 @@ typedef struct {
     microdb_kv_bucket_t *buckets;
     uint32_t bucket_count;
     uint32_t entry_count;
+    uint32_t collision_count;
+    uint32_t eviction_count;
     uint8_t *value_store;
     uint32_t value_capacity;
     uint32_t value_used;
     uint32_t access_clock;
 } microdb_kv_state_t;
+
+typedef struct {
+    char key[MICRODB_KV_KEY_MAX_LEN];
+    void *val_ptr;
+    size_t val_len;
+    uint8_t op;
+    uint8_t val_buf[MICRODB_KV_VAL_MAX_LEN];
+} microdb_txn_stage_entry_t;
 
 typedef struct {
     char name[MICRODB_TS_STREAM_NAME_LEN];
@@ -62,6 +72,7 @@ typedef struct {
 
 struct microdb_table_s {
     char name[MICRODB_REL_TABLE_NAME_LEN];
+    uint16_t schema_version;
     microdb_col_desc_t cols[MICRODB_REL_MAX_COLS];
     uint32_t col_count;
     uint32_t max_rows;
@@ -102,6 +113,10 @@ typedef struct {
     size_t live_bytes;
     microdb_storage_t *storage;
     microdb_timestamp_t (*now)(void);
+    void (*lock)(void *hdl);
+    void (*unlock)(void *hdl);
+    void (*lock_destroy)(void *hdl);
+    void *lock_handle;
     uint32_t storage_bytes_written;
     bool wal_enabled;
     microdb_arena_t arena;
@@ -109,18 +124,25 @@ typedef struct {
     microdb_arena_t ts_arena;
     microdb_arena_t rel_arena;
     microdb_kv_state_t kv;
+    microdb_txn_stage_entry_t *txn_stage;
+    uint8_t txn_active;
+    uint32_t txn_stage_count;
     microdb_ts_state_t ts;
     microdb_rel_state_t rel;
     microdb_storage_layout_t layout;
     uint32_t wal_sequence;
     uint32_t wal_entry_count;
     uint32_t wal_used;
+    uint8_t wal_compact_auto;
+    uint8_t wal_compact_threshold_pct;
+    microdb_err_t (*on_migrate)(microdb_t *db, const char *table_name, uint16_t old_version, uint16_t new_version);
     bool storage_loading;
     bool wal_replaying;
 } microdb_core_t;
 
 typedef struct {
     char name[MICRODB_REL_TABLE_NAME_LEN];
+    uint16_t schema_version;
     microdb_col_desc_t cols[MICRODB_REL_MAX_COLS];
     uint32_t col_count;
     uint32_t max_rows;
@@ -144,8 +166,32 @@ microdb_err_t microdb_storage_flush(microdb_t *db);
 microdb_err_t microdb_persist_kv_set(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at);
 microdb_err_t microdb_persist_kv_del(microdb_t *db, const char *key);
 microdb_err_t microdb_persist_kv_clear(microdb_t *db);
+microdb_err_t microdb_persist_kv_set_txn(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at);
+microdb_err_t microdb_persist_kv_del_txn(microdb_t *db, const char *key);
+microdb_err_t microdb_persist_txn_commit(microdb_t *db);
 microdb_err_t microdb_persist_ts_insert(microdb_t *db, const char *name, microdb_timestamp_t ts, const void *val, size_t val_len);
 microdb_err_t microdb_persist_rel_insert(microdb_t *db, const microdb_table_t *table, const void *row_buf);
 microdb_err_t microdb_persist_rel_delete(microdb_t *db, const microdb_table_t *table, const void *search_val);
+
+static inline void microdb__maybe_compact(microdb_t *db) {
+    microdb_core_t *core = microdb_core(db);
+    uint32_t wal_total;
+    uint32_t wal_used;
+    uint32_t wal_fill_pct;
+
+    if (core->wal_compact_auto == 0u || !core->wal_enabled || core->layout.wal_size <= 32u) {
+        return;
+    }
+    if (core->wal_compact_threshold_pct == 0u) {
+        return;
+    }
+
+    wal_total = core->layout.wal_size - 32u;
+    wal_used = (core->wal_used > 32u) ? (core->wal_used - 32u) : 0u;
+    wal_fill_pct = (wal_total == 0u) ? 0u : ((wal_used * 100u) / wal_total);
+    if (wal_fill_pct >= core->wal_compact_threshold_pct) {
+        (void)microdb_compact(db);
+    }
+}
 
 #endif

@@ -160,6 +160,7 @@ target_compile_definitions(
     microdb_small_limits
     PRIVATE
         MICRODB_KV_MAX_KEYS=8
+        MICRODB_TXN_STAGE_KEYS=2
         MICRODB_TS_MAX_STREAMS=2
         MICRODB_REL_MAX_TABLES=1
         MICRODB_REL_MAX_COLS=4
@@ -230,6 +231,19 @@ add_library(microdb_rel_only STATIC
 target_include_directories(microdb_rel_only PUBLIC include port/ram port/posix PRIVATE src)
 target_compile_definitions(microdb_rel_only PRIVATE MICRODB_ENABLE_KV=0 MICRODB_ENABLE_TS=0)
 
+add_library(microdb_thread_safe STATIC
+    src/microdb.c
+    src/microdb_kv.c
+    src/microdb_ts.c
+    src/microdb_rel.c
+    src/microdb_wal.c
+    src/microdb_crc.c
+    port/ram/microdb_port_ram.c
+    port/posix/microdb_port_posix.c
+)
+target_include_directories(microdb_thread_safe PUBLIC include port/ram port/posix PRIVATE src)
+target_compile_definitions(microdb_thread_safe PRIVATE MICRODB_THREAD_SAFE=1)
+
 if(MSVC)
     target_compile_options(microdb PRIVATE /W4)
     target_compile_options(microdb_reject PRIVATE /W4)
@@ -244,6 +258,7 @@ if(MSVC)
     target_compile_options(microdb_kv_only PRIVATE /W4)
     target_compile_options(microdb_ts_only PRIVATE /W4)
     target_compile_options(microdb_rel_only PRIVATE /W4)
+    target_compile_options(microdb_thread_safe PRIVATE /W4)
 else()
     target_compile_options(microdb PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_reject PRIVATE -Wall -Wextra -Wpedantic)
@@ -258,6 +273,7 @@ else()
     target_compile_options(microdb_kv_only PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_ts_only PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_rel_only PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(microdb_thread_safe PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 install(
@@ -322,6 +338,32 @@ if(MICRODB_BUILD_TESTS)
     target_link_libraries(test_rel PRIVATE microdb)
     add_test(NAME test_rel COMMAND test_rel)
 
+    add_executable(test_stats tests/test_stats.c)
+    target_include_directories(test_stats PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_stats PRIVATE microdb)
+    add_test(NAME test_stats COMMAND test_stats)
+
+    add_executable(test_thread_safety tests/test_thread_safety.c)
+    target_include_directories(test_thread_safety PRIVATE include tests port/ram port/posix src)
+    target_compile_definitions(test_thread_safety PRIVATE MICRODB_THREAD_SAFE=1)
+    target_link_libraries(test_thread_safety PRIVATE microdb_thread_safe)
+    add_test(NAME test_thread_safety COMMAND test_thread_safety)
+
+    add_executable(test_compact tests/test_compact.c)
+    target_include_directories(test_compact PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_compact PRIVATE microdb)
+    add_test(NAME test_compact COMMAND test_compact)
+
+    add_executable(test_migration tests/test_migration.c)
+    target_include_directories(test_migration PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_migration PRIVATE microdb)
+    add_test(NAME test_migration COMMAND test_migration)
+
+    add_executable(test_txn tests/test_txn.c)
+    target_include_directories(test_txn PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_txn PRIVATE microdb)
+    add_test(NAME test_txn COMMAND test_txn)
+
     add_executable(test_wal tests/test_wal.c)
     target_include_directories(test_wal PRIVATE include tests port/ram port/posix src)
     target_link_libraries(test_wal PRIVATE microdb)
@@ -351,6 +393,7 @@ if(MICRODB_BUILD_TESTS)
             MICRODB_TEST_WITH_8KB=1
             MICRODB_TEST_DB_PATH="integration_8kb.bin"
             MICRODB_KV_MAX_KEYS=8
+            MICRODB_TXN_STAGE_KEYS=2
             MICRODB_TS_MAX_STREAMS=2
             MICRODB_REL_MAX_TABLES=1
             MICRODB_REL_MAX_COLS=4
@@ -429,6 +472,7 @@ if(MICRODB_BUILD_TESTS)
         PRIVATE
             MICRODB_TEST_WITH_8KB=1
             MICRODB_KV_MAX_KEYS=8
+            MICRODB_TXN_STAGE_KEYS=2
             MICRODB_TS_MAX_STREAMS=2
             MICRODB_REL_MAX_TABLES=1
             MICRODB_REL_MAX_COLS=4

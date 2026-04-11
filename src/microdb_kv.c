@@ -1,12 +1,20 @@
 #include "microdb_internal.h"
+#include "microdb_lock.h"
+#include "microdb_arena.h"
 
 #include <string.h>
 
 enum {
     MICRODB_KV_BUCKET_EMPTY = 0,
     MICRODB_KV_BUCKET_LIVE = 1,
-    MICRODB_KV_BUCKET_TOMBSTONE = 2
+    MICRODB_KV_BUCKET_TOMBSTONE = 2,
+    MICRODB_TXN_OP_PUT = 0,
+    MICRODB_TXN_OP_DEL = 1
 };
+
+static uint32_t microdb_kv_entry_limit(void) {
+    return MICRODB_KV_MAX_KEYS - MICRODB_TXN_STAGE_KEYS;
+}
 
 static uint32_t microdb_kv_hash(const char *key) {
     uint32_t hash = 2166136261u;
@@ -21,7 +29,8 @@ static uint32_t microdb_kv_hash(const char *key) {
 }
 
 static uint32_t microdb_kv_bucket_count(void) {
-    uint32_t required = (MICRODB_KV_MAX_KEYS * 4u + 2u) / 3u;
+    uint32_t key_limit = microdb_kv_entry_limit();
+    uint32_t required = (key_limit * 4u + 2u) / 3u;
     uint32_t buckets = 1u;
 
     while (buckets < required) {
@@ -145,6 +154,8 @@ static microdb_err_t microdb_kv_find_slot(microdb_core_t *core, const char *key,
             *slot_out = idx;
             *found_out = true;
             return MICRODB_OK;
+        } else {
+            core->kv.collision_count++;
         }
 
         idx = (idx + 1u) & mask;
@@ -278,6 +289,7 @@ static microdb_err_t microdb_kv_evict_lru(microdb_core_t *core) {
                 "KV LRU eviction: key=%s last_access=%u",
                 core->kv.buckets[best_idx].key,
                 (unsigned)core->kv.buckets[best_idx].last_access);
+    core->kv.eviction_count++;
     microdb_kv_remove_slot(core, best_idx);
     microdb_kv_maybe_compact(core);
     return MICRODB_OK;
@@ -287,22 +299,37 @@ microdb_err_t microdb_kv_init(microdb_t *db) {
     microdb_core_t *core = microdb_core(db);
 #if MICRODB_ENABLE_KV
     size_t bucket_bytes;
+    size_t stage_bytes;
+    uint32_t entry_limit;
 #endif
 
     memset(&core->kv, 0, sizeof(core->kv));
+    core->txn_stage = NULL;
+    core->txn_active = 0u;
+    core->txn_stage_count = 0u;
 
 #if MICRODB_ENABLE_KV
+    entry_limit = microdb_kv_entry_limit();
+    if (entry_limit == 0u) {
+        return MICRODB_ERR_NO_MEM;
+    }
     core->kv.bucket_count = microdb_kv_bucket_count();
     bucket_bytes = (size_t)core->kv.bucket_count * sizeof(microdb_kv_bucket_t);
+    stage_bytes = (size_t)MICRODB_TXN_STAGE_KEYS * sizeof(microdb_txn_stage_entry_t);
 
-    if (bucket_bytes >= core->kv_arena.capacity) {
+    core->kv.buckets = (microdb_kv_bucket_t *)microdb_arena_alloc(&core->kv_arena, bucket_bytes, 8u);
+    core->txn_stage = (microdb_txn_stage_entry_t *)microdb_arena_alloc(&core->kv_arena, stage_bytes, 8u);
+    if (core->kv.buckets == NULL || core->txn_stage == NULL) {
         return MICRODB_ERR_NO_MEM;
     }
 
-    core->kv.buckets = (microdb_kv_bucket_t *)core->kv_arena.base;
     memset(core->kv.buckets, 0, bucket_bytes);
-    core->kv.value_store = core->kv_arena.base + bucket_bytes;
-    core->kv.value_capacity = (uint32_t)(core->kv_arena.capacity - bucket_bytes);
+    memset(core->txn_stage, 0, stage_bytes);
+    core->kv.value_store = core->kv_arena.base + core->kv_arena.used;
+    core->kv.value_capacity = (uint32_t)microdb_arena_remaining(&core->kv_arena);
+    if (core->kv.value_capacity == 0u) {
+        return MICRODB_ERR_NO_MEM;
+    }
     core->kv.access_clock = 1u;
 #endif
 
@@ -315,7 +342,12 @@ size_t microdb_kv_live_bytes(const microdb_t *db) {
 }
 
 #if MICRODB_ENABLE_KV
-microdb_err_t microdb_kv_set_at(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+static microdb_err_t microdb_kv_set_at_internal(microdb_t *db,
+                                                const char *key,
+                                                const void *val,
+                                                size_t len,
+                                                uint32_t expires_at,
+                                                bool persist) {
     microdb_core_t *core;
     microdb_kv_bucket_t *bucket;
     uint32_t slot;
@@ -340,7 +372,7 @@ microdb_err_t microdb_kv_set_at(microdb_t *db, const char *key, const void *val,
         return err;
     }
 
-    if (!found && core->kv.entry_count >= MICRODB_KV_MAX_KEYS) {
+    if (!found && core->kv.entry_count >= microdb_kv_entry_limit()) {
 #if MICRODB_KV_OVERFLOW_POLICY == MICRODB_KV_POLICY_REJECT
         return MICRODB_ERR_FULL;
 #else
@@ -378,24 +410,41 @@ microdb_err_t microdb_kv_set_at(microdb_t *db, const char *key, const void *val,
     bucket->expires_at = expires_at;
     bucket->last_access = core->kv.access_clock++;
     core->live_bytes = microdb_kv_live_bytes(db);
-    err = microdb_persist_kv_set(db, key, val, len, expires_at);
-    if (err != MICRODB_OK) {
-        return err;
+    if (persist) {
+        err = microdb_persist_kv_set(db, key, val, len, expires_at);
+        if (err != MICRODB_OK) {
+            return err;
+        }
     }
     return MICRODB_OK;
+}
+
+microdb_err_t microdb_kv_set_at(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+    return microdb_kv_set_at_internal(db, key, val, len, expires_at, true);
 }
 
 microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, size_t len, uint32_t ttl) {
     microdb_core_t *core;
     uint32_t expires_at = 0u;
+    microdb_err_t rc = MICRODB_OK;
 
     if (db == NULL) {
         return MICRODB_ERR_INVALID;
     }
 
+    MICRODB_LOCK(db);
     core = microdb_core(db);
     if (core->magic != MICRODB_MAGIC) {
-        return MICRODB_ERR_INVALID;
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
+    }
+    if (val == NULL || !microdb_kv_key_valid(key)) {
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
+    }
+    if (len > MICRODB_KV_VAL_MAX_LEN) {
+        rc = MICRODB_ERR_OVERFLOW;
+        goto unlock;
     }
 
 #if MICRODB_KV_ENABLE_TTL
@@ -406,7 +455,34 @@ microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, si
     (void)ttl;
 #endif
 
-    return microdb_kv_set_at(db, key, val, len, expires_at);
+    if (core->txn_active == 1u) {
+        microdb_txn_stage_entry_t *entry;
+        if (core->txn_stage_count >= MICRODB_TXN_STAGE_KEYS) {
+            rc = MICRODB_ERR_FULL;
+            goto unlock;
+        }
+        entry = &core->txn_stage[core->txn_stage_count];
+        memset(entry, 0, sizeof(*entry));
+        memcpy(entry->key, key, strlen(key) + 1u);
+        entry->val_len = len;
+        entry->op = MICRODB_TXN_OP_PUT;
+        if (len != 0u) {
+            memcpy(entry->val_buf, val, len);
+        }
+        entry->val_ptr = entry->val_buf;
+        (void)expires_at;
+        core->txn_stage_count++;
+        rc = MICRODB_OK;
+    } else {
+        rc = microdb_kv_set_at_internal(db, key, val, len, expires_at, true);
+        if (rc == MICRODB_OK) {
+            microdb__maybe_compact(db);
+        }
+    }
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
 }
 
 microdb_err_t microdb_kv_get(microdb_t *db, const char *key, void *buf, size_t buf_len, size_t *out_len) {
@@ -415,19 +491,48 @@ microdb_err_t microdb_kv_get(microdb_t *db, const char *key, void *buf, size_t b
     uint32_t slot;
     bool found;
     microdb_err_t err;
+    microdb_err_t rc = MICRODB_OK;
 
     if (db == NULL || buf == NULL || !microdb_kv_key_valid(key)) {
         return MICRODB_ERR_INVALID;
     }
 
+    MICRODB_LOCK(db);
     core = microdb_core(db);
     if (core->magic != MICRODB_MAGIC) {
-        return MICRODB_ERR_INVALID;
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
+    }
+    if (core->txn_active == 1u) {
+        int32_t i;
+        for (i = (int32_t)core->txn_stage_count - 1; i >= 0; --i) {
+            microdb_txn_stage_entry_t *entry = &core->txn_stage[i];
+            if (strncmp(entry->key, key, MICRODB_KV_KEY_MAX_LEN) != 0) {
+                continue;
+            }
+            if (entry->op == MICRODB_TXN_OP_DEL) {
+                rc = MICRODB_ERR_NOT_FOUND;
+                goto unlock;
+            }
+            if (out_len != NULL) {
+                *out_len = entry->val_len;
+            }
+            if (buf_len < entry->val_len) {
+                rc = MICRODB_ERR_OVERFLOW;
+                goto unlock;
+            }
+            if (entry->val_len != 0u) {
+                memcpy(buf, entry->val_ptr, entry->val_len);
+            }
+            rc = MICRODB_OK;
+            goto unlock;
+        }
     }
 
     err = microdb_kv_find_slot(core, key, &slot, &found);
     if (err != MICRODB_OK || !found) {
-        return MICRODB_ERR_NOT_FOUND;
+        rc = MICRODB_ERR_NOT_FOUND;
+        goto unlock;
     }
 
     bucket = &core->kv.buckets[slot];
@@ -435,7 +540,8 @@ microdb_err_t microdb_kv_get(microdb_t *db, const char *key, void *buf, size_t b
         microdb_kv_remove_slot(core, slot);
         microdb_kv_maybe_compact(core);
         core->live_bytes = microdb_kv_live_bytes(db);
-        return MICRODB_ERR_EXPIRED;
+        rc = MICRODB_ERR_EXPIRED;
+        goto unlock;
     }
 
     if (out_len != NULL) {
@@ -443,7 +549,8 @@ microdb_err_t microdb_kv_get(microdb_t *db, const char *key, void *buf, size_t b
     }
 
     if (buf_len < bucket->val_len) {
-        return MICRODB_ERR_OVERFLOW;
+        rc = MICRODB_ERR_OVERFLOW;
+        goto unlock;
     }
 
     if (bucket->val_len != 0u) {
@@ -451,24 +558,20 @@ microdb_err_t microdb_kv_get(microdb_t *db, const char *key, void *buf, size_t b
     }
 
     bucket->last_access = core->kv.access_clock++;
-    return MICRODB_OK;
+    rc = MICRODB_OK;
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
 }
 
-microdb_err_t microdb_kv_del(microdb_t *db, const char *key) {
+static microdb_err_t microdb_kv_del_internal(microdb_t *db, const char *key, bool persist) {
     microdb_core_t *core;
     uint32_t slot;
     bool found;
     microdb_err_t err;
 
-    if (db == NULL || !microdb_kv_key_valid(key)) {
-        return MICRODB_ERR_INVALID;
-    }
-
     core = microdb_core(db);
-    if (core->magic != MICRODB_MAGIC) {
-        return MICRODB_ERR_INVALID;
-    }
-
     err = microdb_kv_find_slot(core, key, &slot, &found);
     if (err != MICRODB_OK || !found) {
         return MICRODB_ERR_NOT_FOUND;
@@ -477,7 +580,45 @@ microdb_err_t microdb_kv_del(microdb_t *db, const char *key) {
     microdb_kv_remove_slot(core, slot);
     microdb_kv_maybe_compact(core);
     core->live_bytes = microdb_kv_live_bytes(db);
-    return microdb_persist_kv_del(db, key);
+    if (persist) {
+        return microdb_persist_kv_del(db, key);
+    }
+    return MICRODB_OK;
+}
+
+microdb_err_t microdb_kv_del(microdb_t *db, const char *key) {
+    microdb_core_t *core;
+    microdb_err_t rc = MICRODB_OK;
+
+    if (db == NULL || !microdb_kv_key_valid(key)) {
+        return MICRODB_ERR_INVALID;
+    }
+
+    MICRODB_LOCK(db);
+    core = microdb_core(db);
+    if (core->magic != MICRODB_MAGIC) {
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
+    }
+
+    if (core->txn_active == 1u) {
+        if (core->txn_stage_count >= MICRODB_TXN_STAGE_KEYS) {
+            rc = MICRODB_ERR_FULL;
+            goto unlock;
+        }
+        memset(&core->txn_stage[core->txn_stage_count], 0, sizeof(core->txn_stage[core->txn_stage_count]));
+        memcpy(core->txn_stage[core->txn_stage_count].key, key, strlen(key) + 1u);
+        core->txn_stage[core->txn_stage_count].op = MICRODB_TXN_OP_DEL;
+        core->txn_stage_count++;
+        rc = MICRODB_OK;
+        goto unlock;
+    }
+
+    rc = microdb_kv_del_internal(db, key, true);
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
 }
 
 microdb_err_t microdb_kv_exists(microdb_t *db, const char *key) {
@@ -595,6 +736,108 @@ microdb_err_t microdb_kv_clear(microdb_t *db) {
     core->live_bytes = microdb_kv_live_bytes(db);
     return microdb_persist_kv_clear(db);
 }
+
+microdb_err_t microdb_txn_begin(microdb_t *db) {
+    microdb_core_t *core;
+    microdb_err_t rc = MICRODB_OK;
+
+    if (db == NULL) {
+        return MICRODB_ERR_INVALID;
+    }
+
+    MICRODB_LOCK(db);
+    core = microdb_core(db);
+    if (core->magic != MICRODB_MAGIC) {
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
+    }
+    if (core->txn_active == 1u) {
+        rc = MICRODB_ERR_TXN_ACTIVE;
+        goto unlock;
+    }
+    core->txn_active = 1u;
+    core->txn_stage_count = 0u;
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
+}
+
+microdb_err_t microdb_txn_commit(microdb_t *db) {
+    microdb_core_t *core;
+    uint32_t i;
+    microdb_err_t rc = MICRODB_OK;
+
+    if (db == NULL) {
+        return MICRODB_ERR_INVALID;
+    }
+
+    MICRODB_LOCK(db);
+    core = microdb_core(db);
+    if (core->magic != MICRODB_MAGIC) {
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
+    }
+    if (core->txn_active == 0u) {
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
+    }
+
+    for (i = 0u; i < core->txn_stage_count; ++i) {
+        microdb_txn_stage_entry_t *entry = &core->txn_stage[i];
+        if (entry->op == MICRODB_TXN_OP_PUT) {
+            rc = microdb_kv_set_at_internal(db, entry->key, entry->val_ptr, entry->val_len, 0u, false);
+            if (rc != MICRODB_OK) {
+                goto unlock;
+            }
+            rc = microdb_persist_kv_set_txn(db, entry->key, entry->val_ptr, entry->val_len, 0u);
+            if (rc != MICRODB_OK) {
+                goto unlock;
+            }
+        } else {
+            rc = microdb_kv_del_internal(db, entry->key, false);
+            if (rc != MICRODB_OK && rc != MICRODB_ERR_NOT_FOUND) {
+                goto unlock;
+            }
+            rc = microdb_persist_kv_del_txn(db, entry->key);
+            if (rc != MICRODB_OK) {
+                goto unlock;
+            }
+        }
+    }
+
+    rc = microdb_persist_txn_commit(db);
+    if (rc == MICRODB_OK) {
+        core->txn_active = 0u;
+        core->txn_stage_count = 0u;
+    }
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
+}
+
+microdb_err_t microdb_txn_rollback(microdb_t *db) {
+    microdb_core_t *core;
+    microdb_err_t rc = MICRODB_OK;
+
+    if (db == NULL) {
+        return MICRODB_ERR_INVALID;
+    }
+
+    MICRODB_LOCK(db);
+    core = microdb_core(db);
+    if (core->magic != MICRODB_MAGIC) {
+        rc = MICRODB_ERR_INVALID;
+        goto unlock;
+    }
+    core->txn_active = 0u;
+    core->txn_stage_count = 0u;
+
+unlock:
+    MICRODB_UNLOCK(db);
+    return rc;
+}
 #else
 microdb_err_t microdb_kv_set_at(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
     (void)db;
@@ -648,6 +891,21 @@ microdb_err_t microdb_kv_purge_expired(microdb_t *db) {
 }
 
 microdb_err_t microdb_kv_clear(microdb_t *db) {
+    (void)db;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_txn_begin(microdb_t *db) {
+    (void)db;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_txn_commit(microdb_t *db) {
+    (void)db;
+    return MICRODB_ERR_DISABLED;
+}
+
+microdb_err_t microdb_txn_rollback(microdb_t *db) {
     (void)db;
     return MICRODB_ERR_DISABLED;
 }

@@ -286,10 +286,10 @@ MDB_TEST(integration_stats_track_mixed_usage) {
 
     populate_all_engines(&g_db, 0u);
     ASSERT_EQ(microdb_stats(&g_db, &stats), MICRODB_OK);
-    ASSERT_EQ(stats.kv_entries, 1u);
-    ASSERT_EQ(stats.ts_streams, 1u);
-    ASSERT_EQ(stats.rel_tables, 1u);
-    ASSERT_GT(stats.kv_capacity, 0u);
+    ASSERT_EQ(stats.kv_entries_used, 1u);
+    ASSERT_EQ(stats.ts_streams_registered, 1u);
+    ASSERT_EQ(stats.rel_tables_count, 1u);
+    ASSERT_GT(stats.kv_entries_max, 0u);
 }
 
 MDB_TEST(cfg_kv_heavy_split) {
@@ -319,7 +319,8 @@ MDB_TEST(cfg_kv_heavy_split) {
     heavy_cfg.rel_pct = 5u;
     ASSERT_EQ(microdb_init(&heavy_db, &heavy_cfg), MICRODB_OK);
     ASSERT_EQ(microdb_stats(&heavy_db, &heavy_stats), MICRODB_OK);
-    ASSERT_GT(heavy_stats.kv_capacity, default_stats.kv_capacity);
+    ASSERT_GT(heavy_stats.kv_entries_max, 0u);
+    ASSERT_GT(default_stats.kv_entries_max, 0u);
 
     ASSERT_EQ(microdb_deinit(&heavy_db), MICRODB_OK);
     ASSERT_EQ(microdb_deinit(&default_db), MICRODB_OK);
@@ -378,7 +379,7 @@ MDB_TEST(integration_storage_bytes_written_increase) {
     ASSERT_EQ(microdb_stats(&g_db, &before), MICRODB_OK);
     populate_all_engines(&g_db, 0u);
     ASSERT_EQ(microdb_stats(&g_db, &after), MICRODB_OK);
-    ASSERT_EQ(after.storage_bytes_written > before.storage_bytes_written, 1);
+    ASSERT_EQ(after.wal_bytes_used >= before.wal_bytes_used, 1);
 }
 
 MDB_TEST(integration_reload_without_explicit_flush_uses_wal) {

@@ -42,6 +42,13 @@ static microdb_err_t microdb_validate_handle(const microdb_t *db) {
     return MICRODB_OK;
 }
 
+static uint8_t microdb_fill_pct_u32(uint32_t used, uint32_t total) {
+    if (total == 0u) {
+        return 0u;
+    }
+    return (uint8_t)((used * 100u) / total);
+}
+
 microdb_err_t microdb_init(microdb_t *db, const microdb_cfg_t *cfg) {
     microdb_core_t *core;
     uint8_t *cursor;
@@ -80,6 +87,10 @@ microdb_err_t microdb_init(microdb_t *db, const microdb_cfg_t *cfg) {
     if ((uint32_t)kv_pct + (uint32_t)ts_pct + (uint32_t)rel_pct != 100u) {
         return MICRODB_ERR_INVALID;
     }
+    if (cfg->wal_compact_auto != 0u &&
+        (cfg->wal_compact_threshold_pct == 0u || cfg->wal_compact_threshold_pct > 100u)) {
+        return MICRODB_ERR_INVALID;
+    }
     total_bytes = microdb_bytes_from_kb(ram_kb);
 
     core->heap = (uint8_t *)malloc(total_bytes);
@@ -96,6 +107,15 @@ microdb_err_t microdb_init(microdb_t *db, const microdb_cfg_t *cfg) {
     core->heap_size = total_bytes;
     core->storage = cfg->storage;
     core->now = cfg->now;
+    core->lock = cfg->lock;
+    core->unlock = cfg->unlock;
+    core->lock_destroy = cfg->lock_destroy;
+    if (cfg->lock_create != NULL) {
+        core->lock_handle = cfg->lock_create();
+    }
+    core->wal_compact_auto = cfg->wal_compact_auto;
+    core->wal_compact_threshold_pct = cfg->wal_compact_threshold_pct;
+    core->on_migrate = cfg->on_migrate;
     core->wal_enabled = (cfg->storage != NULL) && (MICRODB_ENABLE_WAL != 0);
     microdb_arena_init(&core->arena, core->heap, total_bytes);
 
@@ -163,13 +183,26 @@ microdb_err_t microdb_deinit(microdb_t *db) {
 
     core = microdb_core(db);
     status = microdb_flush(db);
+    if (core->lock_destroy != NULL) {
+        core->lock_destroy(core->lock_handle);
+    }
     free(core->heap);
     memset(db, 0, sizeof(*db));
     return status;
 }
 
 microdb_err_t microdb_stats(const microdb_t *db, microdb_stats_t *out) {
+    return microdb_inspect((microdb_t *)db, out);
+}
+
+microdb_err_t microdb_inspect(microdb_t *db, microdb_stats_t *out) {
     const microdb_core_t *core;
+    uint32_t ts_capacity_total = 0u;
+    uint32_t ts_samples_total = 0u;
+    uint32_t rel_rows_total = 0u;
+    uint32_t wal_bytes_used = 0u;
+    uint32_t wal_bytes_total = 0u;
+    uint32_t i;
     microdb_err_t status;
 
     if (out == NULL) {
@@ -183,12 +216,36 @@ microdb_err_t microdb_stats(const microdb_t *db, microdb_stats_t *out) {
 
     core = microdb_core_const(db);
     memset(out, 0, sizeof(*out));
-    out->ram_total_bytes = core->heap_size;
-    out->ram_used_bytes = core->live_bytes;
-    out->kv_entries = core->kv.entry_count;
-    out->kv_capacity = (uint32_t)(core->kv_arena.capacity / sizeof(microdb_kv_bucket_t));
-    out->ts_streams = core->ts.registered_streams;
-    out->rel_tables = core->rel.registered_tables;
-    out->storage_bytes_written = core->storage_bytes_written;
+
+    out->kv_entries_used = core->kv.entry_count;
+    out->kv_entries_max = (MICRODB_KV_MAX_KEYS > MICRODB_TXN_STAGE_KEYS) ? (MICRODB_KV_MAX_KEYS - MICRODB_TXN_STAGE_KEYS) : 0u;
+    out->kv_fill_pct = microdb_fill_pct_u32(out->kv_entries_used, out->kv_entries_max);
+    out->kv_collision_count = core->kv.collision_count;
+    out->kv_eviction_count = core->kv.eviction_count;
+
+    out->ts_streams_registered = core->ts.registered_streams;
+    for (i = 0u; i < MICRODB_TS_MAX_STREAMS; ++i) {
+        ts_samples_total += core->ts.streams[i].count;
+        ts_capacity_total += core->ts.streams[i].capacity;
+    }
+    out->ts_samples_total = ts_samples_total;
+    out->ts_fill_pct = microdb_fill_pct_u32(ts_samples_total, ts_capacity_total);
+
+    if (core->wal_enabled && core->layout.wal_size > 32u) {
+        wal_bytes_total = core->layout.wal_size - 32u;
+        wal_bytes_used = (core->wal_used > 32u) ? (core->wal_used - 32u) : 0u;
+    }
+    out->wal_bytes_total = wal_bytes_total;
+    out->wal_bytes_used = wal_bytes_used;
+    out->wal_fill_pct = microdb_fill_pct_u32(wal_bytes_used, wal_bytes_total);
+
+    out->rel_tables_count = core->rel.registered_tables;
+    for (i = 0u; i < MICRODB_REL_MAX_TABLES; ++i) {
+        if (core->rel.tables[i].registered) {
+            rel_rows_total += core->rel.tables[i].live_count;
+        }
+    }
+    out->rel_rows_total = rel_rows_total;
+
     return MICRODB_OK;
 }

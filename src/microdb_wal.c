@@ -1,5 +1,6 @@
 #include "microdb_internal.h"
 #include "microdb_crc.h"
+#include "microdb_arena.h"
 
 #include <string.h>
 
@@ -13,9 +14,14 @@ enum {
     MICRODB_WAL_ENGINE_KV = 0u,
     MICRODB_WAL_ENGINE_TS = 1u,
     MICRODB_WAL_ENGINE_REL = 2u,
+    MICRODB_WAL_ENGINE_TXN_KV = 3u,
+    MICRODB_WAL_ENGINE_META = 0xFFu,
     MICRODB_WAL_OP_SET_INSERT = 0u,
     MICRODB_WAL_OP_DEL = 1u,
-    MICRODB_WAL_OP_CLEAR = 2u
+    MICRODB_WAL_OP_CLEAR = 2u,
+    MICRODB_WAL_OP_COMPACT_BEGIN = 3u,
+    MICRODB_WAL_OP_COMPACT_COMMIT = 4u,
+    MICRODB_WAL_OP_TXN_COMMIT = 5u
 };
 
 static uint32_t microdb_align_u32(uint32_t value, uint32_t align) {
@@ -314,6 +320,7 @@ static microdb_err_t microdb_write_rel_page(microdb_core_t *core) {
         const microdb_table_t *table = &core->rel.tables[i];
         uint8_t name_len;
         uint8_t meta[2];
+        uint8_t u16buf[2];
         uint8_t u32buf[4];
         uint32_t j;
 
@@ -335,6 +342,14 @@ static microdb_err_t microdb_write_rel_page(microdb_core_t *core) {
         }
         crc = microdb_crc32(crc, table->name, name_len);
         offset += name_len;
+
+        microdb_put_u16(u16buf, table->schema_version);
+        err = microdb_storage_write_bytes(core, offset, u16buf, 2u);
+        if (err != MICRODB_OK) {
+            return err;
+        }
+        crc = microdb_crc32(crc, u16buf, 2u);
+        offset += 2u;
 
         microdb_put_u32(u32buf, table->max_rows);
         err = microdb_storage_write_bytes(core, offset, u32buf, 4u);
@@ -429,6 +444,78 @@ static microdb_err_t microdb_write_rel_page(microdb_core_t *core) {
     }
 
     return microdb_write_page_prefix(core, core->layout.rel_offset, MICRODB_REL_PAGE_MAGIC, table_count, crc);
+}
+
+static uint32_t microdb_compact_kv_scratch_bytes(const microdb_core_t *core) {
+    uint32_t bytes = 12u;
+    uint32_t i;
+
+    for (i = 0u; i < core->kv.bucket_count; ++i) {
+        const microdb_kv_bucket_t *bucket = &core->kv.buckets[i];
+        if (bucket->state != 1u) {
+            continue;
+        }
+        bytes += 1u + (uint32_t)strlen(bucket->key) + 4u + bucket->val_len + 4u;
+    }
+
+    return bytes;
+}
+
+static uint32_t microdb_compact_ts_scratch_bytes(const microdb_core_t *core) {
+    uint32_t bytes = 12u;
+    uint32_t i;
+
+    for (i = 0u; i < MICRODB_TS_MAX_STREAMS; ++i) {
+        const microdb_ts_stream_t *stream = &core->ts.streams[i];
+        uint32_t j;
+        uint32_t idx;
+        uint32_t val_len;
+
+        if (!stream->registered) {
+            continue;
+        }
+        bytes += 1u + (uint32_t)strlen(stream->name) + 1u + 4u + 4u;
+        val_len = microdb_ts_stream_val_size(stream);
+        idx = stream->tail;
+        for (j = 0u; j < stream->count; ++j) {
+            bytes += 8u + val_len;
+            idx = (idx + 1u) % stream->capacity;
+        }
+    }
+
+    return bytes;
+}
+
+static uint32_t microdb_compact_rel_scratch_bytes(const microdb_core_t *core) {
+    uint32_t bytes = 12u;
+    uint32_t i;
+
+    for (i = 0u; i < MICRODB_REL_MAX_TABLES; ++i) {
+        const microdb_table_t *table = &core->rel.tables[i];
+        uint32_t j;
+
+        if (!table->registered) {
+            continue;
+        }
+
+        bytes += 1u + (uint32_t)strlen(table->name) + 2u + 4u + 4u + 4u + 4u + 4u;
+        for (j = 0u; j < table->col_count; ++j) {
+            bytes += 1u + (uint32_t)strlen(table->cols[j].name) + 2u + 4u;
+        }
+        bytes += table->live_count * (uint32_t)table->row_size;
+    }
+
+    return bytes;
+}
+
+static void microdb_compact_serialize_to_scratch(const microdb_core_t *core, uint8_t *scratch) {
+    uint32_t kv_bytes = microdb_compact_kv_scratch_bytes(core);
+    uint32_t ts_bytes = microdb_compact_ts_scratch_bytes(core);
+    uint32_t rel_bytes = microdb_compact_rel_scratch_bytes(core);
+
+    microdb_put_u32(scratch + 0u, kv_bytes);
+    microdb_put_u32(scratch + 4u, ts_bytes);
+    microdb_put_u32(scratch + 8u, rel_bytes);
 }
 
 static microdb_err_t microdb_load_kv_page(microdb_t *db) {
@@ -619,7 +706,9 @@ static microdb_err_t microdb_load_rel_page(microdb_t *db) {
         microdb_table_t *table = NULL;
         uint8_t name_len = 0u;
         char table_name[MICRODB_REL_TABLE_NAME_LEN];
+        uint8_t u16buf[2];
         uint8_t u32buf[4];
+        uint16_t schema_version;
         uint32_t max_rows;
         uint32_t col_count;
         uint32_t row_count;
@@ -637,6 +726,13 @@ static microdb_err_t microdb_load_rel_page(microdb_t *db) {
         }
         table_name[name_len] = '\0';
         offset += name_len;
+
+        err = microdb_storage_read_bytes(core, offset, u16buf, 2u);
+        if (err != MICRODB_OK) {
+            return MICRODB_OK;
+        }
+        schema_version = microdb_get_u16(u16buf);
+        offset += 2u;
 
         err = microdb_storage_read_bytes(core, offset, u32buf, 4u);
         if (err != MICRODB_OK) {
@@ -667,6 +763,7 @@ static microdb_err_t microdb_load_rel_page(microdb_t *db) {
         if (err != MICRODB_OK) {
             return err;
         }
+        schema.schema_version = schema_version;
 
         for (j = 0u; j < col_count; ++j) {
             uint8_t col_name_len = 0u;
@@ -715,7 +812,7 @@ static microdb_err_t microdb_load_rel_page(microdb_t *db) {
             return err;
         }
         err = microdb_table_create(db, &schema);
-        if (err != MICRODB_OK && err != MICRODB_ERR_EXISTS) {
+        if (err != MICRODB_OK) {
             return err;
         }
         err = microdb_table_get(db, table_name, &table);
@@ -881,6 +978,10 @@ static microdb_err_t microdb_replay_wal(microdb_t *db, bool *out_had_entries, bo
     uint32_t offset = core->layout.wal_offset + 32u;
     uint32_t i;
     uint32_t replayed_count = 0u;
+    uint8_t txn_ops[MICRODB_TXN_STAGE_KEYS];
+    uint16_t txn_lens[MICRODB_TXN_STAGE_KEYS];
+    uint8_t txn_payloads[MICRODB_TXN_STAGE_KEYS][256];
+    uint32_t txn_count = 0u;
     microdb_err_t err;
 
     *out_had_entries = false;
@@ -947,6 +1048,46 @@ static microdb_err_t microdb_replay_wal(microdb_t *db, bool *out_had_entries, bo
                         "WAL corrupt entry at seq=%u: CRC mismatch, stopping replay",
                         (unsigned)microdb_get_u32(entry_header + 4u));
             break;
+        }
+
+        if (entry_header[8] == MICRODB_WAL_ENGINE_TXN_KV &&
+            (entry_header[9] == MICRODB_WAL_OP_SET_INSERT || entry_header[9] == MICRODB_WAL_OP_DEL)) {
+            if (txn_count < MICRODB_TXN_STAGE_KEYS && data_len <= sizeof(txn_payloads[0])) {
+                txn_ops[txn_count] = entry_header[9];
+                txn_lens[txn_count] = data_len;
+                memcpy(txn_payloads[txn_count], payload, data_len);
+                txn_count++;
+            } else {
+                txn_count = 0u;
+            }
+            offset += 16u + aligned_len;
+            replayed_count++;
+            continue;
+        }
+        if (entry_header[8] == MICRODB_WAL_ENGINE_META && entry_header[9] == MICRODB_WAL_OP_TXN_COMMIT) {
+            uint32_t t;
+            for (t = 0u; t < txn_count; ++t) {
+                err = microdb_apply_wal_entry(db, MICRODB_WAL_ENGINE_KV, txn_ops[t], txn_payloads[t], txn_lens[t]);
+                if (err != MICRODB_OK) {
+                    core->wal_replaying = false;
+                    return err;
+                }
+            }
+            txn_count = 0u;
+            offset += 16u + aligned_len;
+            replayed_count++;
+            continue;
+        }
+        if (entry_header[8] == MICRODB_WAL_ENGINE_META && entry_header[9] == MICRODB_WAL_OP_COMPACT_BEGIN) {
+            break;
+        }
+        if (entry_header[8] == MICRODB_WAL_ENGINE_META && entry_header[9] == MICRODB_WAL_OP_COMPACT_COMMIT) {
+            offset += 16u + aligned_len;
+            replayed_count++;
+            continue;
+        }
+        if (txn_count != 0u) {
+            txn_count = 0u;
         }
 
         err = microdb_apply_wal_entry(db, entry_header[8], entry_header[9], payload, data_len);
@@ -1089,6 +1230,64 @@ static microdb_err_t microdb_append_wal_entry(microdb_t *db,
     return MICRODB_OK;
 }
 
+microdb_err_t microdb_compact(microdb_t *db) {
+    microdb_core_t *core;
+    microdb_err_t err;
+    uint32_t kv_bytes;
+    uint32_t ts_bytes;
+    uint32_t rel_bytes;
+    uint32_t scratch_bytes;
+    uint8_t *scratch;
+
+    if (db == NULL) {
+        return MICRODB_ERR_INVALID;
+    }
+
+    core = microdb_core(db);
+    if (core->magic != MICRODB_MAGIC) {
+        return MICRODB_ERR_INVALID;
+    }
+    if (!microdb_storage_ready(core) || !core->wal_enabled) {
+        return MICRODB_OK;
+    }
+
+    err = microdb_append_wal_entry(db, MICRODB_WAL_ENGINE_META, MICRODB_WAL_OP_COMPACT_BEGIN, NULL, 0u);
+    if (err != MICRODB_OK) {
+        return err;
+    }
+
+    kv_bytes = microdb_compact_kv_scratch_bytes(core);
+    ts_bytes = microdb_compact_ts_scratch_bytes(core);
+    rel_bytes = microdb_compact_rel_scratch_bytes(core);
+    scratch_bytes = kv_bytes + ts_bytes + rel_bytes;
+    if (microdb_arena_remaining(&core->rel_arena) < scratch_bytes) {
+        return MICRODB_ERR_NO_MEM;
+    }
+
+    scratch = core->rel_arena.base + core->rel_arena.used;
+    microdb_compact_serialize_to_scratch(core, scratch);
+
+    err = microdb_write_kv_page(core);
+    if (err != MICRODB_OK) {
+        return err;
+    }
+    err = microdb_write_ts_page(core);
+    if (err != MICRODB_OK) {
+        return err;
+    }
+    err = microdb_write_rel_page(core);
+    if (err != MICRODB_OK) {
+        return err;
+    }
+
+    err = microdb_append_wal_entry(db, MICRODB_WAL_ENGINE_META, MICRODB_WAL_OP_COMPACT_COMMIT, NULL, 0u);
+    if (err != MICRODB_OK) {
+        return err;
+    }
+
+    return microdb_reset_wal(core, core->wal_sequence + 1u);
+}
+
 microdb_err_t microdb_storage_flush(microdb_t *db) {
     microdb_core_t *core = microdb_core(db);
     microdb_err_t err;
@@ -1148,6 +1347,31 @@ microdb_err_t microdb_persist_kv_set(microdb_t *db, const char *key, const void 
                                     (uint16_t)(1u + key_len + 4u + len + 4u));
 }
 
+microdb_err_t microdb_persist_kv_set_txn(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+    microdb_core_t *core = microdb_core(db);
+    uint8_t payload[256];
+    size_t key_len;
+
+    if (!microdb_storage_ready(core) || core->storage_loading || core->wal_replaying) {
+        return MICRODB_OK;
+    }
+    if (!core->wal_enabled) {
+        return microdb_storage_flush(db);
+    }
+
+    key_len = strlen(key);
+    payload[0] = (uint8_t)key_len;
+    memcpy(payload + 1u, key, key_len);
+    microdb_put_u32(payload + 1u + key_len, (uint32_t)len);
+    memcpy(payload + 1u + key_len + 4u, val, len);
+    microdb_put_u32(payload + 1u + key_len + 4u + len, expires_at);
+    return microdb_append_wal_entry(db,
+                                    MICRODB_WAL_ENGINE_TXN_KV,
+                                    MICRODB_WAL_OP_SET_INSERT,
+                                    payload,
+                                    (uint16_t)(1u + key_len + 4u + len + 4u));
+}
+
 microdb_err_t microdb_persist_kv_del(microdb_t *db, const char *key) {
     microdb_core_t *core = microdb_core(db);
     uint8_t payload[MICRODB_KV_KEY_MAX_LEN];
@@ -1170,6 +1394,28 @@ microdb_err_t microdb_persist_kv_del(microdb_t *db, const char *key) {
                                     (uint16_t)(1u + key_len));
 }
 
+microdb_err_t microdb_persist_kv_del_txn(microdb_t *db, const char *key) {
+    microdb_core_t *core = microdb_core(db);
+    uint8_t payload[MICRODB_KV_KEY_MAX_LEN];
+    size_t key_len;
+
+    if (!microdb_storage_ready(core) || core->storage_loading || core->wal_replaying) {
+        return MICRODB_OK;
+    }
+    if (!core->wal_enabled) {
+        return microdb_storage_flush(db);
+    }
+
+    key_len = strlen(key);
+    payload[0] = (uint8_t)key_len;
+    memcpy(payload + 1u, key, key_len);
+    return microdb_append_wal_entry(db,
+                                    MICRODB_WAL_ENGINE_TXN_KV,
+                                    MICRODB_WAL_OP_DEL,
+                                    payload,
+                                    (uint16_t)(1u + key_len));
+}
+
 microdb_err_t microdb_persist_kv_clear(microdb_t *db) {
     microdb_core_t *core = microdb_core(db);
 
@@ -1181,6 +1427,19 @@ microdb_err_t microdb_persist_kv_clear(microdb_t *db) {
     }
 
     return microdb_append_wal_entry(db, MICRODB_WAL_ENGINE_KV, MICRODB_WAL_OP_CLEAR, NULL, 0u);
+}
+
+microdb_err_t microdb_persist_txn_commit(microdb_t *db) {
+    microdb_core_t *core = microdb_core(db);
+
+    if (!microdb_storage_ready(core) || core->storage_loading || core->wal_replaying) {
+        return MICRODB_OK;
+    }
+    if (!core->wal_enabled) {
+        return microdb_storage_flush(db);
+    }
+
+    return microdb_append_wal_entry(db, MICRODB_WAL_ENGINE_META, MICRODB_WAL_OP_TXN_COMMIT, NULL, 0u);
 }
 
 microdb_err_t microdb_persist_ts_insert(microdb_t *db, const char *name, microdb_timestamp_t ts, const void *val, size_t val_len) {
