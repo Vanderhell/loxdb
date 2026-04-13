@@ -4,6 +4,7 @@
 
 > Embedded database for microcontrollers.
 > Three engines. One malloc. Zero dependencies.
+> Deterministic durable storage core for MCU/embedded systems.
 
 [![CI](https://github.com/Vanderhell/microdb/actions/workflows/ci.yml/badge.svg)](https://github.com/Vanderhell/microdb/actions/workflows/ci.yml)
 [![Language: C99](https://img.shields.io/badge/language-C99-blue)](https://en.wikipedia.org/wiki/C99)
@@ -22,6 +23,19 @@ It combines three storage models behind one API surface:
 
 The library allocates exactly once in `microdb_init()`, runs without external dependencies,
 and can operate either in RAM-only mode or with a storage HAL for persistence and WAL recovery.
+
+## Product Contract
+
+- Positioning: see [PRODUCT_POSITIONING.md](docs/PRODUCT_POSITIONING.md)
+- Product brief (1 page): see [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md)
+- Profile guarantees and limits: see [PROFILE_GUARANTEES.md](docs/PROFILE_GUARANTEES.md)
+- Fail-code contract: see [FAIL_CODE_CONTRACT.md](docs/FAIL_CODE_CONTRACT.md)
+- Offline verifier contract: see [OFFLINE_VERIFIER.md](docs/OFFLINE_VERIFIER.md)
+- Footprint-min contract: see [FOOTPRINT_MIN_CONTRACT.md](docs/FOOTPRINT_MIN_CONTRACT.md)
+- Latest hard verdict: see [hard_verdict_20260412.md](docs/results/hard_verdict_20260412.md)
+- Getting started (5 min): see [GETTING_STARTED_5_MIN.md](docs/GETTING_STARTED_5_MIN.md)
+- Release checklist: see [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
+- Release tag template: see [RELEASE_TAG_TEMPLATE.md](docs/RELEASE_TAG_TEMPLATE.md)
 
 ## Why not SQLite?
 
@@ -87,6 +101,8 @@ Configuration is compile-time first, with a small runtime override surface in `m
 - `cfg.kv_pct`, `cfg.ts_pct`, `cfg.rel_pct` override the slice split per instance
 - `MICRODB_ENABLE_WAL` toggles WAL persistence when a storage HAL is present
 - `MICRODB_LOG(level, fmt, ...)` enables internal diagnostic logging
+- smallest-size variant is available as CMake target `microdb_tiny` (KV-only, TS/REL/WAL disabled, weaker power-fail durability)
+- strict smallest **durable** profile is available as `MICRODB_PROFILE_FOOTPRINT_MIN` (KV + WAL + reopen/recovery contract)
 
 ## KV engine
 
@@ -125,6 +141,45 @@ microdb supports three storage modes:
 - ESP32 partition HAL via `esp_partition_*`
 
 Persistent layout starts with a WAL region and then separate KV, TS, and REL regions aligned to the storage erase size.
+
+Core storage positioning: microdb core today natively supports byte-write durable backends; aligned/block/NAND media require a translation layer.
+
+Storage contract (fail-fast at `microdb_init`):
+- `erase_size` must be `> 0`
+- `write_size` must be exactly `1`
+- `write_size == 0` or `write_size > 1` currently returns `MICRODB_ERR_INVALID`
+
+## Read-only diagnostics API
+
+System stats are exposed through read-only APIs (not user KV keys):
+
+- `microdb_get_db_stats(...)`
+- `microdb_get_kv_stats(...)`
+- `microdb_get_ts_stats(...)`
+- `microdb_get_rel_stats(...)`
+- `microdb_get_effective_capacity(...)`
+- `microdb_get_pressure(...)`
+- `microdb_admit_kv_set(...)`
+- `microdb_admit_ts_insert(...)`
+- `microdb_admit_rel_insert(...)`
+
+Admission preflight semantics:
+- API return value reports API-level validity (`MICRODB_OK` when request was analyzed)
+- final operation decision is in `microdb_admission_t.status`
+- `would_compact` indicates compact pressure for the projected write
+- `would_degrade` indicates policy-driven degradation path (for example overwrite/drop-oldest)
+- `deterministic_budget_ok` indicates whether request fits deterministic budget
+
+Pressure semantics:
+- `microdb_get_pressure(...)` exposes `kv/ts/rel/wal` fill percentages
+- `compact_pressure_pct` expresses WAL fill relative to compact threshold
+- `near_full_risk_pct` is max pressure signal across engines/WAL
+
+Semantics:
+- `last_runtime_error` is sticky last non-`MICRODB_OK` runtime status since `microdb_init`
+- `last_recovery_status` is status of the last open/recovery path step in this process lifetime
+- `compact_count`, `reopen_count`, `recovery_count` are runtime-only counters (not persistent)
+- REL uses `rows_free` (free slots), not a historical deleted-rows counter
 
 ## RAM budget guide
 
@@ -186,6 +241,8 @@ The repository covers:
 - integration flows across RAM-only and persistent modes
 - RAM budget variants from 8 KB through 1024 KB
 - compile-fail validation for invalid percentage sums
+- tiny-footprint profile checks (`test_tiny_footprint` + `test_tiny_size_guard`)
+- canonical footprint-min baseline + hard section/linkage gate (`test_footprint_min_baseline` + `test_footprint_min_size_gate_release`, Release contract)
 
 ## Part of micro-toolkit
 
