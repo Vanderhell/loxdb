@@ -6,6 +6,8 @@
 
 int microdb_backend_aligned_stub_register(void);
 int microdb_backend_nand_stub_register(void);
+int microdb_backend_emmc_stub_register(void);
+int microdb_backend_sd_stub_register(void);
 
 typedef struct {
     uint8_t mem[256];
@@ -179,6 +181,42 @@ MDB_TEST(backend_open_managed_fails_on_sync_probe_failure) {
     ASSERT_EQ(g_raw.sync_calls, 1);
 }
 
+MDB_TEST(backend_open_emmc_uses_managed_adapter) {
+    static const uint8_t payload[2] = { 0xC1u, 0xC2u };
+    microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 64u, 1u, &g_raw };
+    microdb_backend_open_session_t session;
+    microdb_storage_t *effective = NULL;
+    g_raw.write_size = 1u;
+
+    ASSERT_EQ(microdb_backend_emmc_stub_register(), 0);
+    ASSERT_EQ(microdb_backend_open_prepare("emmc_stub", &raw, 0u, 1u, &session, &effective), MICRODB_OK);
+    ASSERT_EQ(session.using_managed_adapter, 1);
+    ASSERT_EQ(effective != NULL, 1);
+    ASSERT_EQ(effective->write(effective->ctx, 9u, payload, sizeof(payload)), MICRODB_OK);
+    ASSERT_EQ(g_raw.mem[9], 0xC1);
+    ASSERT_EQ(g_raw.mem[10], 0xC2);
+
+    microdb_backend_open_release(&session);
+}
+
+MDB_TEST(backend_open_sd_uses_managed_adapter) {
+    static const uint8_t payload[2] = { 0xD1u, 0xD2u };
+    microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 64u, 1u, &g_raw };
+    microdb_backend_open_session_t session;
+    microdb_storage_t *effective = NULL;
+    g_raw.write_size = 1u;
+
+    ASSERT_EQ(microdb_backend_sd_stub_register(), 0);
+    ASSERT_EQ(microdb_backend_open_prepare("sd_stub", &raw, 0u, 1u, &session, &effective), MICRODB_OK);
+    ASSERT_EQ(session.using_managed_adapter, 1);
+    ASSERT_EQ(effective != NULL, 1);
+    ASSERT_EQ(effective->write(effective->ctx, 11u, payload, sizeof(payload)), MICRODB_OK);
+    ASSERT_EQ(g_raw.mem[11], 0xD1);
+    ASSERT_EQ(g_raw.mem[12], 0xD2);
+
+    microdb_backend_open_release(&session);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_unknown_backend_rejected);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_byte_backend_direct_passthrough);
@@ -186,5 +224,7 @@ int main(void) {
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_aligned_uses_adapter_shim);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_managed_uses_managed_adapter);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_managed_fails_on_sync_probe_failure);
+    MDB_RUN_TEST(setup_open, teardown_open, backend_open_emmc_uses_managed_adapter);
+    MDB_RUN_TEST(setup_open, teardown_open, backend_open_sd_uses_managed_adapter);
     return MDB_RESULT();
 }

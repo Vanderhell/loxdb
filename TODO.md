@@ -34,6 +34,7 @@
 - [in_progress] 4) ALIGNED adapter implementation started (RMW + bounce buffer shim + tests as optional module).
 - [done] Optional backend open wiring helper (decision + adapter activation path) added as separate module.
 - [done] Managed adapter skeleton module added (optional, linker-friendly split) + backend open wiring support.
+- [done] Additional managed media stubs wired and covered (NAND/eMMC/SD backend-open + decision tests).
 - [done] Managed adapter expectations + mount sync-probe failure semantics added with tests.
 - [done] Managed-path power-cut/reopen integration tests added (through backend-open wiring + WAL replay checks).
 - [done] Managed-path stress/fault matrix added (mixed KV/TS/REL + repeated crash/power-loss reopen cycles).

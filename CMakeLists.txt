@@ -938,6 +938,8 @@ if(MICRODB_BUILD_TESTS)
             PRIVATE
                 microdb_backend_decision
                 microdb_backend_nand_stub
+                microdb_backend_emmc_stub
+                microdb_backend_sd_stub
         )
         add_test(NAME test_backend_decision COMMAND test_backend_decision)
 
@@ -972,6 +974,8 @@ if(MICRODB_BUILD_TESTS)
                 microdb_backend_open
                 microdb_backend_aligned_stub
                 microdb_backend_nand_stub
+                microdb_backend_emmc_stub
+                microdb_backend_sd_stub
         )
         add_test(NAME test_backend_open COMMAND test_backend_open)
 
