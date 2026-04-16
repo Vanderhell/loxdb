@@ -12,6 +12,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(MICRODB_BUILD_TESTS "Build tests" ON)
 option(MICRODB_BUILD_TOOLS "Build offline tools" ON)
 option(MICRODB_BUILD_OPTIONAL_BACKENDS "Build optional backend adapter modules (not linked into core)" ON)
+set(MICRODB_MANAGED_STRESS_SMOKE_MAX_MS "5000" CACHE STRING "Runtime budget (ms) for managed stress smoke lane")
+set(MICRODB_MANAGED_STRESS_LONG_MAX_MS "20000" CACHE STRING "Runtime budget (ms) for managed stress long lane")
 find_program(MICRODB_LLVM_READOBJ NAMES llvm-readobj llvm-readobj.exe PATHS "C:/Program Files/LLVM/bin")
 
 add_library(microdb
@@ -941,8 +943,14 @@ if(MICRODB_BUILD_TESTS)
                 microdb_backend_open
                 microdb_backend_nand_stub
         )
-        add_test(NAME test_backend_managed_stress_smoke COMMAND test_backend_managed_stress --max-ms 5000)
-        add_test(NAME test_backend_managed_stress_long COMMAND test_backend_managed_stress --long --max-ms 20000)
+        add_test(
+            NAME test_backend_managed_stress_smoke
+            COMMAND test_backend_managed_stress --max-ms ${MICRODB_MANAGED_STRESS_SMOKE_MAX_MS}
+        )
+        add_test(
+            NAME test_backend_managed_stress_long
+            COMMAND test_backend_managed_stress --long --max-ms ${MICRODB_MANAGED_STRESS_LONG_MAX_MS}
+        )
         set_tests_properties(test_backend_managed_stress_smoke PROPERTIES LABELS "managed;stress;smoke")
         set_tests_properties(test_backend_managed_stress_long PROPERTIES LABELS "managed;stress;long" TIMEOUT 180)
 

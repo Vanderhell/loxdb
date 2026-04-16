@@ -193,6 +193,7 @@ Managed adapter contract (fail-fast):
 - managed stress test covers mixed KV/TS/REL operations across repeated crash/power-loss reopen cycles
 - managed stress is sliced into `smoke` and `long` CTest lanes for faster default validation and deeper fault runs
 - both lanes now include explicit runtime envelope gates (`--max-ms`) in addition to CTest timeouts
+- lane budgets are calibrated through CMake cache vars: `MICRODB_MANAGED_STRESS_SMOKE_MAX_MS` and `MICRODB_MANAGED_STRESS_LONG_MAX_MS` (see `docs/MANAGED_STRESS_BASELINES.md`)
 
 Storage contract (fail-fast at `microdb_init`):
 - `erase_size` must be `> 0`

@@ -39,7 +39,8 @@
 - [done] Managed-path stress/fault matrix added (mixed KV/TS/REL + repeated crash/power-loss reopen cycles).
 - [done] Managed stress sliced into smoke/long CTest lanes.
 - [done] Runtime envelope thresholds wired into managed stress smoke/long lanes (`--max-ms` gate).
-- [next] Calibrate per-platform threshold baselines and store them as release acceptance criteria.
+- [done] Per-platform calibration hooks and baseline documentation added (`MICRODB_MANAGED_STRESS_*_MAX_MS` + docs/MANAGED_STRESS_BASELINES.md).
+- [next] Wire calibrated thresholds into CI matrix/environment presets per target platform/profile.
 
 ### 1) Storage Capability Descriptor
 - Add capability fields to storage HAL:
