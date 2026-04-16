@@ -11,6 +11,8 @@ typedef struct {
     uint8_t mem[256];
     uint32_t write_calls;
     uint32_t write_size;
+    microdb_err_t sync_status;
+    uint32_t sync_calls;
 } raw_ctx_t;
 
 static raw_ctx_t g_raw;
@@ -56,7 +58,8 @@ static microdb_err_t raw_sync(void *ctx) {
     if (raw == NULL) {
         return MICRODB_ERR_STORAGE;
     }
-    return MICRODB_OK;
+    raw->sync_calls++;
+    return raw->sync_status;
 }
 
 static microdb_storage_capability_t byte_capability(void) {
@@ -74,6 +77,7 @@ static void setup_open(void) {
     memset(&g_raw, 0, sizeof(g_raw));
     memset(g_raw.mem, 0xFF, sizeof(g_raw.mem));
     g_raw.write_size = 16u;
+    g_raw.sync_status = MICRODB_OK;
     microdb_backend_registry_reset();
 }
 
@@ -155,9 +159,24 @@ MDB_TEST(backend_open_managed_uses_managed_adapter) {
     ASSERT_EQ(effective->write(effective->ctx, 5u, payload, sizeof(payload)), MICRODB_OK);
     ASSERT_EQ(g_raw.mem[5], 0xB1);
     ASSERT_EQ(g_raw.mem[7], 0xB3);
+    ASSERT_EQ(g_raw.sync_calls, 1);
 
     microdb_backend_open_release(&session);
     ASSERT_EQ(session.using_managed_adapter, 0);
+}
+
+MDB_TEST(backend_open_managed_fails_on_sync_probe_failure) {
+    microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 64u, 1u, &g_raw };
+    microdb_backend_open_session_t session;
+    microdb_storage_t *effective = NULL;
+    g_raw.write_size = 1u;
+    g_raw.sync_status = MICRODB_ERR_STORAGE;
+
+    ASSERT_EQ(microdb_backend_nand_stub_register(), 0);
+    ASSERT_EQ(microdb_backend_open_prepare("nand_stub", &raw, 0u, 1u, &session, &effective), MICRODB_ERR_STORAGE);
+    ASSERT_EQ(effective == NULL, 1);
+    ASSERT_EQ(session.using_managed_adapter, 0);
+    ASSERT_EQ(g_raw.sync_calls, 1);
 }
 
 int main(void) {
@@ -166,5 +185,6 @@ int main(void) {
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_aligned_requires_adapter_flag);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_aligned_uses_adapter_shim);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_managed_uses_managed_adapter);
+    MDB_RUN_TEST(setup_open, teardown_open, backend_open_managed_fails_on_sync_probe_failure);
     return MDB_RESULT();
 }

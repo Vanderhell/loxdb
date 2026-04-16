@@ -185,6 +185,11 @@ Optional backend adapter modules (modular, not linked into core by default):
 - `microdb_backend_open` (decision + adapter wiring helper for optional backend flow)
 - stub modules for managed media (`nand/emmc/sd`) used for integration/testing flow
 
+Managed adapter contract (fail-fast):
+- validates storage hooks and non-zero capacity/erase geometry
+- default expectations require byte-write contract and a successful `sync` probe at mount time
+- exposes an explicit expectations override API for controlled integration/testing
+
 Storage contract (fail-fast at `microdb_init`):
 - `erase_size` must be `> 0`
 - `write_size` must be exactly `1`

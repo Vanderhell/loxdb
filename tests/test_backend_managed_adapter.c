@@ -8,6 +8,7 @@ typedef struct {
     uint32_t write_calls;
     uint32_t erase_calls;
     uint32_t sync_calls;
+    microdb_err_t sync_status;
 } raw_ctx_t;
 
 static raw_ctx_t g_raw;
@@ -50,12 +51,13 @@ static microdb_err_t raw_sync(void *ctx) {
         return MICRODB_ERR_STORAGE;
     }
     raw->sync_calls++;
-    return MICRODB_OK;
+    return raw->sync_status;
 }
 
 static void setup_storage(void) {
     memset(&g_raw, 0, sizeof(g_raw));
     memset(g_raw.mem, 0xFF, sizeof(g_raw.mem));
+    g_raw.sync_status = MICRODB_OK;
     memset(&g_raw_storage, 0, sizeof(g_raw_storage));
     memset(&g_adapted_storage, 0, sizeof(g_adapted_storage));
     memset(&g_adapter_ctx, 0, sizeof(g_adapter_ctx));
@@ -88,7 +90,7 @@ MDB_TEST(managed_adapter_passthrough_io) {
     ASSERT_EQ(g_raw.erase_calls, 1);
 
     ASSERT_EQ(g_adapted_storage.sync(g_adapted_storage.ctx), MICRODB_OK);
-    ASSERT_EQ(g_raw.sync_calls, 1);
+    ASSERT_EQ(g_raw.sync_calls, 2);
 }
 
 MDB_TEST(managed_adapter_rejects_non_byte_raw_write_size) {
@@ -97,8 +99,28 @@ MDB_TEST(managed_adapter_rejects_non_byte_raw_write_size) {
     ASSERT_EQ(microdb_backend_managed_adapter_init(&g_adapted_storage, &g_adapter_ctx, &invalid), MICRODB_ERR_INVALID);
 }
 
+MDB_TEST(managed_adapter_mount_probe_fails_when_sync_fails) {
+    g_raw.sync_status = MICRODB_ERR_STORAGE;
+    ASSERT_EQ(microdb_backend_managed_adapter_init(&g_adapted_storage, &g_adapter_ctx, &g_raw_storage), MICRODB_ERR_STORAGE);
+    ASSERT_EQ(g_raw.sync_calls, 1);
+}
+
+MDB_TEST(managed_adapter_relaxed_expectations_allow_non_byte_write) {
+    microdb_storage_t invalid = g_raw_storage;
+    microdb_backend_managed_expectations_t relaxed;
+    invalid.write_size = 8u;
+    microdb_backend_managed_expectations_default(&relaxed);
+    relaxed.require_byte_write = 0u;
+    relaxed.require_sync_probe_on_mount = 0u;
+    ASSERT_EQ(microdb_backend_managed_adapter_init_with_expectations(&g_adapted_storage, &g_adapter_ctx, &invalid, &relaxed),
+              MICRODB_OK);
+    ASSERT_EQ(g_raw.sync_calls, 0);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_storage, teardown_storage, managed_adapter_passthrough_io);
     MDB_RUN_TEST(setup_storage, teardown_storage, managed_adapter_rejects_non_byte_raw_write_size);
+    MDB_RUN_TEST(setup_storage, teardown_storage, managed_adapter_mount_probe_fails_when_sync_fails);
+    MDB_RUN_TEST(setup_storage, teardown_storage, managed_adapter_relaxed_expectations_allow_non_byte_write);
     return MDB_RESULT();
 }
