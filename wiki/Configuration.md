@@ -26,6 +26,22 @@ microdb is compile-time first, with a small per-instance override surface.
 - storage backend
 - timestamp callback
 
+## Storage Capacity Profiles (tooling/wrapper layer)
+
+For persistent backends and wrappers, standardize storage budgets with `MiB` profiles:
+
+- `2 MiB`
+- `4 MiB`
+- `8 MiB`
+- `16 MiB`
+- `32 MiB`
+
+Use `include/microdb_capacity_profile.h` for canonical profile-to-bytes mapping.
+This is a wrapper/tooling aid and does not change core storage contract checks.
+
+For quick planning and what-if sizing, open:
+- `tools/microdb_capacity_estimator.html`
+
 ## Practical sizing
 
 Typical starting points:

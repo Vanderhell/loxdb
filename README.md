@@ -197,6 +197,9 @@ Semantics:
 Estimates assume default 40/40/20 RAM split and default column sizes.
 Override with `MICRODB_RAM_KV_PCT`, `MICRODB_RAM_TS_PCT`, `MICRODB_RAM_REL_PCT`.
 
+Capacity planning helper:
+- open `tools/microdb_capacity_estimator.html` for profile-based storage/layout estimation (`2/4/8/16/32 MiB`) and rough record-fit planning.
+
 ## Design decisions and known limitations
 
 **Single malloc at init.**

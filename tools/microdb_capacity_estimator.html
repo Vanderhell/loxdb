@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>microdb Capacity Estimator</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #17212b;
+      --muted: #5f6b7a;
+      --line: #d8dde5;
+      --accent: #0b6bcb;
+    }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(140deg, #f2f5f9 0%, #e9eef4 100%);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 24px auto;
+      padding: 0 16px;
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1fr;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+    }
+    .muted {
+      margin: 0;
+      color: var(--muted);
+    }
+    .grid {
+      margin-top: 12px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    input, select {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 14px;
+      background: #fff;
+      color: var(--text);
+    }
+    .result {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .tile {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fbfdff;
+    }
+    .k {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .v {
+      font-weight: 700;
+      font-size: 18px;
+      margin-top: 2px;
+    }
+    code {
+      background: #f1f5fa;
+      border: 1px solid #dbe4ef;
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h1>microdb Storage + Record Estimator</h1>
+      <p class="muted">
+        Storage layout math follows <code>src/microdb_wal.c</code> (alignment, WAL, superblocks, dual banks).<br>
+        Record counts are engineering estimates for planning budgets.
+      </p>
+      <div class="grid">
+        <div>
+          <label>Storage Profile</label>
+          <select id="profile">
+            <option value="2097152">2 MiB</option>
+            <option value="4194304">4 MiB</option>
+            <option value="8388608">8 MiB</option>
+            <option value="16777216">16 MiB</option>
+            <option value="33554432" selected>32 MiB</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div>
+          <label>Capacity Bytes (custom)</label>
+          <input id="capacityBytes" type="number" min="1024" step="1" value="33554432">
+        </div>
+        <div>
+          <label>Erase Size (bytes)</label>
+          <input id="eraseSize" type="number" min="1" step="1" value="256">
+        </div>
+        <div>
+          <label>RAM Budget (KB)</label>
+          <input id="ramKb" type="number" min="8" max="4096" step="1" value="32">
+        </div>
+        <div>
+          <label>KV / TS / REL % split</label>
+          <input id="pct" type="text" value="40,40,20">
+        </div>
+        <div>
+          <label>KV max keys</label>
+          <input id="kvMaxKeys" type="number" min="1" value="64">
+        </div>
+        <div>
+          <label>TXN stage keys</label>
+          <input id="txnStageKeys" type="number" min="0" value="8">
+        </div>
+        <div>
+          <label>Avg KV value length (bytes)</label>
+          <input id="avgKvValueBytes" type="number" min="1" value="32">
+        </div>
+        <div>
+          <label>TS max streams</label>
+          <input id="tsMaxStreams" type="number" min="1" value="8">
+        </div>
+        <div>
+          <label>TS sample struct bytes (default 20)</label>
+          <input id="tsSampleBytes" type="number" min="8" value="20">
+        </div>
+        <div>
+          <label>REL row size (bytes)</label>
+          <input id="relRowBytes" type="number" min="4" value="32">
+        </div>
+        <div>
+          <label>REL indexed table?</label>
+          <select id="relIndexed">
+            <option value="1" selected>Yes</option>
+            <option value="0">No</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Computed</h2>
+      <div class="result">
+        <div class="tile"><div class="k">Layout Total Required</div><div class="v" id="layoutTotal"></div></div>
+        <div class="tile"><div class="k">WAL Size</div><div class="v" id="walSize"></div></div>
+        <div class="tile"><div class="k">Bank Size (one)</div><div class="v" id="bankSize"></div></div>
+        <div class="tile"><div class="k">KV Snapshot Region</div><div class="v" id="kvSnapSize"></div></div>
+        <div class="tile"><div class="k">TS Snapshot Region</div><div class="v" id="tsSnapSize"></div></div>
+        <div class="tile"><div class="k">REL Snapshot Region</div><div class="v" id="relSnapSize"></div></div>
+        <div class="tile"><div class="k">KV Entries (macro cap)</div><div class="v" id="kvMacroCap"></div></div>
+        <div class="tile"><div class="k">KV Entries (value-pool est.)</div><div class="v" id="kvEstCap"></div></div>
+        <div class="tile"><div class="k">TS Samples / Stream (est.)</div><div class="v" id="tsPerStream"></div></div>
+        <div class="tile"><div class="k">REL Rows / Table (est.)</div><div class="v" id="relRows"></div></div>
+      </div>
+      <p class="muted" id="notes"></p>
+    </div>
+  </div>
+
+  <script>
+    function alignU32(value, align) {
+      return Math.ceil(value / align) * align;
+    }
+    function mib(bytes) {
+      return (bytes / (1024 * 1024)).toFixed(2) + " MiB";
+    }
+    function fmtInt(v) {
+      return Number(v).toLocaleString("en-US");
+    }
+    function parsePct(text) {
+      const parts = text.split(",").map(v => Number(v.trim()));
+      if (parts.length !== 3 || parts.some(v => !Number.isFinite(v) || v <= 0)) {
+        return null;
+      }
+      if ((parts[0] + parts[1] + parts[2]) !== 100) {
+        return null;
+      }
+      return { kv: parts[0], ts: parts[1], rel: parts[2] };
+    }
+    function kvBucketCount(entryLimit) {
+      const required = Math.floor((entryLimit * 4 + 2) / 3);
+      let buckets = 1;
+      while (buckets < required) {
+        buckets <<= 1;
+      }
+      return buckets;
+    }
+    function relMaxRows(relBytes, rowSize, indexed) {
+      let lo = 0;
+      let hi = 1000000;
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi + 1) / 2);
+        const needRows = mid * rowSize;
+        const needAlive = Math.floor((mid + 7) / 8);
+        const needOrder = mid * 4;
+        const needIndex = indexed ? (mid * 20) : 0;
+        const needTotal = needRows + needAlive + needOrder + needIndex + 32;
+        if (needTotal <= relBytes) {
+          lo = mid;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      return lo;
+    }
+
+    function compute() {
+      const profile = document.getElementById("profile").value;
+      const capacityInput = document.getElementById("capacityBytes");
+      if (profile !== "custom") {
+        capacityInput.value = profile;
+      }
+
+      const capacity = Number(capacityInput.value);
+      const eraseSize = Number(document.getElementById("eraseSize").value);
+      const ramKb = Number(document.getElementById("ramKb").value);
+      const pcts = parsePct(document.getElementById("pct").value);
+      const kvMaxKeys = Number(document.getElementById("kvMaxKeys").value);
+      const txnStageKeys = Number(document.getElementById("txnStageKeys").value);
+      const avgKvValueBytes = Number(document.getElementById("avgKvValueBytes").value);
+      const tsMaxStreams = Number(document.getElementById("tsMaxStreams").value);
+      const tsSampleBytes = Number(document.getElementById("tsSampleBytes").value);
+      const relRowBytes = Number(document.getElementById("relRowBytes").value);
+      const relIndexed = Number(document.getElementById("relIndexed").value) === 1;
+
+      const notes = [];
+      if (!pcts) {
+        document.getElementById("notes").textContent = "Split must be exactly three positive values summing to 100 (for example 40,40,20).";
+        return;
+      }
+      if (!Number.isFinite(capacity) || !Number.isFinite(eraseSize) || eraseSize <= 0 || capacity <= 0) {
+        document.getElementById("notes").textContent = "Capacity and erase size must be positive.";
+        return;
+      }
+      if (kvMaxKeys <= txnStageKeys) {
+        document.getElementById("notes").textContent = "KV max keys must be greater than TXN stage keys.";
+        return;
+      }
+
+      const totalBytes = ramKb * 1024;
+      const kvBytes = Math.floor(totalBytes * pcts.kv / 100);
+      const tsBytes = Math.floor(totalBytes * pcts.ts / 100);
+      const relBytes = totalBytes - kvBytes - tsBytes;
+
+      const kvEntryLimit = kvMaxKeys - txnStageKeys;
+      const kvBuckets = kvBucketCount(kvEntryLimit);
+
+      const kvPerEntryMaxSnapshot = 1 + 31 + 4 + 128 + 4; // mirrors microdb_kv_snapshot_payload_max defaults
+      const kvSnapshotPayloadMax = kvEntryLimit * kvPerEntryMaxSnapshot;
+      const kvSnapSize = alignU32(kvSnapshotPayloadMax + 32, eraseSize);
+      const tsSnapSize = alignU32(tsBytes + 32, eraseSize);
+      const relSnapSize = alignU32(relBytes + 32, eraseSize);
+      const bankSize = kvSnapSize + tsSnapSize + relSnapSize;
+
+      const superSize = eraseSize;
+      const fixedBytes = superSize * 2;
+      const needWithoutWal = fixedBytes + bankSize * 2;
+      const walMin = eraseSize * 2;
+      const walTarget = eraseSize * 8;
+      const maxWal = capacity - needWithoutWal;
+      const maxWalAligned = Math.floor(maxWal / eraseSize) * eraseSize;
+      let walSize = walTarget;
+      if (walSize > maxWalAligned) walSize = maxWalAligned;
+      if (walSize < walMin) walSize = walMin;
+      const layoutTotal = walSize + fixedBytes + bankSize * 2;
+
+      const kvBucketStructBytes = 52; // expected with default packing
+      const kvTxnStageStructBytes = 184; // expected on 64-bit builds
+      const kvMetaBytes = (kvBuckets * kvBucketStructBytes) + (txnStageKeys * kvTxnStageStructBytes);
+      const kvValuePoolBytes = Math.max(0, kvBytes - kvMetaBytes);
+      const kvByValuePool = Math.floor(kvValuePoolBytes / avgKvValueBytes);
+      const kvEstCap = Math.max(0, Math.min(kvEntryLimit, kvByValuePool));
+
+      const tsPerStream = Math.floor(Math.floor(tsBytes / tsMaxStreams) / tsSampleBytes);
+      const relRows = relMaxRows(relBytes, relRowBytes, relIndexed);
+
+      if (capacity < (needWithoutWal + walMin)) {
+        notes.push("Storage capacity is below minimum required for this RAM/snapshot layout.");
+      }
+      notes.push("KV estimate uses metadata defaults (bucket=52B, txn_stage=184B). Adjust if your ABI differs.");
+      notes.push("TS and REL counts are per-stream/per-table engineering estimates.");
+
+      document.getElementById("layoutTotal").textContent = fmtInt(layoutTotal) + " (" + mib(layoutTotal) + ")";
+      document.getElementById("walSize").textContent = fmtInt(walSize) + " (" + mib(walSize) + ")";
+      document.getElementById("bankSize").textContent = fmtInt(bankSize) + " (" + mib(bankSize) + ")";
+      document.getElementById("kvSnapSize").textContent = fmtInt(kvSnapSize);
+      document.getElementById("tsSnapSize").textContent = fmtInt(tsSnapSize);
+      document.getElementById("relSnapSize").textContent = fmtInt(relSnapSize);
+      document.getElementById("kvMacroCap").textContent = fmtInt(kvEntryLimit);
+      document.getElementById("kvEstCap").textContent = fmtInt(kvEstCap);
+      document.getElementById("tsPerStream").textContent = fmtInt(Math.max(0, tsPerStream));
+      document.getElementById("relRows").textContent = fmtInt(relRows);
+      document.getElementById("notes").textContent = notes.join(" ");
+    }
+
+    [
+      "profile", "capacityBytes", "eraseSize", "ramKb", "pct", "kvMaxKeys", "txnStageKeys",
+      "avgKvValueBytes", "tsMaxStreams", "tsSampleBytes", "relRowBytes", "relIndexed"
+    ].forEach((id) => {
+      document.getElementById(id).addEventListener("input", compute);
+      document.getElementById(id).addEventListener("change", compute);
+    });
+    compute();
+  </script>
+</body>
+</html>

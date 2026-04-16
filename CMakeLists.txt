@@ -1,11 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
-project(microdb VERSION 1.0.0 LANGUAGES C)
+project(microdb VERSION 1.0.0 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 option(MICRODB_BUILD_TESTS "Build tests" ON)
 option(MICRODB_BUILD_TOOLS "Build offline tools" ON)
 find_program(MICRODB_LLVM_READOBJ NAMES llvm-readobj llvm-readobj.exe PATHS "C:/Program Files/LLVM/bin")
@@ -363,6 +366,14 @@ install(
 
 install(
     FILES
+        include/microdb_capacity_profile.h
+        include/microdb_cpp_storage_profile.hpp
+        include/microdb_cpp.hpp
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(
+    FILES
         README.md
         LICENSE
     DESTINATION ${CMAKE_INSTALL_DATADIR}/microdb
@@ -583,6 +594,16 @@ if(MICRODB_BUILD_TESTS)
     target_compile_definitions(test_integration PRIVATE MICRODB_TEST_DB_PATH="integration_default.bin")
     target_link_libraries(test_integration PRIVATE microdb)
     add_test(NAME test_integration COMMAND test_integration)
+
+    add_executable(test_storage_capacity_profiles tests/test_storage_capacity_profiles.c)
+    target_include_directories(test_storage_capacity_profiles PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_storage_capacity_profiles PRIVATE microdb)
+    add_test(NAME test_storage_capacity_profiles COMMAND test_storage_capacity_profiles)
+
+    add_executable(test_cpp_wrapper tests/test_cpp_wrapper.cpp)
+    target_include_directories(test_cpp_wrapper PRIVATE include tests port/ram port/posix src)
+    target_link_libraries(test_cpp_wrapper PRIVATE microdb)
+    add_test(NAME test_cpp_wrapper COMMAND test_cpp_wrapper)
 
     add_executable(test_integration_8kb tests/test_integration.c)
     target_include_directories(test_integration_8kb PRIVATE include tests port/ram port/posix src)
