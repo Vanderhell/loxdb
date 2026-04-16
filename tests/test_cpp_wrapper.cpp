@@ -67,14 +67,20 @@ MDB_TEST(cpp_wrapper_reports_invalid_before_init) {
 
 MDB_TEST(cpp_wrapper_init_and_stats) {
     microdb_stats_t stats;
+#ifdef MICRODB_CAP_LIMIT_NONE
     microdb_db_stats_t dbs;
+#endif
 
     ASSERT_EQ(g_db.initialized(), 1);
     ASSERT_EQ(g_db.handle() != nullptr, 1);
     ASSERT_EQ(g_db.stats(&stats), MICRODB_OK);
+#ifdef MICRODB_CAP_LIMIT_NONE
     ASSERT_EQ(g_db.db_stats(&dbs), MICRODB_OK);
     ASSERT_GT(stats.kv_entries_max, 0u);
     ASSERT_EQ(dbs.last_runtime_error, MICRODB_OK);
+#else
+    ASSERT_GT(stats.kv_entries_max, 0u);
+#endif
 }
 
 MDB_TEST(cpp_wrapper_handle_allows_core_api_usage) {
@@ -124,6 +130,7 @@ MDB_TEST(cpp_wrapper_kv_iter_and_clear) {
     ASSERT_EQ(it.count, 0u);
 }
 
+#ifdef MICRODB_CAP_LIMIT_NONE
 MDB_TEST(cpp_wrapper_admit_kv_set) {
     microdb_admission_t a;
     uint8_t value = 5u;
@@ -132,6 +139,7 @@ MDB_TEST(cpp_wrapper_admit_kv_set) {
     ASSERT_EQ(a.status, MICRODB_OK);
     ASSERT_EQ(g_db.kv_put("admit", &value, 1u), MICRODB_OK);
 }
+#endif
 
 MDB_TEST(cpp_wrapper_kv_pod_helpers_roundtrip) {
     uint32_t in = 0xAABBCCDDu;
@@ -186,6 +194,7 @@ MDB_TEST(cpp_wrapper_ts_query_count_clear) {
     ASSERT_EQ(count, 0u);
 }
 
+#ifdef MICRODB_CAP_LIMIT_NONE
 MDB_TEST(cpp_wrapper_admit_ts_insert) {
     microdb_admission_t a;
     uint32_t v = 1u;
@@ -195,6 +204,7 @@ MDB_TEST(cpp_wrapper_admit_ts_insert) {
     ASSERT_EQ(a.status, MICRODB_OK);
     ASSERT_EQ(g_db.ts_insert("admit_ts", 1u, &v), MICRODB_OK);
 }
+#endif
 
 MDB_TEST(cpp_wrapper_ts_typed_helpers_u32) {
     microdb_ts_sample_t last;
@@ -258,7 +268,9 @@ MDB_TEST(cpp_wrapper_rel_iter_delete_clear_and_admit) {
     uint32_t deleted = 0u;
     uint32_t count = 0u;
     rel_iter_ctx_t it;
+#ifdef MICRODB_CAP_LIMIT_NONE
     microdb_admission_t a;
+#endif
     size_t row_size = 0u;
 
     ASSERT_EQ(g_db.rel_schema_init(&schema, "devices", 3u), MICRODB_OK);
@@ -281,8 +293,10 @@ MDB_TEST(cpp_wrapper_rel_iter_delete_clear_and_admit) {
     ASSERT_EQ(g_db.rel_iter(table, rel_iter_count_cb, &it), MICRODB_OK);
     ASSERT_EQ(it.count, 2u);
 
+#ifdef MICRODB_CAP_LIMIT_NONE
     ASSERT_EQ(g_db.admit_rel_insert("devices", row_size, &a), MICRODB_OK);
     ASSERT_EQ(a.status, MICRODB_OK);
+#endif
 
     ASSERT_EQ(g_db.rel_delete(table, &id1, &deleted), MICRODB_OK);
     ASSERT_EQ(deleted, 1u);
@@ -371,12 +385,16 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_prevents_double_init);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_kv_set_get_del_exists);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_kv_iter_and_clear);
+#ifdef MICRODB_CAP_LIMIT_NONE
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_admit_kv_set);
+#endif
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_kv_pod_helpers_roundtrip);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_kv_pod_helpers_null_out_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_ts_register_insert_last);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_ts_query_count_clear);
+#ifdef MICRODB_CAP_LIMIT_NONE
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_admit_ts_insert);
+#endif
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_ts_typed_helpers_u32);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_ts_typed_helpers_f32);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_create_insert_find_count);

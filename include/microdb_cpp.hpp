@@ -76,6 +76,7 @@ public:
         return microdb_stats(&db_, out);
     }
 
+#ifdef MICRODB_CAP_LIMIT_NONE
     microdb_err_t db_stats(microdb_db_stats_t *out) {
         if (!initialized_) {
             return MICRODB_ERR_INVALID;
@@ -117,6 +118,7 @@ public:
         }
         return microdb_get_pressure(&db_, out);
     }
+#endif
 
     microdb_err_t kv_set(const char *key, const void *val, size_t len, uint32_t ttl = 0u) {
         if (!initialized_) {
@@ -171,12 +173,14 @@ public:
         return microdb_kv_iter(&db_, cb, ctx);
     }
 
+#ifdef MICRODB_CAP_LIMIT_NONE
     microdb_err_t admit_kv_set(const char *key, size_t val_len, microdb_admission_t *out) {
         if (!initialized_) {
             return MICRODB_ERR_INVALID;
         }
         return microdb_admit_kv_set(&db_, key, val_len, out);
     }
+#endif
 
     template <typename T>
     microdb_err_t kv_put_pod(const char *key, const T &value, uint32_t ttl = 0u) {
@@ -251,12 +255,14 @@ public:
         return microdb_ts_clear(&db_, name);
     }
 
+#ifdef MICRODB_CAP_LIMIT_NONE
     microdb_err_t admit_ts_insert(const char *stream_name, size_t sample_len, microdb_admission_t *out) {
         if (!initialized_) {
             return MICRODB_ERR_INVALID;
         }
         return microdb_admit_ts_insert(&db_, stream_name, sample_len, out);
     }
+#endif
 
     microdb_err_t ts_register_f32(const char *name) {
         return ts_register(name, MICRODB_TS_F32, 0u);
@@ -389,12 +395,14 @@ public:
         return microdb_rel_clear(&db_, table);
     }
 
+#ifdef MICRODB_CAP_LIMIT_NONE
     microdb_err_t admit_rel_insert(const char *table_name, size_t row_len, microdb_admission_t *out) {
         if (!initialized_) {
             return MICRODB_ERR_INVALID;
         }
         return microdb_admit_rel_insert(&db_, table_name, row_len, out);
     }
+#endif
 
     microdb_err_t txn_begin() {
         if (!initialized_) {
