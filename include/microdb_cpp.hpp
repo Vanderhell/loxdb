@@ -177,6 +177,71 @@ public:
         return microdb_admit_kv_set(&db_, key, val_len, out);
     }
 
+    microdb_err_t ts_register(const char *name, microdb_ts_type_t type, size_t raw_size = 0u) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_ts_register(&db_, name, type, raw_size);
+    }
+
+    microdb_err_t ts_insert(const char *name, microdb_timestamp_t ts, const void *val) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_ts_insert(&db_, name, ts, val);
+    }
+
+    microdb_err_t ts_last(const char *name, microdb_ts_sample_t *out) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_ts_last(&db_, name, out);
+    }
+
+    microdb_err_t ts_query(const char *name,
+                           microdb_timestamp_t from,
+                           microdb_timestamp_t to,
+                           microdb_ts_query_cb_t cb,
+                           void *ctx) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_ts_query(&db_, name, from, to, cb, ctx);
+    }
+
+    microdb_err_t ts_query_buf(const char *name,
+                               microdb_timestamp_t from,
+                               microdb_timestamp_t to,
+                               microdb_ts_sample_t *buf,
+                               size_t max_count,
+                               size_t *out_count) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_ts_query_buf(&db_, name, from, to, buf, max_count, out_count);
+    }
+
+    microdb_err_t ts_count(const char *name, microdb_timestamp_t from, microdb_timestamp_t to, size_t *out_count) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_ts_count(&db_, name, from, to, out_count);
+    }
+
+    microdb_err_t ts_clear(const char *name) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_ts_clear(&db_, name);
+    }
+
+    microdb_err_t admit_ts_insert(const char *stream_name, size_t sample_len, microdb_admission_t *out) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_admit_ts_insert(&db_, stream_name, sample_len, out);
+    }
+
 private:
     microdb_t db_ {};
     bool initialized_ = false;

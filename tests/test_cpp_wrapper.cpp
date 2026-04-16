@@ -7,6 +7,9 @@ static microdb::cpp::Database g_db;
 typedef struct {
     uint32_t count;
 } iter_ctx_t;
+typedef struct {
+    uint32_t count;
+} ts_iter_ctx_t;
 
 static bool kv_iter_count_cb(const char *key, const void *val, size_t val_len, uint32_t ttl_remaining, void *ctx) {
     iter_ctx_t *it = (iter_ctx_t *)ctx;
@@ -14,6 +17,13 @@ static bool kv_iter_count_cb(const char *key, const void *val, size_t val_len, u
     (void)val;
     (void)val_len;
     (void)ttl_remaining;
+    it->count++;
+    return true;
+}
+
+static bool ts_iter_count_cb(const microdb_ts_sample_t *sample, void *ctx) {
+    ts_iter_ctx_t *it = (ts_iter_ctx_t *)ctx;
+    (void)sample;
     it->count++;
     return true;
 }
@@ -113,6 +123,53 @@ MDB_TEST(cpp_wrapper_admit_kv_set) {
     ASSERT_EQ(g_db.kv_put("admit", &value, 1u), MICRODB_OK);
 }
 
+MDB_TEST(cpp_wrapper_ts_register_insert_last) {
+    microdb_ts_sample_t last;
+    uint32_t v1 = 11u;
+    uint32_t v2 = 22u;
+
+    ASSERT_EQ(g_db.ts_register("temp", MICRODB_TS_U32, 0u), MICRODB_OK);
+    ASSERT_EQ(g_db.ts_insert("temp", 100u, &v1), MICRODB_OK);
+    ASSERT_EQ(g_db.ts_insert("temp", 101u, &v2), MICRODB_OK);
+    ASSERT_EQ(g_db.ts_last("temp", &last), MICRODB_OK);
+    ASSERT_EQ(last.ts, 101u);
+    ASSERT_EQ(last.v.u32, v2);
+}
+
+MDB_TEST(cpp_wrapper_ts_query_count_clear) {
+    uint32_t i;
+    size_t count = 0u;
+    microdb_ts_sample_t buf[8];
+    ts_iter_ctx_t it;
+
+    ASSERT_EQ(g_db.ts_register("q", MICRODB_TS_U32, 0u), MICRODB_OK);
+    for (i = 0u; i < 5u; ++i) {
+        uint32_t v = i;
+        ASSERT_EQ(g_db.ts_insert("q", 200u + i, &v), MICRODB_OK);
+    }
+
+    ASSERT_EQ(g_db.ts_count("q", 200u, 210u, &count), MICRODB_OK);
+    ASSERT_EQ(count, 5u);
+    ASSERT_EQ(g_db.ts_query_buf("q", 200u, 210u, buf, 8u, &count), MICRODB_OK);
+    ASSERT_EQ(count, 5u);
+    it.count = 0u;
+    ASSERT_EQ(g_db.ts_query("q", 200u, 210u, ts_iter_count_cb, &it), MICRODB_OK);
+    ASSERT_EQ(it.count, 5u);
+    ASSERT_EQ(g_db.ts_clear("q"), MICRODB_OK);
+    ASSERT_EQ(g_db.ts_count("q", 200u, 210u, &count), MICRODB_OK);
+    ASSERT_EQ(count, 0u);
+}
+
+MDB_TEST(cpp_wrapper_admit_ts_insert) {
+    microdb_admission_t a;
+    uint32_t v = 1u;
+
+    ASSERT_EQ(g_db.ts_register("admit_ts", MICRODB_TS_U32, 0u), MICRODB_OK);
+    ASSERT_EQ(g_db.admit_ts_insert("admit_ts", sizeof(v), &a), MICRODB_OK);
+    ASSERT_EQ(a.status, MICRODB_OK);
+    ASSERT_EQ(g_db.ts_insert("admit_ts", 1u, &v), MICRODB_OK);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_reports_invalid_before_init);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_init_and_stats);
@@ -121,5 +178,8 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_kv_set_get_del_exists);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_kv_iter_and_clear);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_admit_kv_set);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_ts_register_insert_last);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_ts_query_count_clear);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_admit_ts_insert);
     return MDB_RESULT();
 }
