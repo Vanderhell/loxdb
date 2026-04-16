@@ -941,8 +941,8 @@ if(MICRODB_BUILD_TESTS)
                 microdb_backend_open
                 microdb_backend_nand_stub
         )
-        add_test(NAME test_backend_managed_stress_smoke COMMAND test_backend_managed_stress)
-        add_test(NAME test_backend_managed_stress_long COMMAND test_backend_managed_stress --long)
+        add_test(NAME test_backend_managed_stress_smoke COMMAND test_backend_managed_stress --max-ms 5000)
+        add_test(NAME test_backend_managed_stress_long COMMAND test_backend_managed_stress --long --max-ms 20000)
         set_tests_properties(test_backend_managed_stress_smoke PROPERTIES LABELS "managed;stress;smoke")
         set_tests_properties(test_backend_managed_stress_long PROPERTIES LABELS "managed;stress;long" TIMEOUT 180)
 

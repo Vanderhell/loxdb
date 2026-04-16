@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 int microdb_backend_nand_stub_register(void);
 
@@ -295,13 +296,42 @@ MDB_TEST(managed_stress_long_mixed_workload) {
 
 int main(int argc, char **argv) {
     int run_long = 0;
-    if (argc > 1 && argv != NULL && argv[1] != NULL && strcmp(argv[1], "--long") == 0) {
-        run_long = 1;
+    long max_ms = -1;
+    int i;
+    int rc;
+    clock_t begin_ticks;
+    double elapsed_ms;
+
+    for (i = 1; i < argc; ++i) {
+        if (argv != NULL && argv[i] != NULL && strcmp(argv[i], "--long") == 0) {
+            run_long = 1;
+        } else if (argv != NULL && argv[i] != NULL && strcmp(argv[i], "--max-ms") == 0 && (i + 1) < argc) {
+            char *endptr = NULL;
+            long parsed = strtol(argv[i + 1], &endptr, 10);
+            if (endptr != NULL && *endptr == '\0' && parsed > 0) {
+                max_ms = parsed;
+            }
+            i++;
+        }
     }
+
+    begin_ticks = clock();
     if (run_long != 0) {
         MDB_RUN_TEST(setup_fixture, teardown_fixture, managed_stress_long_mixed_workload);
     } else {
         MDB_RUN_TEST(setup_fixture, teardown_fixture, managed_stress_smoke_mixed_workload);
     }
-    return MDB_RESULT();
+    rc = MDB_RESULT();
+
+    elapsed_ms = ((double)(clock() - begin_ticks) * 1000.0) / (double)CLOCKS_PER_SEC;
+    if (max_ms > 0 && elapsed_ms > (double)max_ms) {
+        fprintf(stderr,
+                "managed_stress_runtime_gate failed: elapsed=%.2f ms > budget=%ld ms\n",
+                elapsed_ms,
+                max_ms);
+        if (rc == EXIT_SUCCESS) {
+            rc = EXIT_FAILURE;
+        }
+    }
+    return rc;
 }

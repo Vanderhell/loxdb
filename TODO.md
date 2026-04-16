@@ -38,7 +38,8 @@
 - [done] Managed-path power-cut/reopen integration tests added (through backend-open wiring + WAL replay checks).
 - [done] Managed-path stress/fault matrix added (mixed KV/TS/REL + repeated crash/power-loss reopen cycles).
 - [done] Managed stress sliced into smoke/long CTest lanes.
-- [next] Define runtime envelope thresholds and wire them into CI pass/fail gates for managed long lane.
+- [done] Runtime envelope thresholds wired into managed stress smoke/long lanes (`--max-ms` gate).
+- [next] Calibrate per-platform threshold baselines and store them as release acceptance criteria.
 
 ### 1) Storage Capability Descriptor
 - Add capability fields to storage HAL:
