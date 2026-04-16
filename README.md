@@ -180,6 +180,7 @@ Core storage positioning: microdb core today natively supports byte-write durabl
 Optional backend adapter modules (modular, not linked into core by default):
 - `microdb_backend_registry` (adapter registration layer)
 - `microdb_backend_compat` (open-time `direct` / `via_adapter` / `unsupported` classification)
+- `microdb_backend_aligned_adapter` (RMW byte-write shim for aligned-write media)
 - stub modules for managed media (`nand/emmc/sd`) used for integration/testing flow
 
 Storage contract (fail-fast at `microdb_init`):

@@ -30,7 +30,9 @@
 - [done] 10.1 optional backend targets + strip-link gate.
 - [done] 1) capability descriptor module (microdb_backend_adapter.h) in optional adapter layer.
 - [done] 3) open-time compatibility classifier module (direct/via_adapter/unsupported) in optional adapter layer.
-- [next] Add integration decision flow usage and start ALIGNED adapter implementation.
+- [done] Decision flow helper by backend name (registry + compat composition).
+- [in_progress] 4) ALIGNED adapter implementation started (RMW + bounce buffer shim + tests as optional module).
+- [next] Integrate decision flow + adapter activation path into higher-level backend open wiring.
 
 ### 1) Storage Capability Descriptor
 - Add capability fields to storage HAL:
