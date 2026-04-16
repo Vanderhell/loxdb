@@ -32,7 +32,7 @@
 - [done] 1) capability descriptor module (microdb_backend_adapter.h) in optional adapter layer.
 - [done] 3) open-time compatibility classifier module (direct/via_adapter/unsupported) in optional adapter layer.
 - [done] Decision flow helper by backend name (registry + compat composition).
-- [in_progress] 4) ALIGNED adapter implementation started (RMW + bounce buffer shim + tests as optional module).
+- [done] 4) ALIGNED adapter implementation (RMW + bounce buffer shim + unit/integration recovery tests via backend-open path).
 - [done] Optional backend open wiring helper (decision + adapter activation path) added as separate module.
 - [done] Managed adapter skeleton module added (optional, linker-friendly split) + backend open wiring support.
 - [done] Additional managed media stubs wired and covered (NAND/eMMC/SD backend-open + decision tests).

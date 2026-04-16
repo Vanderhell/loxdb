@@ -1011,6 +1011,21 @@ if(MICRODB_BUILD_TESTS)
             message(STATUS "Skipping test_backend_open: requires aligned/nand/emmc/sd stub targets")
         endif()
 
+        add_executable(test_backend_aligned_recovery tests/test_backend_aligned_recovery.c)
+        target_include_directories(test_backend_aligned_recovery PRIVATE include tests src)
+        if(TARGET microdb_backend_aligned_stub)
+            target_link_libraries(
+                test_backend_aligned_recovery
+                PRIVATE
+                    microdb
+                    microdb_backend_open
+                    microdb_backend_aligned_stub
+            )
+            add_test(NAME test_backend_aligned_recovery COMMAND test_backend_aligned_recovery)
+        else()
+            message(STATUS "Skipping test_backend_aligned_recovery: requires aligned stub target")
+        endif()
+
         add_executable(test_backend_managed_recovery tests/test_backend_managed_recovery.c)
         target_include_directories(test_backend_managed_recovery PRIVATE include tests src)
         if(TARGET microdb_backend_nand_stub)
