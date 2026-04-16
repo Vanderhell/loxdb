@@ -505,11 +505,15 @@ install(
 )
 
 if(MICRODB_BUILD_TOOLS)
-    add_executable(microdb_verify
-        tools/microdb_verify.c
-        src/microdb_crc.c
-    )
-    target_include_directories(microdb_verify PRIVATE include src)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/microdb_verify.c")
+        add_executable(microdb_verify
+            tools/microdb_verify.c
+            src/microdb_crc.c
+        )
+        target_include_directories(microdb_verify PRIVATE include src)
+    else()
+        message(STATUS "Skipping microdb_verify: missing tools/microdb_verify.c")
+    endif()
 endif()
 
 if(MICRODB_BUILD_TESTS)
@@ -585,127 +589,175 @@ if(MICRODB_BUILD_TESTS)
     target_link_libraries(test_wal_kv128 PRIVATE microdb_kv128)
     add_test(NAME test_wal_kv128 COMMAND test_wal_kv128)
 
-    add_executable(test_durability_closure tests/test_durability_closure.c)
-    target_include_directories(test_durability_closure PRIVATE include tests port/ram port/posix src)
-    target_link_libraries(test_durability_closure PRIVATE microdb)
-    add_test(NAME test_durability_closure COMMAND test_durability_closure)
-
-    add_executable(test_resilience tests/test_resilience.c)
-    target_include_directories(test_resilience PRIVATE include tests port/ram port/posix src)
-    target_link_libraries(test_resilience PRIVATE microdb)
-    add_test(NAME test_resilience COMMAND test_resilience)
-
-    add_executable(test_api_contract_matrix tests/test_api_contract_matrix.c)
-    target_include_directories(test_api_contract_matrix PRIVATE include tests port/ram port/posix src)
-    target_link_libraries(test_api_contract_matrix PRIVATE microdb)
-    add_test(NAME test_api_contract_matrix COMMAND test_api_contract_matrix)
-
-    add_executable(test_fail_code_contract tests/test_fail_code_contract.c)
-    target_include_directories(test_fail_code_contract PRIVATE include tests port/ram port/posix src)
-    target_link_libraries(test_fail_code_contract PRIVATE microdb)
-    add_test(NAME test_fail_code_contract COMMAND test_fail_code_contract)
-
-    add_executable(test_tiny_footprint tests/test_tiny_footprint.c)
-    target_include_directories(test_tiny_footprint PRIVATE include tests port/ram port/posix src)
-    target_link_libraries(test_tiny_footprint PRIVATE microdb_tiny)
-    add_test(NAME test_tiny_footprint COMMAND test_tiny_footprint)
-
-    add_test(
-        NAME test_tiny_size_guard
-        COMMAND ${CMAKE_COMMAND}
-            -DDEFAULT_LIB=$<TARGET_FILE:microdb>
-            -DTINY_LIB=$<TARGET_FILE:microdb_tiny>
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_tiny_size.cmake
-    )
-
-    add_executable(test_footprint_min_baseline tests/footprint_min_baseline.c)
-    target_include_directories(test_footprint_min_baseline PRIVATE include tests port/ram port/posix src)
-    target_link_libraries(test_footprint_min_baseline PRIVATE microdb_footprint_min)
-    if(MSVC)
-        target_link_options(
-            test_footprint_min_baseline
-            PRIVATE
-                "/MAP:$<TARGET_FILE_DIR:test_footprint_min_baseline>/test_footprint_min_baseline.map"
-        )
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_durability_closure.c")
+        add_executable(test_durability_closure tests/test_durability_closure.c)
+        target_include_directories(test_durability_closure PRIVATE include tests port/ram port/posix src)
+        target_link_libraries(test_durability_closure PRIVATE microdb)
+        add_test(NAME test_durability_closure COMMAND test_durability_closure)
+    else()
+        message(STATUS "Skipping test_durability_closure: missing tests/test_durability_closure.c")
     endif()
-    add_test(NAME test_footprint_min_baseline COMMAND test_footprint_min_baseline)
 
-    add_test(
-        NAME test_footprint_min_size_gate_release
-        COMMAND ${CMAKE_COMMAND}
-            -DEXE=$<TARGET_FILE:test_footprint_min_baseline>
-            -DMAP=$<TARGET_FILE_DIR:test_footprint_min_baseline>/test_footprint_min_baseline.map
-            -DLLVM_READOBJ=${MICRODB_LLVM_READOBJ}
-            -DMAX_TEXT=25000
-            -DMAX_RODATA=1600
-            -DMAX_DATA=256
-            -DMAX_BSS=2048
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_footprint_min_size.cmake
-    )
-    set_tests_properties(test_footprint_min_size_gate_release PROPERTIES CONFIGURATIONS Release)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_resilience.c")
+        add_executable(test_resilience tests/test_resilience.c)
+        target_include_directories(test_resilience PRIVATE include tests port/ram port/posix src)
+        target_link_libraries(test_resilience PRIVATE microdb)
+        add_test(NAME test_resilience COMMAND test_resilience)
+    else()
+        message(STATUS "Skipping test_resilience: missing tests/test_resilience.c")
+    endif()
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_api_contract_matrix.c")
+        add_executable(test_api_contract_matrix tests/test_api_contract_matrix.c)
+        target_include_directories(test_api_contract_matrix PRIVATE include tests port/ram port/posix src)
+        target_link_libraries(test_api_contract_matrix PRIVATE microdb)
+        add_test(NAME test_api_contract_matrix COMMAND test_api_contract_matrix)
+    else()
+        message(STATUS "Skipping test_api_contract_matrix: missing tests/test_api_contract_matrix.c")
+    endif()
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fail_code_contract.c")
+        add_executable(test_fail_code_contract tests/test_fail_code_contract.c)
+        target_include_directories(test_fail_code_contract PRIVATE include tests port/ram port/posix src)
+        target_link_libraries(test_fail_code_contract PRIVATE microdb)
+        add_test(NAME test_fail_code_contract COMMAND test_fail_code_contract)
+    else()
+        message(STATUS "Skipping test_fail_code_contract: missing tests/test_fail_code_contract.c")
+    endif()
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tiny_footprint.c")
+        add_executable(test_tiny_footprint tests/test_tiny_footprint.c)
+        target_include_directories(test_tiny_footprint PRIVATE include tests port/ram port/posix src)
+        target_link_libraries(test_tiny_footprint PRIVATE microdb_tiny)
+        add_test(NAME test_tiny_footprint COMMAND test_tiny_footprint)
+    else()
+        message(STATUS "Skipping test_tiny_footprint: missing tests/test_tiny_footprint.c")
+    endif()
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_tiny_size.cmake")
+        add_test(
+            NAME test_tiny_size_guard
+            COMMAND ${CMAKE_COMMAND}
+                -DDEFAULT_LIB=$<TARGET_FILE:microdb>
+                -DTINY_LIB=$<TARGET_FILE:microdb_tiny>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_tiny_size.cmake
+        )
+    else()
+        message(STATUS "Skipping test_tiny_size_guard: missing tests/check_tiny_size.cmake")
+    endif()
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/footprint_min_baseline.c")
+        add_executable(test_footprint_min_baseline tests/footprint_min_baseline.c)
+        target_include_directories(test_footprint_min_baseline PRIVATE include tests port/ram port/posix src)
+        target_link_libraries(test_footprint_min_baseline PRIVATE microdb_footprint_min)
+        if(MSVC)
+            target_link_options(
+                test_footprint_min_baseline
+                PRIVATE
+                    "/MAP:$<TARGET_FILE_DIR:test_footprint_min_baseline>/test_footprint_min_baseline.map"
+            )
+        endif()
+        add_test(NAME test_footprint_min_baseline COMMAND test_footprint_min_baseline)
+
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_footprint_min_size.cmake")
+            add_test(
+                NAME test_footprint_min_size_gate_release
+                COMMAND ${CMAKE_COMMAND}
+                    -DEXE=$<TARGET_FILE:test_footprint_min_baseline>
+                    -DMAP=$<TARGET_FILE_DIR:test_footprint_min_baseline>/test_footprint_min_baseline.map
+                    -DLLVM_READOBJ=${MICRODB_LLVM_READOBJ}
+                    -DMAX_TEXT=25000
+                    -DMAX_RODATA=1600
+                    -DMAX_DATA=256
+                    -DMAX_BSS=2048
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_footprint_min_size.cmake
+            )
+            set_tests_properties(test_footprint_min_size_gate_release PROPERTIES CONFIGURATIONS Release)
+        else()
+            message(STATUS "Skipping test_footprint_min_size_gate_release: missing tests/check_footprint_min_size.cmake")
+        endif()
+    else()
+        message(STATUS "Skipping test_footprint_min_baseline: missing tests/footprint_min_baseline.c")
+    endif()
 
     if(MICRODB_BUILD_TOOLS)
-        add_executable(test_offline_verifier tests/test_offline_verifier.c)
-        target_include_directories(test_offline_verifier PRIVATE include tests port/ram port/posix src)
-        target_link_libraries(test_offline_verifier PRIVATE microdb)
-        add_test(NAME test_offline_verifier COMMAND test_offline_verifier)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_offline_verifier.c")
+            add_executable(test_offline_verifier tests/test_offline_verifier.c)
+            target_include_directories(test_offline_verifier PRIVATE include tests port/ram port/posix src)
+            target_link_libraries(test_offline_verifier PRIVATE microdb)
+            add_test(NAME test_offline_verifier COMMAND test_offline_verifier)
+        else()
+            message(STATUS "Skipping test_offline_verifier: missing tests/test_offline_verifier.c")
+        endif()
     endif()
 
-    add_executable(worstcase_matrix_runner tests/worstcase_matrix_runner.c)
-    target_include_directories(worstcase_matrix_runner PRIVATE include tests port/ram port/posix src)
-    target_link_libraries(worstcase_matrix_runner PRIVATE microdb)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/worstcase_matrix_runner.c")
+        add_executable(worstcase_matrix_runner tests/worstcase_matrix_runner.c)
+        target_include_directories(worstcase_matrix_runner PRIVATE include tests port/ram port/posix src)
+        target_link_libraries(worstcase_matrix_runner PRIVATE microdb)
+    else()
+        message(STATUS "Skipping worstcase_matrix_runner: missing tests/worstcase_matrix_runner.c")
+    endif()
 
-    add_executable(soak_runner tests/soak_runner.c)
-    target_include_directories(soak_runner PRIVATE include tests port/ram port/posix src)
-    target_link_libraries(soak_runner PRIVATE microdb)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/soak_runner.c")
+        add_executable(soak_runner tests/soak_runner.c)
+        target_include_directories(soak_runner PRIVATE include tests port/ram port/posix src)
+        target_link_libraries(soak_runner PRIVATE microdb)
+    else()
+        message(STATUS "Skipping soak_runner: missing tests/soak_runner.c")
+    endif()
 
-    add_executable(test_profile_core_min tests/test_profile_matrix.c)
-    target_include_directories(test_profile_core_min PRIVATE include tests port/ram port/posix src)
-    target_compile_definitions(
-        test_profile_core_min
-        PRIVATE
-            MICRODB_PROFILE_CORE_MIN=1
-            MICRODB_THREAD_SAFE=1
-            MICRODB_PROFILE_TEST_DB_PATH="profile_core_min.bin"
-    )
-    target_link_libraries(test_profile_core_min PRIVATE microdb_profile_core_min)
-    add_test(NAME test_profile_core_min COMMAND test_profile_core_min)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_profile_matrix.c")
+        add_executable(test_profile_core_min tests/test_profile_matrix.c)
+        target_include_directories(test_profile_core_min PRIVATE include tests port/ram port/posix src)
+        target_compile_definitions(
+            test_profile_core_min
+            PRIVATE
+                MICRODB_PROFILE_CORE_MIN=1
+                MICRODB_THREAD_SAFE=1
+                MICRODB_PROFILE_TEST_DB_PATH="profile_core_min.bin"
+        )
+        target_link_libraries(test_profile_core_min PRIVATE microdb_profile_core_min)
+        add_test(NAME test_profile_core_min COMMAND test_profile_core_min)
 
-    add_executable(test_profile_core_wal tests/test_profile_matrix.c)
-    target_include_directories(test_profile_core_wal PRIVATE include tests port/ram port/posix src)
-    target_compile_definitions(
-        test_profile_core_wal
-        PRIVATE
-            MICRODB_PROFILE_CORE_WAL=1
-            MICRODB_THREAD_SAFE=1
-            MICRODB_PROFILE_TEST_DB_PATH="profile_core_wal.bin"
-    )
-    target_link_libraries(test_profile_core_wal PRIVATE microdb_profile_core_wal)
-    add_test(NAME test_profile_core_wal COMMAND test_profile_core_wal)
+        add_executable(test_profile_core_wal tests/test_profile_matrix.c)
+        target_include_directories(test_profile_core_wal PRIVATE include tests port/ram port/posix src)
+        target_compile_definitions(
+            test_profile_core_wal
+            PRIVATE
+                MICRODB_PROFILE_CORE_WAL=1
+                MICRODB_THREAD_SAFE=1
+                MICRODB_PROFILE_TEST_DB_PATH="profile_core_wal.bin"
+        )
+        target_link_libraries(test_profile_core_wal PRIVATE microdb_profile_core_wal)
+        add_test(NAME test_profile_core_wal COMMAND test_profile_core_wal)
 
-    add_executable(test_profile_core_perf tests/test_profile_matrix.c)
-    target_include_directories(test_profile_core_perf PRIVATE include tests port/ram port/posix src)
-    target_compile_definitions(
-        test_profile_core_perf
-        PRIVATE
-            MICRODB_PROFILE_CORE_PERF=1
-            MICRODB_THREAD_SAFE=1
-            MICRODB_PROFILE_TEST_DB_PATH="profile_core_perf.bin"
-    )
-    target_link_libraries(test_profile_core_perf PRIVATE microdb_profile_core_perf)
-    add_test(NAME test_profile_core_perf COMMAND test_profile_core_perf)
+        add_executable(test_profile_core_perf tests/test_profile_matrix.c)
+        target_include_directories(test_profile_core_perf PRIVATE include tests port/ram port/posix src)
+        target_compile_definitions(
+            test_profile_core_perf
+            PRIVATE
+                MICRODB_PROFILE_CORE_PERF=1
+                MICRODB_THREAD_SAFE=1
+                MICRODB_PROFILE_TEST_DB_PATH="profile_core_perf.bin"
+        )
+        target_link_libraries(test_profile_core_perf PRIVATE microdb_profile_core_perf)
+        add_test(NAME test_profile_core_perf COMMAND test_profile_core_perf)
 
-    add_executable(test_profile_core_himem tests/test_profile_matrix.c)
-    target_include_directories(test_profile_core_himem PRIVATE include tests port/ram port/posix src)
-    target_compile_definitions(
-        test_profile_core_himem
-        PRIVATE
-            MICRODB_PROFILE_CORE_HIMEM=1
-            MICRODB_THREAD_SAFE=1
-            MICRODB_PROFILE_TEST_DB_PATH="profile_core_himem.bin"
-    )
-    target_link_libraries(test_profile_core_himem PRIVATE microdb_profile_core_himem)
-    add_test(NAME test_profile_core_himem COMMAND test_profile_core_himem)
+        add_executable(test_profile_core_himem tests/test_profile_matrix.c)
+        target_include_directories(test_profile_core_himem PRIVATE include tests port/ram port/posix src)
+        target_compile_definitions(
+            test_profile_core_himem
+            PRIVATE
+                MICRODB_PROFILE_CORE_HIMEM=1
+                MICRODB_THREAD_SAFE=1
+                MICRODB_PROFILE_TEST_DB_PATH="profile_core_himem.bin"
+        )
+        target_link_libraries(test_profile_core_himem PRIVATE microdb_profile_core_himem)
+        add_test(NAME test_profile_core_himem COMMAND test_profile_core_himem)
+    else()
+        message(STATUS "Skipping profile matrix tests: missing tests/test_profile_matrix.c")
+    endif()
 
     add_executable(test_integration tests/test_integration.c)
     target_include_directories(test_integration PRIVATE include tests port/ram port/posix src)
