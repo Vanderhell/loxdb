@@ -25,6 +25,28 @@
         "MICRODB_MANAGED_STRESS_SMOKE_MAX_MS": "5000",
         "MICRODB_MANAGED_STRESS_LONG_MAX_MS": "20000"
       }
+    },
+    {
+      "name": "release-linux",
+      "displayName": "Release Linux",
+      "binaryDir": "${sourceDir}/build/release-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MICRODB_BUILD_TESTS": "ON",
+        "MICRODB_MANAGED_STRESS_SMOKE_MAX_MS": "4000",
+        "MICRODB_MANAGED_STRESS_LONG_MAX_MS": "16000"
+      }
+    },
+    {
+      "name": "release-windows",
+      "displayName": "Release Windows",
+      "binaryDir": "${sourceDir}/build/release-windows",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MICRODB_BUILD_TESTS": "ON",
+        "MICRODB_MANAGED_STRESS_SMOKE_MAX_MS": "7000",
+        "MICRODB_MANAGED_STRESS_LONG_MAX_MS": "25000"
+      }
     }
   ],
   "buildPresets": [
@@ -37,6 +59,16 @@
       "name": "ci-debug-windows",
       "configurePreset": "ci-debug-windows",
       "configuration": "Debug"
+    },
+    {
+      "name": "release-linux",
+      "configurePreset": "release-linux",
+      "configuration": "Release"
+    },
+    {
+      "name": "release-windows",
+      "configurePreset": "release-windows",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
@@ -52,6 +84,22 @@
       "name": "ci-debug-windows",
       "configurePreset": "ci-debug-windows",
       "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-linux",
+      "configurePreset": "release-linux",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-windows",
+      "configurePreset": "release-windows",
+      "configuration": "Release",
       "output": {
         "outputOnFailure": true
       }

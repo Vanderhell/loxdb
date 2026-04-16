@@ -20,9 +20,17 @@ jobs:
           - os: ubuntu-latest
             label: linux-x64
             archive_ext: tar.gz
+            configure_preset: release-linux
+            build_preset: release-linux
+            test_preset: release-linux
+            build_dir: build/release-linux
           - os: windows-latest
             label: windows-x64
             archive_ext: zip
+            configure_preset: release-windows
+            build_preset: release-windows
+            test_preset: release-windows
+            build_dir: build/release-windows
 
     steps:
       - name: Checkout
@@ -40,16 +48,16 @@ jobs:
           echo "value=${VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMICRODB_BUILD_TESTS=ON
+        run: cmake --preset ${{ matrix.configure_preset }}
 
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build --preset ${{ matrix.build_preset }}
 
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: ctest --preset ${{ matrix.test_preset }}
 
       - name: Install
-        run: cmake --install build --config Release --prefix stage/microdb-${{ steps.version.outputs.value }}-${{ matrix.label }}
+        run: cmake --install ${{ matrix.build_dir }} --config Release --prefix stage/microdb-${{ steps.version.outputs.value }}-${{ matrix.label }}
 
       - name: Package archive (Linux)
         if: runner.os == 'Linux'

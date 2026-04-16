@@ -27,6 +27,17 @@ Defined in `CMakePresets.json` and consumed by `.github/workflows/ci.yml`:
   - `MICRODB_MANAGED_STRESS_SMOKE_MAX_MS=5000`
   - `MICRODB_MANAGED_STRESS_LONG_MAX_MS=20000`
 
+## Release Presets (Current)
+
+Defined in `CMakePresets.json` and consumed by `.github/workflows/release.yml`:
+
+- `release-linux`:
+  - `MICRODB_MANAGED_STRESS_SMOKE_MAX_MS=4000`
+  - `MICRODB_MANAGED_STRESS_LONG_MAX_MS=16000`
+- `release-windows`:
+  - `MICRODB_MANAGED_STRESS_SMOKE_MAX_MS=7000`
+  - `MICRODB_MANAGED_STRESS_LONG_MAX_MS=25000`
+
 ## Reference Baseline (Windows, Debug, local)
 
 - Date: 2026-04-16
