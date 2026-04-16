@@ -341,6 +341,27 @@ public:
         return microdb_admit_rel_insert(&db_, table_name, row_len, out);
     }
 
+    microdb_err_t txn_begin() {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_txn_begin(&db_);
+    }
+
+    microdb_err_t txn_commit() {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_txn_commit(&db_);
+    }
+
+    microdb_err_t txn_rollback() {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_txn_rollback(&db_);
+    }
+
 private:
     microdb_t db_ {};
     bool initialized_ = false;

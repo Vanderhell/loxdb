@@ -257,7 +257,37 @@ MDB_TEST(cpp_wrapper_rel_iter_delete_clear_and_admit) {
     ASSERT_EQ(count, 0u);
 }
 
+MDB_TEST(cpp_wrapper_txn_reports_invalid_before_init) {
+    microdb::cpp::Database db;
+
+    ASSERT_EQ(db.txn_begin(), MICRODB_ERR_INVALID);
+    ASSERT_EQ(db.txn_commit(), MICRODB_ERR_INVALID);
+    ASSERT_EQ(db.txn_rollback(), MICRODB_ERR_INVALID);
+}
+
+MDB_TEST(cpp_wrapper_txn_commit_persists_kv) {
+    uint8_t value = 33u;
+    uint8_t out = 0u;
+
+    ASSERT_EQ(g_db.txn_begin(), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_put("txn_k", &value, 1u), MICRODB_OK);
+    ASSERT_EQ(g_db.txn_commit(), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_get("txn_k", &out, sizeof(out), nullptr), MICRODB_OK);
+    ASSERT_EQ(out, value);
+}
+
+MDB_TEST(cpp_wrapper_txn_rollback_discards_kv) {
+    uint8_t value = 44u;
+    uint8_t out = 0u;
+
+    ASSERT_EQ(g_db.txn_begin(), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_put("txn_r", &value, 1u), MICRODB_OK);
+    ASSERT_EQ(g_db.txn_rollback(), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_get("txn_r", &out, sizeof(out), nullptr), MICRODB_ERR_NOT_FOUND);
+}
+
 int main(void) {
+    MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_txn_reports_invalid_before_init);
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_reports_invalid_before_init);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_init_and_stats);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_handle_allows_core_api_usage);
@@ -270,5 +300,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_admit_ts_insert);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_create_insert_find_count);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_iter_delete_clear_and_admit);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_txn_commit_persists_kv);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_txn_rollback_discards_kv);
     return MDB_RESULT();
 }
