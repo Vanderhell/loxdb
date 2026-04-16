@@ -10,6 +10,9 @@ typedef struct {
 typedef struct {
     uint32_t count;
 } ts_iter_ctx_t;
+typedef struct {
+    uint32_t count;
+} rel_iter_ctx_t;
 
 static bool kv_iter_count_cb(const char *key, const void *val, size_t val_len, uint32_t ttl_remaining, void *ctx) {
     iter_ctx_t *it = (iter_ctx_t *)ctx;
@@ -24,6 +27,13 @@ static bool kv_iter_count_cb(const char *key, const void *val, size_t val_len, u
 static bool ts_iter_count_cb(const microdb_ts_sample_t *sample, void *ctx) {
     ts_iter_ctx_t *it = (ts_iter_ctx_t *)ctx;
     (void)sample;
+    it->count++;
+    return true;
+}
+
+static bool rel_iter_count_cb(const void *row_buf, void *ctx) {
+    rel_iter_ctx_t *it = (rel_iter_ctx_t *)ctx;
+    (void)row_buf;
     it->count++;
     return true;
 }
@@ -170,6 +180,83 @@ MDB_TEST(cpp_wrapper_admit_ts_insert) {
     ASSERT_EQ(g_db.ts_insert("admit_ts", 1u, &v), MICRODB_OK);
 }
 
+MDB_TEST(cpp_wrapper_rel_create_insert_find_count) {
+    microdb_schema_t schema;
+    microdb_table_t *table = nullptr;
+    uint8_t row[128] = { 0 };
+    uint8_t out_row[128] = { 0 };
+    uint32_t id = 7u;
+    uint8_t age = 31u;
+    uint8_t age_out = 0u;
+    size_t age_len = 0u;
+    size_t row_size = 0u;
+    uint32_t count = 0u;
+
+    ASSERT_EQ(g_db.rel_schema_init(&schema, "users", 4u), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_schema_add(&schema, "id", MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_schema_add(&schema, "age", MICRODB_COL_U8, sizeof(uint8_t), false), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_schema_seal(&schema), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_table_create(&schema), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_table_get("users", &table), MICRODB_OK);
+    row_size = g_db.rel_table_row_size(table);
+    ASSERT_EQ(row_size <= sizeof(row), 1);
+    ASSERT_EQ(row_size <= sizeof(out_row), 1);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "id", &id), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "age", &age), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_insert(table, row), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_count(table, &count), MICRODB_OK);
+    ASSERT_EQ(count, 1u);
+    ASSERT_EQ(g_db.rel_find_by(table, "id", &id, out_row), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_row_get(table, out_row, "age", &age_out, &age_len), MICRODB_OK);
+    ASSERT_EQ(age_len, 1u);
+    ASSERT_EQ(age_out, age);
+}
+
+MDB_TEST(cpp_wrapper_rel_iter_delete_clear_and_admit) {
+    microdb_schema_t schema;
+    microdb_table_t *table = nullptr;
+    uint8_t row[128] = { 0 };
+    uint32_t id1 = 1u;
+    uint32_t id2 = 2u;
+    uint8_t state = 1u;
+    uint32_t deleted = 0u;
+    uint32_t count = 0u;
+    rel_iter_ctx_t it;
+    microdb_admission_t a;
+    size_t row_size = 0u;
+
+    ASSERT_EQ(g_db.rel_schema_init(&schema, "devices", 3u), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_schema_add(&schema, "id", MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_schema_add(&schema, "state", MICRODB_COL_U8, sizeof(uint8_t), false), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_schema_seal(&schema), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_table_create(&schema), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_table_get("devices", &table), MICRODB_OK);
+    row_size = g_db.rel_table_row_size(table);
+    ASSERT_EQ(row_size <= sizeof(row), 1);
+
+    ASSERT_EQ(g_db.rel_row_set(table, row, "id", &id1), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "state", &state), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_insert(table, row), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "id", &id2), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "state", &state), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_insert(table, row), MICRODB_OK);
+
+    it.count = 0u;
+    ASSERT_EQ(g_db.rel_iter(table, rel_iter_count_cb, &it), MICRODB_OK);
+    ASSERT_EQ(it.count, 2u);
+
+    ASSERT_EQ(g_db.admit_rel_insert("devices", row_size, &a), MICRODB_OK);
+    ASSERT_EQ(a.status, MICRODB_OK);
+
+    ASSERT_EQ(g_db.rel_delete(table, &id1, &deleted), MICRODB_OK);
+    ASSERT_EQ(deleted, 1u);
+    ASSERT_EQ(g_db.rel_count(table, &count), MICRODB_OK);
+    ASSERT_EQ(count, 1u);
+    ASSERT_EQ(g_db.rel_clear(table), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_count(table, &count), MICRODB_OK);
+    ASSERT_EQ(count, 0u);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_reports_invalid_before_init);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_init_and_stats);
@@ -181,5 +268,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_ts_register_insert_last);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_ts_query_count_clear);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_admit_ts_insert);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_create_insert_find_count);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_iter_delete_clear_and_admit);
     return MDB_RESULT();
 }
