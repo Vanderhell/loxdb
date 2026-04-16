@@ -119,3 +119,39 @@ Dry-run preview:
   -PresetsPath ./CMakePresets.json `
   -DryRun
 ```
+
+## Finalize Calibration Pass
+
+Use script:
+
+- `scripts/finalize-managed-calibration.ps1`
+
+This runs the full pass in one command:
+
+- recommendation generation
+- candidate preset patching
+- policy gate on budget drops (max allowed decrease %)
+- optional apply to `CMakePresets.json`
+
+Example (review only):
+
+```powershell
+./scripts/finalize-managed-calibration.ps1 `
+  -InputDir ./baseline-artifacts `
+  -PresetsPath ./CMakePresets.json `
+  -MinSamplesPerOs 8 `
+  -MaxBudgetDecreasePct 15 `
+  -OutputDir ./calibration-finalize
+```
+
+Example (apply after gate pass):
+
+```powershell
+./scripts/finalize-managed-calibration.ps1 `
+  -InputDir ./baseline-artifacts `
+  -PresetsPath ./CMakePresets.json `
+  -MinSamplesPerOs 8 `
+  -MaxBudgetDecreasePct 15 `
+  -OutputDir ./calibration-finalize `
+  -Apply
+```
