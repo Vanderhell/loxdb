@@ -87,3 +87,25 @@ pwsh ./scripts/recommend-managed-baselines.ps1 `
   -OutputJson ./managed-baseline-recommendations.json `
   -OutputMarkdown ./managed-baseline-recommendations.md
 ```
+
+## Apply Recommendations
+
+Use script:
+
+- `scripts/apply-managed-thresholds.ps1`
+
+It reads recommendation JSON and updates matching presets in `CMakePresets.json`:
+
+- `ci-debug-linux`
+- `ci-debug-windows`
+- `release-linux`
+- `release-windows`
+
+Dry-run preview:
+
+```powershell
+./scripts/apply-managed-thresholds.ps1 `
+  -RecommendationsJson ./managed-baseline-recommendations.json `
+  -PresetsPath ./CMakePresets.json `
+  -DryRun
+```
