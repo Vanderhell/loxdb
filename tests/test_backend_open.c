@@ -5,10 +5,12 @@
 #include <string.h>
 
 int microdb_backend_aligned_stub_register(void);
+int microdb_backend_nand_stub_register(void);
 
 typedef struct {
     uint8_t mem[256];
     uint32_t write_calls;
+    uint32_t write_size;
 } raw_ctx_t;
 
 static raw_ctx_t g_raw;
@@ -27,7 +29,13 @@ static microdb_err_t raw_write(void *ctx, uint32_t offset, const void *buf, size
     if (raw == NULL || buf == NULL || ((size_t)offset + len) > sizeof(raw->mem)) {
         return MICRODB_ERR_STORAGE;
     }
-    if ((offset % 16u) != 0u || (len % 16u) != 0u || len == 0u) {
+    if (len == 0u) {
+        return MICRODB_ERR_STORAGE;
+    }
+    if (raw->write_size == 0u) {
+        return MICRODB_ERR_STORAGE;
+    }
+    if ((offset % raw->write_size) != 0u || (len % raw->write_size) != 0u) {
         return MICRODB_ERR_STORAGE;
     }
     memcpy(raw->mem + offset, buf, len);
@@ -65,6 +73,7 @@ static microdb_storage_capability_t byte_capability(void) {
 static void setup_open(void) {
     memset(&g_raw, 0, sizeof(g_raw));
     memset(g_raw.mem, 0xFF, sizeof(g_raw.mem));
+    g_raw.write_size = 16u;
     microdb_backend_registry_reset();
 }
 
@@ -83,6 +92,7 @@ MDB_TEST(backend_open_unknown_backend_rejected) {
 }
 
 MDB_TEST(backend_open_byte_backend_direct_passthrough) {
+    g_raw.write_size = 1u;
     microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 64u, 1u, &g_raw };
     microdb_backend_open_session_t session;
     microdb_storage_t *effective = NULL;
@@ -97,6 +107,7 @@ MDB_TEST(backend_open_byte_backend_direct_passthrough) {
 }
 
 MDB_TEST(backend_open_aligned_requires_adapter_flag) {
+    g_raw.write_size = 16u;
     microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 64u, 16u, &g_raw };
     microdb_backend_open_session_t session;
     microdb_storage_t *effective = NULL;
@@ -108,6 +119,7 @@ MDB_TEST(backend_open_aligned_requires_adapter_flag) {
 
 MDB_TEST(backend_open_aligned_uses_adapter_shim) {
     static const uint8_t payload[3] = { 0xA1u, 0xA2u, 0xA3u };
+    g_raw.write_size = 16u;
     microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 64u, 16u, &g_raw };
     microdb_backend_open_session_t session;
     microdb_storage_t *effective = NULL;
@@ -127,10 +139,32 @@ MDB_TEST(backend_open_aligned_uses_adapter_shim) {
     ASSERT_EQ(session.using_aligned_adapter, 0);
 }
 
+MDB_TEST(backend_open_managed_uses_managed_adapter) {
+    static const uint8_t payload[3] = { 0xB1u, 0xB2u, 0xB3u };
+    g_raw.write_size = 1u;
+    microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 64u, 1u, &g_raw };
+    microdb_backend_open_session_t session;
+    microdb_storage_t *effective = NULL;
+
+    ASSERT_EQ(microdb_backend_nand_stub_register(), 0);
+    ASSERT_EQ(microdb_backend_open_prepare("nand_stub", &raw, 0u, 1u, &session, &effective), MICRODB_OK);
+    ASSERT_EQ(session.using_managed_adapter, 1);
+    ASSERT_EQ(effective != NULL, 1);
+    ASSERT_EQ(effective->write_size, 1);
+
+    ASSERT_EQ(effective->write(effective->ctx, 5u, payload, sizeof(payload)), MICRODB_OK);
+    ASSERT_EQ(g_raw.mem[5], 0xB1);
+    ASSERT_EQ(g_raw.mem[7], 0xB3);
+
+    microdb_backend_open_release(&session);
+    ASSERT_EQ(session.using_managed_adapter, 0);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_unknown_backend_rejected);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_byte_backend_direct_passthrough);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_aligned_requires_adapter_flag);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_aligned_uses_adapter_shim);
+    MDB_RUN_TEST(setup_open, teardown_open, backend_open_managed_uses_managed_adapter);
     return MDB_RESULT();
 }

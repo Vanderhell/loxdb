@@ -6,6 +6,7 @@
 #include "microdb.h"
 #include "microdb_backend_aligned_adapter.h"
 #include "microdb_backend_decision.h"
+#include "microdb_backend_managed_adapter.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -14,7 +15,9 @@ extern "C" {
 typedef struct {
     microdb_storage_t adapted_storage;
     microdb_backend_aligned_adapter_ctx_t aligned_ctx;
+    microdb_backend_managed_adapter_ctx_t managed_ctx;
     uint8_t using_aligned_adapter;
+    uint8_t using_managed_adapter;
     microdb_backend_open_result_t last_decision;
 } microdb_backend_open_session_t;
 

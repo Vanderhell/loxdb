@@ -61,7 +61,14 @@ microdb_err_t microdb_backend_open_prepare(const char *backend_name,
     }
 
     if (adapter->capability.backend_class == MICRODB_BACKEND_CLASS_MANAGED) {
-        return MICRODB_ERR_DISABLED;
+        microdb_err_t rc =
+            microdb_backend_managed_adapter_init(&session->adapted_storage, &session->managed_ctx, raw_storage);
+        if (rc != MICRODB_OK) {
+            return rc;
+        }
+        session->using_managed_adapter = 1u;
+        *out_storage = &session->adapted_storage;
+        return MICRODB_OK;
     }
 
     return MICRODB_ERR_INVALID;
@@ -73,6 +80,9 @@ void microdb_backend_open_release(microdb_backend_open_session_t *session) {
     }
     if (session->using_aligned_adapter != 0u) {
         microdb_backend_aligned_adapter_deinit(&session->adapted_storage);
+    }
+    if (session->using_managed_adapter != 0u) {
+        microdb_backend_managed_adapter_deinit(&session->adapted_storage);
     }
     microdb_backend_open_session_reset(session);
 }

@@ -181,6 +181,7 @@ Optional backend adapter modules (modular, not linked into core by default):
 - `microdb_backend_registry` (adapter registration layer)
 - `microdb_backend_compat` (open-time `direct` / `via_adapter` / `unsupported` classification)
 - `microdb_backend_aligned_adapter` (RMW byte-write shim for aligned-write media)
+- `microdb_backend_managed_adapter` (managed-media adapter skeleton for eMMC/SD/NAND via managed interface)
 - `microdb_backend_open` (decision + adapter wiring helper for optional backend flow)
 - stub modules for managed media (`nand/emmc/sd`) used for integration/testing flow
 

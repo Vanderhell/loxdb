@@ -324,6 +324,9 @@ if(MICRODB_BUILD_OPTIONAL_BACKENDS)
     add_library(microdb_backend_aligned_adapter STATIC src/backends/microdb_backend_aligned_adapter.c)
     target_include_directories(microdb_backend_aligned_adapter PUBLIC include PRIVATE src)
 
+    add_library(microdb_backend_managed_adapter STATIC src/backends/microdb_backend_managed_adapter.c)
+    target_include_directories(microdb_backend_managed_adapter PUBLIC include PRIVATE src)
+
     add_library(microdb_backend_open STATIC src/backends/microdb_backend_open.c)
     target_include_directories(microdb_backend_open PUBLIC include PRIVATE src)
     target_link_libraries(
@@ -332,6 +335,7 @@ if(MICRODB_BUILD_OPTIONAL_BACKENDS)
             microdb_backend_decision
             microdb_backend_registry
             microdb_backend_aligned_adapter
+            microdb_backend_managed_adapter
     )
 
     add_library(microdb_backend_aligned_stub STATIC src/backends/microdb_backend_aligned_stub.c)
@@ -357,6 +361,7 @@ if(MICRODB_BUILD_OPTIONAL_BACKENDS)
             microdb_backend_compat
             microdb_backend_decision
             microdb_backend_aligned_adapter
+            microdb_backend_managed_adapter
             microdb_backend_open
             microdb_backend_aligned_stub
             microdb_backend_nand_stub
@@ -368,6 +373,7 @@ endif()
 # Hard gate: core must never directly link optional backend modules.
 foreach(_optional_backend_target
         microdb_backend_aligned_adapter
+        microdb_backend_managed_adapter
         microdb_backend_open
         microdb_backend_aligned_stub
         microdb_backend_nand_stub
@@ -410,6 +416,7 @@ if(MSVC)
         target_compile_options(microdb_backend_compat PRIVATE /W4)
         target_compile_options(microdb_backend_decision PRIVATE /W4)
         target_compile_options(microdb_backend_aligned_adapter PRIVATE /W4)
+        target_compile_options(microdb_backend_managed_adapter PRIVATE /W4)
         target_compile_options(microdb_backend_open PRIVATE /W4)
         target_compile_options(microdb_backend_aligned_stub PRIVATE /W4)
         target_compile_options(microdb_backend_nand_stub PRIVATE /W4)
@@ -442,6 +449,7 @@ else()
         target_compile_options(microdb_backend_compat PRIVATE -Wall -Wextra -Wpedantic)
         target_compile_options(microdb_backend_decision PRIVATE -Wall -Wextra -Wpedantic)
         target_compile_options(microdb_backend_aligned_adapter PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(microdb_backend_managed_adapter PRIVATE -Wall -Wextra -Wpedantic)
         target_compile_options(microdb_backend_open PRIVATE -Wall -Wextra -Wpedantic)
         target_compile_options(microdb_backend_aligned_stub PRIVATE -Wall -Wextra -Wpedantic)
         target_compile_options(microdb_backend_nand_stub PRIVATE -Wall -Wextra -Wpedantic)
@@ -473,6 +481,7 @@ install(
         include/microdb_backend_compat.h
         include/microdb_backend_decision.h
         include/microdb_backend_aligned_adapter.h
+        include/microdb_backend_managed_adapter.h
         include/microdb_backend_open.h
         include/microdb_cpp_storage_profile.hpp
         include/microdb_cpp.hpp
@@ -883,6 +892,11 @@ if(MICRODB_BUILD_TESTS)
         target_link_libraries(test_backend_aligned_adapter PRIVATE microdb_backend_aligned_adapter)
         add_test(NAME test_backend_aligned_adapter COMMAND test_backend_aligned_adapter)
 
+        add_executable(test_backend_managed_adapter tests/test_backend_managed_adapter.c)
+        target_include_directories(test_backend_managed_adapter PRIVATE include tests src)
+        target_link_libraries(test_backend_managed_adapter PRIVATE microdb_backend_managed_adapter)
+        add_test(NAME test_backend_managed_adapter COMMAND test_backend_managed_adapter)
+
         add_executable(test_backend_registry tests/test_backend_registry.c)
         target_include_directories(test_backend_registry PRIVATE include tests src)
         target_link_libraries(
@@ -903,6 +917,7 @@ if(MICRODB_BUILD_TESTS)
             PRIVATE
                 microdb_backend_open
                 microdb_backend_aligned_stub
+                microdb_backend_nand_stub
         )
         add_test(NAME test_backend_open COMMAND test_backend_open)
 

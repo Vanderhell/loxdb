@@ -33,7 +33,8 @@
 - [done] Decision flow helper by backend name (registry + compat composition).
 - [in_progress] 4) ALIGNED adapter implementation started (RMW + bounce buffer shim + tests as optional module).
 - [done] Optional backend open wiring helper (decision + adapter activation path) added as separate module.
-- [next] Start managed adapter skeleton (eMMC/NAND via managed layer contract) while keeping linker-friendly split.
+- [done] Managed adapter skeleton module added (optional, linker-friendly split) + backend open wiring support.
+- [next] Extend managed adapter with explicit FTL expectations and failure semantics (power-cut/recovery oriented tests).
 
 ### 1) Storage Capability Descriptor
 - Add capability fields to storage HAL:
