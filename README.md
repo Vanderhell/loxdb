@@ -200,6 +200,7 @@ Managed adapter contract (fail-fast):
 - `scripts/recommend-managed-baselines.ps1` computes recommended thresholds from historical baseline artifacts (`p95 + margin`)
 - baseline refresh workflow now also publishes aggregated recommendation artifacts (`json` + `md`)
 - `scripts/apply-managed-thresholds.ps1` can apply recommendation JSON directly to preset budgets (`--dry-run` supported)
+- baseline refresh workflow publishes candidate preset patch artifacts (candidate `CMakePresets.json` + diff)
 
 Storage contract (fail-fast at `microdb_init`):
 - `erase_size` must be `> 0`

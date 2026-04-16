@@ -120,6 +120,31 @@ jobs:
           "### Managed baseline threshold recommendations" >> $env:GITHUB_STEP_SUMMARY
           Get-Content ./managed-baseline-recommendations.md | Select-Object -First 20 >> $env:GITHUB_STEP_SUMMARY
 
+      - name: Build candidate presets update (dry-run + preview)
+        shell: pwsh
+        run: |
+          Copy-Item ./CMakePresets.json ./CMakePresets.candidate.json -Force
+
+          ./scripts/apply-managed-thresholds.ps1 `
+            -RecommendationsJson ./managed-baseline-recommendations.json `
+            -PresetsPath ./CMakePresets.candidate.json `
+            -DryRun |
+            Tee-Object -FilePath ./managed-threshold-apply-dryrun.log
+
+          ./scripts/apply-managed-thresholds.ps1 `
+            -RecommendationsJson ./managed-baseline-recommendations.json `
+            -PresetsPath ./CMakePresets.candidate.json |
+            Tee-Object -FilePath ./managed-threshold-apply.log
+
+          git diff --no-index -- CMakePresets.json CMakePresets.candidate.json > managed-threshold-presets.diff
+
+          "### Candidate preset update preview" >> $env:GITHUB_STEP_SUMMARY
+          if (Test-Path ./managed-threshold-presets.diff) {
+            Get-Content ./managed-threshold-presets.diff | Select-Object -First 80 >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            "No diff produced." >> $env:GITHUB_STEP_SUMMARY
+          }
+
       - name: Upload recommendation artifact
         uses: actions/upload-artifact@v4
         with:
@@ -128,3 +153,7 @@ jobs:
             managed-baseline-recommendations.json
             managed-baseline-recommendations.md
             managed-baseline-recommendations.log
+            managed-threshold-apply-dryrun.log
+            managed-threshold-apply.log
+            managed-threshold-presets.diff
+            CMakePresets.candidate.json

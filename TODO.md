@@ -46,7 +46,8 @@
 - [done] Recommendation tool added to compute thresholds from historical artifacts (`scripts/recommend-managed-baselines.ps1`).
 - [done] Baseline refresh workflow now runs aggregate recommendation step and publishes threshold report artifacts.
 - [done] Apply tool added to patch preset thresholds from recommendation JSON (`scripts/apply-managed-thresholds.ps1`).
-- [next] Run first multi-week calibration pass, review output, and apply accepted thresholds into presets.
+- [done] Baseline refresh workflow now emits candidate preset update artifacts (`CMakePresets.candidate.json` + diff).
+- [next] Run first multi-week calibration pass, review candidate diffs, and apply accepted thresholds into presets.
 
 ### 1) Storage Capability Descriptor
 - Add capability fields to storage HAL:
