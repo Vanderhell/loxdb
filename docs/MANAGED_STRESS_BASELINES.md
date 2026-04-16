@@ -61,3 +61,27 @@ Recommended update loop:
 1. Review last 8-12 baseline artifacts per platform.
 2. Set acceptance band to stay above p95 runtime + safety margin.
 3. Update preset thresholds in `CMakePresets.json`.
+
+## Recommendation Tool
+
+Use script:
+
+- `scripts/recommend-managed-baselines.ps1`
+
+It scans baseline JSON files and computes recommended budgets using:
+
+- percentile (default `p95`)
+- margin percentage (default `20%`)
+- minimum absolute headroom (default `50 ms`)
+
+Example:
+
+```powershell
+pwsh ./scripts/recommend-managed-baselines.ps1 `
+  -InputDir ./baseline-artifacts `
+  -Quantile 0.95 `
+  -MarginPct 20 `
+  -MinHeadroomMs 50 `
+  -OutputJson ./managed-baseline-recommendations.json `
+  -OutputMarkdown ./managed-baseline-recommendations.md
+```

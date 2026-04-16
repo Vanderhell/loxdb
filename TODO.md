@@ -43,7 +43,8 @@
 - [done] Calibrated thresholds wired into CI matrix via `CMakePresets.json` (`ci-debug-linux` / `ci-debug-windows`).
 - [done] Release workflow now consumes dedicated release presets (`release-linux` / `release-windows`) with profile-specific managed stress budgets.
 - [done] Periodic baseline refresh task added (scheduled CI + artifacts with measured runtimes/budgets).
-- [next] Recalibrate acceptance bands from accumulated historical artifacts (p95 + safety margin) per platform.
+- [done] Recommendation tool added to compute thresholds from historical artifacts (`scripts/recommend-managed-baselines.ps1`).
+- [next] Run first multi-week calibration pass and apply recommended thresholds into presets.
 
 ### 1) Storage Capability Descriptor
 - Add capability fields to storage HAL:
