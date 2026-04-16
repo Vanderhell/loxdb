@@ -189,6 +189,7 @@ Managed adapter contract (fail-fast):
 - validates storage hooks and non-zero capacity/erase geometry
 - default expectations require byte-write contract and a successful `sync` probe at mount time
 - exposes an explicit expectations override API for controlled integration/testing
+- managed recovery integration tests cover reopen/power-loss behavior through backend-open wiring
 
 Storage contract (fail-fast at `microdb_init`):
 - `erase_size` must be `> 0`

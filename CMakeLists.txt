@@ -921,6 +921,17 @@ if(MICRODB_BUILD_TESTS)
         )
         add_test(NAME test_backend_open COMMAND test_backend_open)
 
+        add_executable(test_backend_managed_recovery tests/test_backend_managed_recovery.c)
+        target_include_directories(test_backend_managed_recovery PRIVATE include tests src)
+        target_link_libraries(
+            test_backend_managed_recovery
+            PRIVATE
+                microdb
+                microdb_backend_open
+                microdb_backend_nand_stub
+        )
+        add_test(NAME test_backend_managed_recovery COMMAND test_backend_managed_recovery)
+
         add_test(
             NAME test_optional_backend_strip_gate
             COMMAND ${CMAKE_COMMAND}
