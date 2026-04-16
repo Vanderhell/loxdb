@@ -37,7 +37,8 @@
 - [done] Managed adapter expectations + mount sync-probe failure semantics added with tests.
 - [done] Managed-path power-cut/reopen integration tests added (through backend-open wiring + WAL replay checks).
 - [done] Managed-path stress/fault matrix added (mixed KV/TS/REL + repeated crash/power-loss reopen cycles).
-- [next] Add managed-path CI slicing (fast smoke vs long stress lane) and thresholds for runtime envelope.
+- [done] Managed stress sliced into smoke/long CTest lanes.
+- [next] Define runtime envelope thresholds and wire them into CI pass/fail gates for managed long lane.
 
 ### 1) Storage Capability Descriptor
 - Add capability fields to storage HAL:

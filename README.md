@@ -191,6 +191,7 @@ Managed adapter contract (fail-fast):
 - exposes an explicit expectations override API for controlled integration/testing
 - managed recovery integration tests cover reopen/power-loss behavior through backend-open wiring
 - managed stress test covers mixed KV/TS/REL operations across repeated crash/power-loss reopen cycles
+- managed stress is sliced into `smoke` and `long` CTest lanes for faster default validation and deeper fault runs
 
 Storage contract (fail-fast at `microdb_init`):
 - `erase_size` must be `> 0`

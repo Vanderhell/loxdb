@@ -212,7 +212,7 @@ static void teardown_fixture(void) {
     microdb_backend_registry_reset();
 }
 
-MDB_TEST(managed_stress_mixed_workload_with_repeated_power_loss) {
+static void run_managed_stress_workload(uint32_t iterations, uint32_t reopen_period) {
     model_t model;
     microdb_table_t *table = NULL;
     uint32_t i;
@@ -221,7 +221,7 @@ MDB_TEST(managed_stress_mixed_workload_with_repeated_power_loss) {
     create_ts_stream_if_missing();
     create_rel_table_if_missing(&table);
 
-    for (i = 0u; i < 320u; ++i) {
+    for (i = 0u; i < iterations; ++i) {
         uint32_t op = rng_next() % 5u;
         if (op <= 1u) {
             uint32_t idx = rng_next() % MODEL_KV_KEYS;
@@ -274,7 +274,7 @@ MDB_TEST(managed_stress_mixed_workload_with_repeated_power_loss) {
             }
         }
 
-        if (((i + 1u) % 32u) == 0u) {
+        if (reopen_period != 0u && ((i + 1u) % reopen_period) == 0u) {
             power_loss_reset_to_durable();
             managed_crash_reopen();
             ASSERT_EQ(microdb_table_get(&g_db, "users", &table), MICRODB_OK);
@@ -285,7 +285,23 @@ MDB_TEST(managed_stress_mixed_workload_with_repeated_power_loss) {
     verify_model(&model);
 }
 
-int main(void) {
-    MDB_RUN_TEST(setup_fixture, teardown_fixture, managed_stress_mixed_workload_with_repeated_power_loss);
+MDB_TEST(managed_stress_smoke_mixed_workload) {
+    run_managed_stress_workload(320u, 32u);
+}
+
+MDB_TEST(managed_stress_long_mixed_workload) {
+    run_managed_stress_workload(1600u, 40u);
+}
+
+int main(int argc, char **argv) {
+    int run_long = 0;
+    if (argc > 1 && argv != NULL && argv[1] != NULL && strcmp(argv[1], "--long") == 0) {
+        run_long = 1;
+    }
+    if (run_long != 0) {
+        MDB_RUN_TEST(setup_fixture, teardown_fixture, managed_stress_long_mixed_workload);
+    } else {
+        MDB_RUN_TEST(setup_fixture, teardown_fixture, managed_stress_smoke_mixed_workload);
+    }
     return MDB_RESULT();
 }
