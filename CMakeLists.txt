@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 option(MICRODB_BUILD_TESTS "Build tests" ON)
 option(MICRODB_BUILD_TOOLS "Build offline tools" ON)
+option(MICRODB_BUILD_OPTIONAL_BACKENDS "Build optional backend adapter modules (not linked into core)" ON)
 find_program(MICRODB_LLVM_READOBJ NAMES llvm-readobj llvm-readobj.exe PATHS "C:/Program Files/LLVM/bin")
 
 add_library(microdb
@@ -304,6 +305,41 @@ create_microdb_profile_variant(microdb_profile_core_wal MICRODB_PROFILE_CORE_WAL
 create_microdb_profile_variant(microdb_profile_core_perf MICRODB_PROFILE_CORE_PERF)
 create_microdb_profile_variant(microdb_profile_core_himem MICRODB_PROFILE_CORE_HIMEM)
 
+if(MICRODB_BUILD_OPTIONAL_BACKENDS)
+    add_library(microdb_backend_nand_stub STATIC src/backends/microdb_backend_nand_stub.c)
+    target_include_directories(microdb_backend_nand_stub PUBLIC include PRIVATE src)
+
+    add_library(microdb_backend_emmc_stub STATIC src/backends/microdb_backend_emmc_stub.c)
+    target_include_directories(microdb_backend_emmc_stub PUBLIC include PRIVATE src)
+
+    add_library(microdb_backend_sd_stub STATIC src/backends/microdb_backend_sd_stub.c)
+    target_include_directories(microdb_backend_sd_stub PUBLIC include PRIVATE src)
+
+    add_custom_target(
+        microdb_optional_backends_all
+        DEPENDS
+            microdb_backend_nand_stub
+            microdb_backend_emmc_stub
+            microdb_backend_sd_stub
+    )
+endif()
+
+# Hard gate: core must never directly link optional backend modules.
+foreach(_optional_backend_target
+        microdb_backend_nand_stub
+        microdb_backend_emmc_stub
+        microdb_backend_sd_stub)
+    if(TARGET ${_optional_backend_target})
+        get_target_property(_microdb_links microdb LINK_LIBRARIES)
+        if(_microdb_links)
+            list(FIND _microdb_links ${_optional_backend_target} _linked_idx)
+            if(NOT _linked_idx EQUAL -1)
+                message(FATAL_ERROR "Core target 'microdb' must not link optional backend target '${_optional_backend_target}'")
+            endif()
+        endif()
+    endif()
+endforeach()
+
 if(MSVC)
     target_compile_options(microdb PRIVATE /W4)
     target_compile_options(microdb_reject PRIVATE /W4)
@@ -325,6 +361,11 @@ if(MSVC)
     target_compile_options(microdb_profile_core_wal PRIVATE /W4)
     target_compile_options(microdb_profile_core_perf PRIVATE /W4)
     target_compile_options(microdb_profile_core_himem PRIVATE /W4)
+    if(TARGET microdb_backend_nand_stub)
+        target_compile_options(microdb_backend_nand_stub PRIVATE /W4)
+        target_compile_options(microdb_backend_emmc_stub PRIVATE /W4)
+        target_compile_options(microdb_backend_sd_stub PRIVATE /W4)
+    endif()
 else()
     target_compile_options(microdb PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_reject PRIVATE -Wall -Wextra -Wpedantic)
@@ -346,6 +387,11 @@ else()
     target_compile_options(microdb_profile_core_wal PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_profile_core_perf PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_profile_core_himem PRIVATE -Wall -Wextra -Wpedantic)
+    if(TARGET microdb_backend_nand_stub)
+        target_compile_options(microdb_backend_nand_stub PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(microdb_backend_emmc_stub PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(microdb_backend_sd_stub PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
 endif()
 
 install(
@@ -754,6 +800,16 @@ if(MICRODB_BUILD_TESTS)
             -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/invalid_pct_sum.obj
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_invalid_pct_sum.cmake
     )
+
+    if(MICRODB_BUILD_OPTIONAL_BACKENDS)
+        add_test(
+            NAME test_optional_backend_strip_gate
+            COMMAND ${CMAKE_COMMAND}
+                -DDEFAULT_LIB=$<TARGET_FILE:microdb>
+                -DLLVM_READOBJ=${MICRODB_LLVM_READOBJ}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_optional_backends_unlinked.cmake
+        )
+    endif()
 endif()
 
 if(DEFINED IDF_TARGET)
