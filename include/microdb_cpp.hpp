@@ -117,6 +117,66 @@ public:
         return microdb_get_pressure(&db_, out);
     }
 
+    microdb_err_t kv_set(const char *key, const void *val, size_t len, uint32_t ttl = 0u) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_kv_set(&db_, key, val, len, ttl);
+    }
+
+    microdb_err_t kv_put(const char *key, const void *val, size_t len) {
+        return kv_set(key, val, len, 0u);
+    }
+
+    microdb_err_t kv_get(const char *key, void *buf, size_t buf_len, size_t *out_len = nullptr) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_kv_get(&db_, key, buf, buf_len, out_len);
+    }
+
+    microdb_err_t kv_del(const char *key) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_kv_del(&db_, key);
+    }
+
+    microdb_err_t kv_exists(const char *key) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_kv_exists(&db_, key);
+    }
+
+    microdb_err_t kv_clear() {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_kv_clear(&db_);
+    }
+
+    microdb_err_t kv_purge_expired() {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_kv_purge_expired(&db_);
+    }
+
+    microdb_err_t kv_iter(microdb_kv_iter_cb_t cb, void *ctx) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_kv_iter(&db_, cb, ctx);
+    }
+
+    microdb_err_t admit_kv_set(const char *key, size_t val_len, microdb_admission_t *out) {
+        if (!initialized_) {
+            return MICRODB_ERR_INVALID;
+        }
+        return microdb_admit_kv_set(&db_, key, val_len, out);
+    }
+
 private:
     microdb_t db_ {};
     bool initialized_ = false;

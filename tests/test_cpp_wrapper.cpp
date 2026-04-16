@@ -4,6 +4,19 @@
 #include <cstring>
 
 static microdb::cpp::Database g_db;
+typedef struct {
+    uint32_t count;
+} iter_ctx_t;
+
+static bool kv_iter_count_cb(const char *key, const void *val, size_t val_len, uint32_t ttl_remaining, void *ctx) {
+    iter_ctx_t *it = (iter_ctx_t *)ctx;
+    (void)key;
+    (void)val;
+    (void)val_len;
+    (void)ttl_remaining;
+    it->count++;
+    return true;
+}
 
 static void setup_noop(void) {
 }
@@ -61,10 +74,52 @@ MDB_TEST(cpp_wrapper_prevents_double_init) {
     ASSERT_EQ(g_db.init(cfg), MICRODB_ERR_INVALID);
 }
 
+MDB_TEST(cpp_wrapper_kv_set_get_del_exists) {
+    uint8_t value = 42u;
+    uint8_t out = 0u;
+    size_t out_len = 0u;
+
+    ASSERT_EQ(g_db.kv_set("k", &value, sizeof(value), 0u), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_exists("k"), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_get("k", &out, sizeof(out), &out_len), MICRODB_OK);
+    ASSERT_EQ(out_len, 1u);
+    ASSERT_EQ(out, value);
+    ASSERT_EQ(g_db.kv_del("k"), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_exists("k"), MICRODB_ERR_NOT_FOUND);
+}
+
+MDB_TEST(cpp_wrapper_kv_iter_and_clear) {
+    uint8_t value = 1u;
+    iter_ctx_t it;
+
+    ASSERT_EQ(g_db.kv_put("a", &value, 1u), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_put("b", &value, 1u), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_put("c", &value, 1u), MICRODB_OK);
+    it.count = 0u;
+    ASSERT_EQ(g_db.kv_iter(kv_iter_count_cb, &it), MICRODB_OK);
+    ASSERT_EQ(it.count, 3u);
+    ASSERT_EQ(g_db.kv_clear(), MICRODB_OK);
+    it.count = 0u;
+    ASSERT_EQ(g_db.kv_iter(kv_iter_count_cb, &it), MICRODB_OK);
+    ASSERT_EQ(it.count, 0u);
+}
+
+MDB_TEST(cpp_wrapper_admit_kv_set) {
+    microdb_admission_t a;
+    uint8_t value = 5u;
+
+    ASSERT_EQ(g_db.admit_kv_set("admit", 1u, &a), MICRODB_OK);
+    ASSERT_EQ(a.status, MICRODB_OK);
+    ASSERT_EQ(g_db.kv_put("admit", &value, 1u), MICRODB_OK);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_reports_invalid_before_init);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_init_and_stats);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_handle_allows_core_api_usage);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_prevents_double_init);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_kv_set_get_del_exists);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_kv_iter_and_clear);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_admit_kv_set);
     return MDB_RESULT();
 }
