@@ -72,6 +72,39 @@ microdb_cfg_t cfg = {
 microdb_init(&db, &cfg);
 ```
 
+## C++ wrapper (incremental)
+
+Header:
+- `include/microdb_cpp.hpp`
+
+Current wrapper surface:
+- lifecycle: `init/deinit/flush`
+- diagnostics: `stats`, `db_stats`, `kv_stats`, `ts_stats`, `rel_stats`, `effective_capacity`, `pressure`
+- KV: `kv_set/kv_put/kv_get/kv_del/kv_exists/kv_iter/kv_clear/kv_purge_expired`, `admit_kv_set`
+- TS: `ts_register/ts_insert/ts_last/ts_query/ts_query_buf/ts_count/ts_clear`, `admit_ts_insert`
+- REL: schema/table helpers + `rel_insert/find/find_by/delete/iter/count/clear`, `admit_rel_insert`
+- txn: `txn_begin/txn_commit/txn_rollback`
+
+Minimal example:
+```cpp
+#include "microdb_cpp.hpp"
+
+microdb::cpp::Database db;
+microdb_cfg_t cfg{};
+cfg.ram_kb = 32u;
+if (db.init(cfg) != MICRODB_OK) { /* handle error */ }
+
+uint8_t v = 7u, out = 0u;
+db.kv_put("k", &v, 1u);
+db.kv_get("k", &out, 1u);
+
+db.txn_begin();
+db.kv_put("k2", &v, 1u);
+db.txn_commit();
+
+db.deinit();
+```
+
 **3. Use all three engines:**
 ```c
 // Key-value
