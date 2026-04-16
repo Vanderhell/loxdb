@@ -36,7 +36,8 @@
 - [done] Managed adapter skeleton module added (optional, linker-friendly split) + backend open wiring support.
 - [done] Managed adapter expectations + mount sync-probe failure semantics added with tests.
 - [done] Managed-path power-cut/reopen integration tests added (through backend-open wiring + WAL replay checks).
-- [next] Expand managed-path stress/fault matrix (mixed KV/TS/REL workloads across repeated crash cycles).
+- [done] Managed-path stress/fault matrix added (mixed KV/TS/REL + repeated crash/power-loss reopen cycles).
+- [next] Add managed-path CI slicing (fast smoke vs long stress lane) and thresholds for runtime envelope.
 
 ### 1) Storage Capability Descriptor
 - Add capability fields to storage HAL:

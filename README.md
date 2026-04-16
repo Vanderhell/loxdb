@@ -190,6 +190,7 @@ Managed adapter contract (fail-fast):
 - default expectations require byte-write contract and a successful `sync` probe at mount time
 - exposes an explicit expectations override API for controlled integration/testing
 - managed recovery integration tests cover reopen/power-loss behavior through backend-open wiring
+- managed stress test covers mixed KV/TS/REL operations across repeated crash/power-loss reopen cycles
 
 Storage contract (fail-fast at `microdb_init`):
 - `erase_size` must be `> 0`
