@@ -16,8 +16,12 @@ option(MICRODB_BUILD_BACKEND_ALIGNED_STUB "Build aligned backend stub module" ON
 option(MICRODB_BUILD_BACKEND_NAND_STUB "Build NAND managed backend stub module" ON)
 option(MICRODB_BUILD_BACKEND_EMMC_STUB "Build eMMC managed backend stub module" ON)
 option(MICRODB_BUILD_BACKEND_SD_STUB "Build SD managed backend stub module" ON)
+option(MICRODB_BUILD_BACKEND_FS_STUB "Build filesystem managed backend stub module" ON)
+option(MICRODB_BUILD_BACKEND_BLOCK_STUB "Build block-device managed backend stub module" ON)
 set(MICRODB_MANAGED_STRESS_SMOKE_MAX_MS "5000" CACHE STRING "Runtime budget (ms) for managed stress smoke lane")
 set(MICRODB_MANAGED_STRESS_LONG_MAX_MS "20000" CACHE STRING "Runtime budget (ms) for managed stress long lane")
+set(MICRODB_FS_MATRIX_SMOKE_MAX_MS "6000" CACHE STRING "Runtime budget (ms) for fs/block matrix smoke lane")
+set(MICRODB_FS_MATRIX_LONG_MAX_MS "25000" CACHE STRING "Runtime budget (ms) for fs/block matrix long lane")
 find_program(MICRODB_LLVM_READOBJ NAMES llvm-readobj llvm-readobj.exe PATHS "C:/Program Files/LLVM/bin")
 
 add_library(microdb
@@ -340,6 +344,10 @@ if(MICRODB_BUILD_OPTIONAL_BACKENDS)
     target_include_directories(microdb_backend_managed_adapter PUBLIC include PRIVATE src)
     list(APPEND MICRODB_OPTIONAL_BACKEND_TARGETS microdb_backend_managed_adapter)
 
+    add_library(microdb_backend_fs_adapter STATIC src/backends/microdb_backend_fs_adapter.c)
+    target_include_directories(microdb_backend_fs_adapter PUBLIC include PRIVATE src)
+    list(APPEND MICRODB_OPTIONAL_BACKEND_TARGETS microdb_backend_fs_adapter)
+
     add_library(microdb_backend_open STATIC src/backends/microdb_backend_open.c)
     target_include_directories(microdb_backend_open PUBLIC include PRIVATE src)
     target_link_libraries(
@@ -348,6 +356,7 @@ if(MICRODB_BUILD_OPTIONAL_BACKENDS)
             microdb_backend_decision
             microdb_backend_registry
             microdb_backend_aligned_adapter
+            microdb_backend_fs_adapter
             microdb_backend_managed_adapter
     )
     list(APPEND MICRODB_OPTIONAL_BACKEND_TARGETS microdb_backend_open)
@@ -380,6 +389,20 @@ if(MICRODB_BUILD_OPTIONAL_BACKENDS)
         list(APPEND MICRODB_OPTIONAL_BACKEND_TARGETS microdb_backend_sd_stub)
     endif()
 
+    if(MICRODB_BUILD_BACKEND_FS_STUB)
+        add_library(microdb_backend_fs_stub STATIC src/backends/microdb_backend_fs_stub.c)
+        target_include_directories(microdb_backend_fs_stub PUBLIC include PRIVATE src)
+        target_link_libraries(microdb_backend_fs_stub PUBLIC microdb_backend_registry)
+        list(APPEND MICRODB_OPTIONAL_BACKEND_TARGETS microdb_backend_fs_stub)
+    endif()
+
+    if(MICRODB_BUILD_BACKEND_BLOCK_STUB)
+        add_library(microdb_backend_block_stub STATIC src/backends/microdb_backend_block_stub.c)
+        target_include_directories(microdb_backend_block_stub PUBLIC include PRIVATE src)
+        target_link_libraries(microdb_backend_block_stub PUBLIC microdb_backend_registry)
+        list(APPEND MICRODB_OPTIONAL_BACKEND_TARGETS microdb_backend_block_stub)
+    endif()
+
     add_custom_target(
         microdb_optional_backends_all
         DEPENDS ${MICRODB_OPTIONAL_BACKEND_TARGETS}
@@ -390,11 +413,14 @@ endif()
 foreach(_optional_backend_target
         microdb_backend_aligned_adapter
         microdb_backend_managed_adapter
+        microdb_backend_fs_adapter
         microdb_backend_open
         microdb_backend_aligned_stub
         microdb_backend_nand_stub
         microdb_backend_emmc_stub
-        microdb_backend_sd_stub)
+        microdb_backend_sd_stub
+        microdb_backend_fs_stub
+        microdb_backend_block_stub)
     if(TARGET ${_optional_backend_target})
         get_target_property(_microdb_links microdb LINK_LIBRARIES)
         if(_microdb_links)
@@ -433,11 +459,14 @@ if(MSVC)
             microdb_backend_decision
             microdb_backend_aligned_adapter
             microdb_backend_managed_adapter
+            microdb_backend_fs_adapter
             microdb_backend_open
             microdb_backend_aligned_stub
             microdb_backend_nand_stub
             microdb_backend_emmc_stub
-            microdb_backend_sd_stub)
+            microdb_backend_sd_stub
+            microdb_backend_fs_stub
+            microdb_backend_block_stub)
         if(TARGET ${_opt_target})
             target_compile_options(${_opt_target} PRIVATE /W4)
         endif()
@@ -469,11 +498,14 @@ else()
             microdb_backend_decision
             microdb_backend_aligned_adapter
             microdb_backend_managed_adapter
+            microdb_backend_fs_adapter
             microdb_backend_open
             microdb_backend_aligned_stub
             microdb_backend_nand_stub
             microdb_backend_emmc_stub
-            microdb_backend_sd_stub)
+            microdb_backend_sd_stub
+            microdb_backend_fs_stub
+            microdb_backend_block_stub)
         if(TARGET ${_opt_target})
             target_compile_options(${_opt_target} PRIVATE -Wall -Wextra -Wpedantic)
         endif()
@@ -504,6 +536,7 @@ install(
         include/microdb_backend_decision.h
         include/microdb_backend_aligned_adapter.h
         include/microdb_backend_managed_adapter.h
+        include/microdb_backend_fs_adapter.h
         include/microdb_backend_open.h
         include/microdb_cpp_storage_profile.hpp
         include/microdb_cpp.hpp
@@ -953,7 +986,7 @@ if(MICRODB_BUILD_TESTS)
 
         add_executable(test_backend_decision tests/test_backend_decision.c)
         target_include_directories(test_backend_decision PRIVATE include tests src)
-        if(TARGET microdb_backend_nand_stub AND TARGET microdb_backend_emmc_stub AND TARGET microdb_backend_sd_stub)
+        if(TARGET microdb_backend_nand_stub AND TARGET microdb_backend_emmc_stub AND TARGET microdb_backend_sd_stub AND TARGET microdb_backend_fs_stub AND TARGET microdb_backend_block_stub)
             target_link_libraries(
                 test_backend_decision
                 PRIVATE
@@ -961,10 +994,12 @@ if(MICRODB_BUILD_TESTS)
                     microdb_backend_nand_stub
                     microdb_backend_emmc_stub
                     microdb_backend_sd_stub
+                    microdb_backend_fs_stub
+                    microdb_backend_block_stub
             )
             add_test(NAME test_backend_decision COMMAND test_backend_decision)
         else()
-            message(STATUS "Skipping test_backend_decision: requires nand/emmc/sd stub targets")
+            message(STATUS "Skipping test_backend_decision: requires nand/emmc/sd/fs/block stub targets")
         endif()
 
         add_executable(test_backend_aligned_adapter tests/test_backend_aligned_adapter.c)
@@ -977,9 +1012,14 @@ if(MICRODB_BUILD_TESTS)
         target_link_libraries(test_backend_managed_adapter PRIVATE microdb_backend_managed_adapter)
         add_test(NAME test_backend_managed_adapter COMMAND test_backend_managed_adapter)
 
+        add_executable(test_backend_fs_adapter tests/test_backend_fs_adapter.c)
+        target_include_directories(test_backend_fs_adapter PRIVATE include tests src)
+        target_link_libraries(test_backend_fs_adapter PRIVATE microdb_backend_fs_adapter)
+        add_test(NAME test_backend_fs_adapter COMMAND test_backend_fs_adapter)
+
         add_executable(test_backend_registry tests/test_backend_registry.c)
         target_include_directories(test_backend_registry PRIVATE include tests src)
-        if(TARGET microdb_backend_aligned_stub AND TARGET microdb_backend_nand_stub AND TARGET microdb_backend_emmc_stub AND TARGET microdb_backend_sd_stub)
+        if(TARGET microdb_backend_aligned_stub AND TARGET microdb_backend_nand_stub AND TARGET microdb_backend_emmc_stub AND TARGET microdb_backend_sd_stub AND TARGET microdb_backend_fs_stub AND TARGET microdb_backend_block_stub)
             target_link_libraries(
                 test_backend_registry
                 PRIVATE
@@ -988,15 +1028,17 @@ if(MICRODB_BUILD_TESTS)
                     microdb_backend_nand_stub
                     microdb_backend_emmc_stub
                     microdb_backend_sd_stub
+                    microdb_backend_fs_stub
+                    microdb_backend_block_stub
             )
             add_test(NAME test_backend_registry COMMAND test_backend_registry)
         else()
-            message(STATUS "Skipping test_backend_registry: requires aligned/nand/emmc/sd stub targets")
+            message(STATUS "Skipping test_backend_registry: requires aligned/nand/emmc/sd/fs/block stub targets")
         endif()
 
         add_executable(test_backend_open tests/test_backend_open.c)
         target_include_directories(test_backend_open PRIVATE include tests src)
-        if(TARGET microdb_backend_aligned_stub AND TARGET microdb_backend_nand_stub AND TARGET microdb_backend_emmc_stub AND TARGET microdb_backend_sd_stub)
+        if(TARGET microdb_backend_aligned_stub AND TARGET microdb_backend_nand_stub AND TARGET microdb_backend_emmc_stub AND TARGET microdb_backend_sd_stub AND TARGET microdb_backend_fs_stub AND TARGET microdb_backend_block_stub)
             target_link_libraries(
                 test_backend_open
                 PRIVATE
@@ -1005,10 +1047,12 @@ if(MICRODB_BUILD_TESTS)
                     microdb_backend_nand_stub
                     microdb_backend_emmc_stub
                     microdb_backend_sd_stub
+                    microdb_backend_fs_stub
+                    microdb_backend_block_stub
             )
             add_test(NAME test_backend_open COMMAND test_backend_open)
         else()
-            message(STATUS "Skipping test_backend_open: requires aligned/nand/emmc/sd stub targets")
+            message(STATUS "Skipping test_backend_open: requires aligned/nand/emmc/sd/fs/block stub targets")
         endif()
 
         add_executable(test_backend_aligned_recovery tests/test_backend_aligned_recovery.c)
@@ -1039,6 +1083,47 @@ if(MICRODB_BUILD_TESTS)
             add_test(NAME test_backend_managed_recovery COMMAND test_backend_managed_recovery)
         else()
             message(STATUS "Skipping test_backend_managed_recovery: requires nand stub target")
+        endif()
+
+        add_executable(test_backend_fs_recovery tests/test_backend_fs_recovery.c)
+        target_include_directories(test_backend_fs_recovery PRIVATE include tests src)
+        if(TARGET microdb_backend_fs_stub AND TARGET microdb_backend_block_stub)
+            target_link_libraries(
+                test_backend_fs_recovery
+                PRIVATE
+                    microdb
+                    microdb_backend_open
+                    microdb_backend_fs_stub
+                    microdb_backend_block_stub
+            )
+            add_test(NAME test_backend_fs_recovery COMMAND test_backend_fs_recovery)
+        else()
+            message(STATUS "Skipping test_backend_fs_recovery: requires fs/block stub targets")
+        endif()
+
+        add_executable(test_backend_fs_matrix tests/test_backend_fs_matrix.c)
+        target_include_directories(test_backend_fs_matrix PRIVATE include tests src)
+        if(TARGET microdb_backend_fs_stub AND TARGET microdb_backend_block_stub)
+            target_link_libraries(
+                test_backend_fs_matrix
+                PRIVATE
+                    microdb
+                    microdb_backend_open
+                    microdb_backend_fs_stub
+                    microdb_backend_block_stub
+            )
+            add_test(
+                NAME test_backend_fs_matrix_smoke
+                COMMAND test_backend_fs_matrix --max-ms ${MICRODB_FS_MATRIX_SMOKE_MAX_MS}
+            )
+            add_test(
+                NAME test_backend_fs_matrix_long
+                COMMAND test_backend_fs_matrix --long --max-ms ${MICRODB_FS_MATRIX_LONG_MAX_MS}
+            )
+            set_tests_properties(test_backend_fs_matrix_smoke PROPERTIES LABELS "fs;matrix;smoke")
+            set_tests_properties(test_backend_fs_matrix_long PROPERTIES LABELS "fs;matrix;long" TIMEOUT 180)
+        else()
+            message(STATUS "Skipping test_backend_fs_matrix*: requires fs/block stub targets")
         endif()
 
         add_executable(test_backend_managed_stress tests/test_backend_managed_stress.c)

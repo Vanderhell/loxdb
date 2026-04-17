@@ -1,0 +1,162 @@
+name: FS Matrix Baseline Refresh
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-debug
+            configure_preset: ci-debug-linux
+            build_preset: ci-debug-linux
+            test_preset: ci-debug-linux
+            smoke_budget_ms: 3500
+            long_budget_ms: 15000
+          - os: windows-latest
+            label: windows-debug
+            configure_preset: ci-debug-windows
+            build_preset: ci-debug-windows
+            test_preset: ci-debug-windows
+            smoke_budget_ms: 6000
+            long_budget_ms: 25000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.configure_preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.build_preset }}
+
+      - name: Run FS matrix lanes
+        shell: pwsh
+        run: |
+          $log = Join-Path $pwd "fs_matrix_ctest.log"
+          ctest --preset "${{ matrix.test_preset }}" -R "test_backend_fs_matrix_.*" --output-on-failure 2>&1 |
+            Tee-Object -FilePath $log
+
+      - name: Extract lane runtimes
+        shell: pwsh
+        run: |
+          $logPath = Join-Path $pwd "fs_matrix_ctest.log"
+          $txt = Get-Content $logPath -Raw
+
+          $smoke = [regex]::Match($txt, "test_backend_fs_matrix_smoke[.\s]+Passed\s+([0-9.]+)\s+sec")
+          $long = [regex]::Match($txt, "test_backend_fs_matrix_long[.\s]+Passed\s+([0-9.]+)\s+sec")
+
+          if (-not $smoke.Success -or -not $long.Success) {
+            Write-Error "Could not parse fs matrix lane timings from ctest output."
+          }
+
+          $smokeSec = [double]$smoke.Groups[1].Value
+          $longSec = [double]$long.Groups[1].Value
+          $smokeMs = [math]::Round($smokeSec * 1000.0, 2)
+          $longMs = [math]::Round($longSec * 1000.0, 2)
+
+          $summary = @"
+          {
+            "os": "${{ matrix.label }}",
+            "preset": "${{ matrix.test_preset }}",
+            "date_utc": "$((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))",
+            "smoke_runtime_ms": $smokeMs,
+            "long_runtime_ms": $longMs,
+            "smoke_budget_ms": ${{ matrix.smoke_budget_ms }},
+            "long_budget_ms": ${{ matrix.long_budget_ms }}
+          }
+          "@
+          $summaryPath = Join-Path $pwd "fs_matrix_baseline_${{ matrix.label }}.json"
+          Set-Content -Path $summaryPath -Value $summary -Encoding ascii
+
+          "### FS matrix baseline (${{ matrix.label }})" >> $env:GITHUB_STEP_SUMMARY
+          "- Preset: `${{ matrix.test_preset }}`" >> $env:GITHUB_STEP_SUMMARY
+          "- Smoke runtime: ${smokeMs} ms (budget: ${{ matrix.smoke_budget_ms }} ms)" >> $env:GITHUB_STEP_SUMMARY
+          "- Long runtime: ${longMs} ms (budget: ${{ matrix.long_budget_ms }} ms)" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fs-matrix-baseline-${{ matrix.label }}
+          path: |
+            fs_matrix_ctest.log
+            fs_matrix_baseline_${{ matrix.label }}.json
+
+  recommend-thresholds:
+    name: Recommend Thresholds
+    needs: refresh
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download baseline artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: fs-matrix-baseline-*
+          path: baseline-artifacts
+          merge-multiple: true
+
+      - name: Generate recommendation report
+        shell: pwsh
+        run: |
+          ./scripts/recommend-fs-matrix-baselines.ps1 `
+            -InputDir ./baseline-artifacts `
+            -Quantile 0.95 `
+            -MarginPct 20 `
+            -MinHeadroomMs 50 `
+            -OutputJson ./fs-matrix-baseline-recommendations.json `
+            -OutputMarkdown ./fs-matrix-baseline-recommendations.md |
+            Tee-Object -FilePath ./fs-matrix-baseline-recommendations.log
+
+          "### FS matrix threshold recommendations" >> $env:GITHUB_STEP_SUMMARY
+          Get-Content ./fs-matrix-baseline-recommendations.md | Select-Object -First 20 >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Build candidate presets update (dry-run + preview)
+        shell: pwsh
+        run: |
+          Copy-Item ./CMakePresets.json ./CMakePresets.candidate.json -Force
+
+          ./scripts/apply-fs-matrix-thresholds.ps1 `
+            -RecommendationsJson ./fs-matrix-baseline-recommendations.json `
+            -PresetsPath ./CMakePresets.candidate.json `
+            -DryRun |
+            Tee-Object -FilePath ./fs-matrix-threshold-apply-dryrun.log
+
+          ./scripts/apply-fs-matrix-thresholds.ps1 `
+            -RecommendationsJson ./fs-matrix-baseline-recommendations.json `
+            -PresetsPath ./CMakePresets.candidate.json |
+            Tee-Object -FilePath ./fs-matrix-threshold-apply.log
+
+          & git diff --no-index -- CMakePresets.json CMakePresets.candidate.json > fs-matrix-threshold-presets.diff
+          if ($LASTEXITCODE -gt 1) {
+            throw "git diff failed with exit code $LASTEXITCODE"
+          }
+
+          "### Candidate FS matrix preset update preview" >> $env:GITHUB_STEP_SUMMARY
+          if (Test-Path ./fs-matrix-threshold-presets.diff) {
+            Get-Content ./fs-matrix-threshold-presets.diff | Select-Object -First 80 >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            "No diff produced." >> $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Upload recommendation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fs-matrix-threshold-recommendations
+          path: |
+            fs-matrix-baseline-recommendations.json
+            fs-matrix-baseline-recommendations.md
+            fs-matrix-baseline-recommendations.log
+            fs-matrix-threshold-apply-dryrun.log
+            fs-matrix-threshold-apply.log
+            fs-matrix-threshold-presets.diff
+            CMakePresets.candidate.json

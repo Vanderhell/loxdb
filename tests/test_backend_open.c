@@ -8,6 +8,8 @@ int microdb_backend_aligned_stub_register(void);
 int microdb_backend_nand_stub_register(void);
 int microdb_backend_emmc_stub_register(void);
 int microdb_backend_sd_stub_register(void);
+int microdb_backend_fs_stub_register(void);
+int microdb_backend_block_stub_register(void);
 
 typedef struct {
     uint8_t mem[256];
@@ -72,6 +74,18 @@ static microdb_storage_capability_t byte_capability(void) {
     cap.erase_granularity = 256u;
     cap.atomic_write_granularity = 1u;
     cap.sync_semantics = MICRODB_SYNC_SEMANTICS_DURABLE_SYNC;
+    return cap;
+}
+
+static microdb_storage_capability_t fs_capability(microdb_sync_semantics_t sync_semantics) {
+    microdb_storage_capability_t cap;
+    memset(&cap, 0, sizeof(cap));
+    cap.backend_class = MICRODB_BACKEND_CLASS_MANAGED;
+    cap.minimal_write_unit = 1u;
+    cap.erase_granularity = 512u;
+    cap.atomic_write_granularity = 1u;
+    cap.sync_semantics = sync_semantics;
+    cap.is_managed = 1u;
     return cap;
 }
 
@@ -242,6 +256,77 @@ MDB_TEST(backend_open_sd_uses_managed_adapter) {
     microdb_backend_open_release(&session);
 }
 
+MDB_TEST(backend_open_managed_flush_only_uses_fs_adapter) {
+    static const uint8_t payload[2] = { 0xE1u, 0xE2u };
+    microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 4096u, 1u, &g_raw };
+    microdb_backend_open_session_t session;
+    microdb_storage_t *effective = NULL;
+    microdb_backend_adapter_t fs_adapter = { "fs_stub", { 0 } };
+    g_raw.write_size = 1u;
+
+    fs_adapter.capability = fs_capability(MICRODB_SYNC_SEMANTICS_FLUSH_ONLY);
+    ASSERT_EQ(microdb_backend_registry_register(&fs_adapter), 0);
+    ASSERT_EQ(microdb_backend_open_prepare("fs_stub", &raw, 0u, 1u, &session, &effective), MICRODB_OK);
+    ASSERT_EQ(session.using_fs_adapter, 1);
+    ASSERT_EQ(session.using_managed_adapter, 0);
+    ASSERT_EQ(effective != NULL, 1);
+    ASSERT_EQ(effective->write(effective->ctx, 13u, payload, sizeof(payload)), MICRODB_OK);
+    ASSERT_EQ(g_raw.mem[13], 0xE1);
+    ASSERT_EQ(g_raw.mem[14], 0xE2);
+
+    ASSERT_EQ(g_raw.sync_calls, 1);
+    ASSERT_EQ(effective->sync(effective->ctx), MICRODB_OK);
+    ASSERT_EQ(g_raw.sync_calls, 2);
+
+    microdb_backend_open_release(&session);
+    ASSERT_EQ(session.using_fs_adapter, 0);
+}
+
+MDB_TEST(backend_open_fs_stub_uses_fs_adapter) {
+    static const uint8_t payload[2] = { 0xF1u, 0xF2u };
+    microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 4096u, 1u, &g_raw };
+    microdb_backend_open_session_t session;
+    microdb_storage_t *effective = NULL;
+    g_raw.write_size = 1u;
+
+    ASSERT_EQ(microdb_backend_fs_stub_register(), 0);
+    ASSERT_EQ(microdb_backend_open_prepare("fs_stub", &raw, 0u, 1u, &session, &effective), MICRODB_OK);
+    ASSERT_EQ(session.using_fs_adapter, 1);
+    ASSERT_EQ(session.using_managed_adapter, 0);
+    ASSERT_EQ(effective != NULL, 1);
+
+    ASSERT_EQ(effective->write(effective->ctx, 15u, payload, sizeof(payload)), MICRODB_OK);
+    ASSERT_EQ(g_raw.mem[15], 0xF1);
+    ASSERT_EQ(g_raw.mem[16], 0xF2);
+    ASSERT_EQ(g_raw.sync_calls, 1);
+    ASSERT_EQ(effective->sync(effective->ctx), MICRODB_OK);
+    ASSERT_EQ(g_raw.sync_calls, 2);
+    microdb_backend_open_release(&session);
+}
+
+MDB_TEST(backend_open_block_stub_uses_fs_adapter_with_sync_none) {
+    static const uint8_t payload[2] = { 0xA9u, 0xB9u };
+    microdb_storage_t raw = { raw_read, raw_write, raw_erase, raw_sync, (uint32_t)sizeof(g_raw.mem), 512u, 1u, &g_raw };
+    microdb_backend_open_session_t session;
+    microdb_storage_t *effective = NULL;
+    g_raw.write_size = 1u;
+    g_raw.sync_status = MICRODB_ERR_STORAGE;
+
+    ASSERT_EQ(microdb_backend_block_stub_register(), 0);
+    ASSERT_EQ(microdb_backend_open_prepare("block_stub", &raw, 0u, 1u, &session, &effective), MICRODB_OK);
+    ASSERT_EQ(session.using_fs_adapter, 1);
+    ASSERT_EQ(session.using_managed_adapter, 0);
+    ASSERT_EQ(effective != NULL, 1);
+
+    ASSERT_EQ(effective->write(effective->ctx, 21u, payload, sizeof(payload)), MICRODB_OK);
+    ASSERT_EQ(g_raw.mem[21], 0xA9);
+    ASSERT_EQ(g_raw.mem[22], 0xB9);
+    ASSERT_EQ(g_raw.sync_calls, 0);
+    ASSERT_EQ(effective->sync(effective->ctx), MICRODB_OK);
+    ASSERT_EQ(g_raw.sync_calls, 0);
+    microdb_backend_open_release(&session);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_unknown_backend_rejected);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_byte_backend_direct_passthrough);
@@ -253,5 +338,8 @@ int main(void) {
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_managed_requires_byte_write_contract);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_emmc_uses_managed_adapter);
     MDB_RUN_TEST(setup_open, teardown_open, backend_open_sd_uses_managed_adapter);
+    MDB_RUN_TEST(setup_open, teardown_open, backend_open_managed_flush_only_uses_fs_adapter);
+    MDB_RUN_TEST(setup_open, teardown_open, backend_open_fs_stub_uses_fs_adapter);
+    MDB_RUN_TEST(setup_open, teardown_open, backend_open_block_stub_uses_fs_adapter_with_sync_none);
     return MDB_RESULT();
 }

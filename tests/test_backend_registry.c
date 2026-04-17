@@ -4,6 +4,8 @@
 int microdb_backend_nand_stub_register(void);
 int microdb_backend_emmc_stub_register(void);
 int microdb_backend_sd_stub_register(void);
+int microdb_backend_fs_stub_register(void);
+int microdb_backend_block_stub_register(void);
 
 static void setup_registry(void) {
     microdb_backend_registry_reset();
@@ -19,12 +21,18 @@ MDB_TEST(backend_registry_registers_stub_modules) {
     ASSERT_EQ(microdb_backend_nand_stub_register(), 0);
     ASSERT_EQ(microdb_backend_emmc_stub_register(), 0);
     ASSERT_EQ(microdb_backend_sd_stub_register(), 0);
-    ASSERT_EQ((long long)microdb_backend_registry_count(), 3);
+    ASSERT_EQ(microdb_backend_fs_stub_register(), 0);
+    ASSERT_EQ(microdb_backend_block_stub_register(), 0);
+    ASSERT_EQ((long long)microdb_backend_registry_count(), 5);
 
     adapter = microdb_backend_registry_find("nand_stub");
     ASSERT_EQ(adapter != NULL, 1);
     ASSERT_EQ(adapter->capability.backend_class, MICRODB_BACKEND_CLASS_MANAGED);
     ASSERT_EQ(adapter->capability.is_managed, 1);
+
+    adapter = microdb_backend_registry_find("block_stub");
+    ASSERT_EQ(adapter != NULL, 1);
+    ASSERT_EQ(adapter->capability.backend_class, MICRODB_BACKEND_CLASS_MANAGED);
 }
 
 MDB_TEST(backend_registry_duplicate_register_is_idempotent) {

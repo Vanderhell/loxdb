@@ -12,7 +12,7 @@ int microdb_backend_nand_stub_register(void);
 
 enum {
     MANAGED_CAPACITY = 131072u,
-    MANAGED_ERASE_SIZE = 256u,
+    MANAGED_ERASE_SIZE = 4096u,
     MODEL_KV_KEYS = 24u,
     MODEL_REL_IDS = 32u
 };
