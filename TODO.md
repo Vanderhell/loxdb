@@ -13,21 +13,26 @@
   - FS matrix thresholds (`recommend/apply/finalize` + baseline refresh workflow).
 
 ## Next Roadmap (Production Hardening)
-1. [todo] Add dedicated fault-injection lanes for fs/block and managed adapters:
+1. [done] Add dedicated fault-injection lanes for fs/block and managed adapters:
    - deterministic write/read/erase/sync fault points
    - expected fail-code and recovery assertions
-2. [todo] Add property/fuzz-style API stress suite:
+2. [done] Add property/fuzz-style API stress suite:
    - randomized operation sequences + invariant checks
    - reproducible seed capture and replay
-3. [todo] Add long-soak nightly workflow:
+3. [done] Add long-soak nightly workflow:
    - 30-60 min endurance lane
    - artifactized runtime + failure snapshots
-4. [todo] Add release gate tightening:
+4. [done] Add release gate tightening:
    - mandatory fs/managed matrix smoke lanes on release presets
    - explicit checklist mapping test gates to release criteria
-5. [todo] Add observability/reporting rollup:
+5. [done] Add observability/reporting rollup:
    - single markdown report combining managed + fs baseline trend summary
    - drift warnings when thresholds tighten/loosen beyond policy
+
+## Next Roadmap (Post-Hardening)
+1. [todo] Add sanitizer lanes (ASan/UBSan) for debug presets on Linux.
+2. [todo] Add REL corruption injection corpus and replay fixtures.
+3. [todo] Add long-run trend dashboard generated from `docs/results/` history.
 
 ## Current Truth (Do Not Relax)
 - Core storage contract remains strict:

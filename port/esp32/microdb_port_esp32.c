@@ -63,7 +63,7 @@ microdb_err_t microdb_port_esp32_init(microdb_storage_t *storage, const char *pa
     storage->sync = microdb_port_esp32_sync;
     storage->capacity = g_microdb_esp32_ctx.partition->size;
     storage->erase_size = g_microdb_esp32_ctx.partition->erase_size;
-    storage->write_size = 4u;
+    storage->write_size = 1u;
     storage->ctx = &g_microdb_esp32_ctx;
     return MICRODB_OK;
 }

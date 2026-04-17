@@ -270,7 +270,6 @@ microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timesta
         MICRODB_LOG("WARN",
                     "TS stream '%s' full: rejecting new sample (REJECT policy)",
                     stream->name);
-        core->ts_dropped_samples++;
         rc = MICRODB_ERR_FULL;
         goto unlock;
     }
@@ -285,11 +284,6 @@ microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timesta
 #if MICRODB_TS_OVERFLOW_POLICY == MICRODB_TS_POLICY_DOWNSAMPLE
         if (stream->count == stream->capacity) {
             microdb_ts_downsample_oldest(stream);
-            core->ts_dropped_samples++;
-        }
-#elif MICRODB_TS_OVERFLOW_POLICY == MICRODB_TS_POLICY_DROP_OLDEST
-        if (stream->count == stream->capacity) {
-            core->ts_dropped_samples++;
         }
 #endif
         microdb_ts_rb_insert(stream, &sample);
@@ -378,13 +372,11 @@ microdb_err_t microdb_ts_query(microdb_t *db,
             MICRODB_LOCK(db);
             core = microdb_core(db);
             if (core->magic != MICRODB_MAGIC) {
-                rc = MICRODB_ERR_INVALID;
-                goto unlock;
+                return MICRODB_ERR_INVALID;
             }
             stream = microdb_ts_find(core, name);
             if (stream == NULL) {
-                rc = MICRODB_ERR_NOT_FOUND;
-                goto unlock;
+                return MICRODB_ERR_NOT_FOUND;
             }
         }
     }

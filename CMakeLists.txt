@@ -712,7 +712,7 @@ if(MICRODB_BUILD_TESTS)
         endif()
         add_test(NAME test_footprint_min_baseline COMMAND test_footprint_min_baseline)
 
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_footprint_min_size.cmake")
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_footprint_min_size.cmake" AND CMAKE_BUILD_TYPE STREQUAL "Release")
             add_test(
                 NAME test_footprint_min_size_gate_release
                 COMMAND ${CMAKE_COMMAND}
@@ -727,7 +727,7 @@ if(MICRODB_BUILD_TESTS)
             )
             set_tests_properties(test_footprint_min_size_gate_release PROPERTIES CONFIGURATIONS Release)
         else()
-            message(STATUS "Skipping test_footprint_min_size_gate_release: missing tests/check_footprint_min_size.cmake")
+            message(STATUS "Skipping test_footprint_min_size_gate_release: requires Release build and tests/check_footprint_min_size.cmake")
         endif()
     else()
         message(STATUS "Skipping test_footprint_min_baseline: missing tests/footprint_min_baseline.c")

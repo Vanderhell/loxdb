@@ -721,7 +721,6 @@ microdb_err_t microdb_kv_iter(microdb_t *db, microdb_kv_iter_cb_t cb, void *ctx)
         }
 
         done = (i >= core->kv.bucket_count) && !have_item;
-        /* Callback/lock invariant: user callback is invoked without DB lock held. */
         MICRODB_UNLOCK(db);
 
         if (have_item) {
@@ -860,10 +859,6 @@ microdb_err_t microdb_txn_commit(microdb_t *db) {
         goto unlock;
     }
 
-    /* TXN visibility invariant:
-     * - stage entries are durable in WAL before commit marker.
-     * - staged entries become visible in live KV only after durable TXN_COMMIT marker.
-     */
     if (core->wal_enabled && core->storage != NULL && !core->storage_loading && !core->wal_replaying) {
         uint32_t needed = 16u; /* TXN_COMMIT marker */
         for (i = 0u; i < core->txn_stage_count; ++i) {

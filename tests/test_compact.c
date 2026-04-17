@@ -10,7 +10,10 @@ enum {
     WAL_VERSION = 0x00010000u,
     WAL_ENTRY_MAGIC = 0x454E5452u,
     WAL_ENGINE_META = 0xFFu,
-    WAL_OP_COMPACT_BEGIN = 3u
+    WAL_ENGINE_KV = 0u,
+    WAL_OP_SET_INSERT = 0u,
+    WAL_OP_COMPACT_BEGIN = 3u,
+    WAL_OP_COMPACT_COMMIT = 4u
 };
 
 static microdb_t g_db;
@@ -23,6 +26,38 @@ static void put_u32(uint8_t *dst, uint32_t value) {
 
 static void put_u16(uint8_t *dst, uint16_t value) {
     memcpy(dst, &value, sizeof(value));
+}
+
+static uint32_t write_wal_entry(uint32_t offset, uint32_t seq, uint8_t engine, uint8_t op, const uint8_t *payload, uint16_t payload_len) {
+    uint8_t entry[16];
+    uint8_t aligned_payload[256];
+    uint32_t crc;
+    uint32_t aligned_len = (uint32_t)((payload_len + 3u) & ~3u);
+
+    memset(entry, 0, sizeof(entry));
+    memset(aligned_payload, 0, sizeof(aligned_payload));
+    put_u32(entry + 0u, WAL_ENTRY_MAGIC);
+    put_u32(entry + 4u, seq);
+    entry[8] = engine;
+    entry[9] = op;
+    put_u16(entry + 10u, payload_len);
+    if (payload_len != 0u && payload != NULL) {
+        memcpy(aligned_payload, payload, payload_len);
+    }
+    crc = MICRODB_CRC32(entry, 12u);
+    if (payload_len != 0u && payload != NULL) {
+        crc = microdb_crc32(crc, aligned_payload, payload_len);
+    }
+    put_u32(entry + 12u, crc);
+    if (g_storage.write(g_storage.ctx, offset, entry, sizeof(entry)) != MICRODB_OK) {
+        return 0u;
+    }
+    if (aligned_len != 0u) {
+        if (g_storage.write(g_storage.ctx, offset + 16u, aligned_payload, aligned_len) != MICRODB_OK) {
+            return 0u;
+        }
+    }
+    return offset + 16u + aligned_len;
 }
 
 static void open_db_with_cfg(const microdb_cfg_t *cfg) {
@@ -164,7 +199,7 @@ MDB_TEST(test_recovery_after_interrupted_compact) {
     ASSERT_EQ(g_storage.write(g_storage.ctx, 32u, wal_entry, sizeof(wal_entry)), MICRODB_OK);
     ASSERT_EQ(g_storage.sync(g_storage.ctx), MICRODB_OK);
 
-    ASSERT_EQ(microdb_deinit(&g_db), MICRODB_OK);
+    microdb_port_posix_simulate_power_loss(&g_storage);
     microdb_port_posix_deinit(&g_storage);
 
     memset(&g_db, 0, sizeof(g_db));
@@ -182,10 +217,65 @@ MDB_TEST(test_recovery_after_interrupted_compact) {
     ASSERT_EQ(out, 3u);
 }
 
+MDB_TEST(test_legacy_compact_markers_do_not_change_recovery_outcome) {
+    microdb_cfg_t cfg;
+    uint8_t a = 1u;
+    uint8_t b = 2u;
+    uint8_t out = 0u;
+    uint8_t wal_header[32];
+    uint8_t kv_payload[32];
+    uint32_t off = 32u;
+    uint32_t crc;
+    const char *key = "B";
+    size_t key_len = strlen(key);
+
+    ASSERT_EQ(microdb_kv_set(&g_db, "A", &a, 1u, 0u), MICRODB_OK);
+    ASSERT_EQ(microdb_flush(&g_db), MICRODB_OK);
+
+    memset(wal_header, 0, sizeof(wal_header));
+    put_u32(wal_header + 0u, WAL_MAGIC);
+    put_u32(wal_header + 4u, WAL_VERSION);
+    put_u32(wal_header + 8u, 3u);
+    put_u32(wal_header + 12u, 2u);
+    crc = MICRODB_CRC32(wal_header, 16u);
+    put_u32(wal_header + 16u, crc);
+    ASSERT_EQ(g_storage.write(g_storage.ctx, 0u, wal_header, sizeof(wal_header)), MICRODB_OK);
+
+    off = write_wal_entry(off, 1u, WAL_ENGINE_META, WAL_OP_COMPACT_BEGIN, NULL, 0u);
+    ASSERT_GT(off, 0u);
+    off = write_wal_entry(off, 2u, WAL_ENGINE_META, WAL_OP_COMPACT_COMMIT, NULL, 0u);
+    ASSERT_GT(off, 0u);
+    memset(kv_payload, 0, sizeof(kv_payload));
+    kv_payload[0] = (uint8_t)key_len;
+    memcpy(kv_payload + 1u, key, key_len);
+    put_u32(kv_payload + 1u + key_len, 1u);
+    kv_payload[1u + key_len + 4u] = b;
+    put_u32(kv_payload + 1u + key_len + 4u + 1u, 0u);
+    off = write_wal_entry(off, 3u, WAL_ENGINE_KV, WAL_OP_SET_INSERT, kv_payload, (uint16_t)(1u + key_len + 4u + 1u + 4u));
+    ASSERT_GT(off, 0u);
+    ASSERT_EQ(g_storage.sync(g_storage.ctx), MICRODB_OK);
+
+    microdb_port_posix_simulate_power_loss(&g_storage);
+    microdb_port_posix_deinit(&g_storage);
+
+    memset(&g_db, 0, sizeof(g_db));
+    memset(&g_storage, 0, sizeof(g_storage));
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.storage = &g_storage;
+    cfg.ram_kb = 32u;
+    open_db_with_cfg(&cfg);
+
+    ASSERT_EQ(microdb_kv_get(&g_db, "A", &out, 1u, NULL), MICRODB_OK);
+    ASSERT_EQ(out, 1u);
+    ASSERT_EQ(microdb_kv_get(&g_db, "B", &out, 1u, NULL), MICRODB_OK);
+    ASSERT_EQ(out, 2u);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, test_manual_compact_resets_wal);
     MDB_RUN_TEST(setup_db, teardown_db, test_data_intact_after_compact);
     MDB_RUN_TEST(setup_auto_db, teardown_db, test_auto_compact_fires);
     MDB_RUN_TEST(setup_db, teardown_db, test_recovery_after_interrupted_compact);
+    MDB_RUN_TEST(setup_db, teardown_db, test_legacy_compact_markers_do_not_change_recovery_outcome);
     return MDB_RESULT();
 }

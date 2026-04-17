@@ -123,11 +123,6 @@ typedef struct {
     void (*lock_destroy)(void *hdl);
     void *lock_handle;
     uint32_t storage_bytes_written;
-    uint32_t compact_count;
-    uint32_t reopen_count;
-    uint32_t recovery_count;
-    microdb_err_t last_runtime_error;
-    microdb_err_t last_recovery_status;
     bool wal_enabled;
     microdb_arena_t arena;
     microdb_arena_t kv_arena;
@@ -148,7 +143,6 @@ typedef struct {
     microdb_err_t (*on_migrate)(microdb_t *db, const char *table_name, uint16_t old_version, uint16_t new_version);
     bool storage_loading;
     bool wal_replaying;
-    uint32_t ts_dropped_samples;
 } microdb_core_t;
 
 typedef struct {
@@ -205,12 +199,6 @@ static inline void microdb__maybe_compact(microdb_t *db) {
     threshold = (core->wal_compact_threshold_pct != 0u) ? core->wal_compact_threshold_pct : 75u;
     if (wal_fill_pct >= threshold) {
         (void)microdb_storage_flush(db);
-    }
-}
-
-static inline void microdb_record_error(microdb_core_t *core, microdb_err_t err) {
-    if (core != NULL && err != MICRODB_OK) {
-        core->last_runtime_error = err;
     }
 }
 

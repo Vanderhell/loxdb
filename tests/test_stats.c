@@ -115,11 +115,154 @@ MDB_TEST(test_inspect_wal) {
     ASSERT_GT(stats.wal_bytes_used, 0u);
 }
 
+MDB_TEST(test_split_stats_api_empty_db) {
+    microdb_db_stats_t dbs;
+    microdb_kv_stats_t kvs;
+    microdb_ts_stats_t tss;
+    microdb_rel_stats_t rls;
+
+    ASSERT_EQ(microdb_get_db_stats(&g_db, &dbs), MICRODB_OK);
+    ASSERT_EQ(microdb_get_kv_stats(&g_db, &kvs), MICRODB_OK);
+    ASSERT_EQ(microdb_get_ts_stats(&g_db, &tss), MICRODB_OK);
+    ASSERT_EQ(microdb_get_rel_stats(&g_db, &rls), MICRODB_OK);
+
+    ASSERT_EQ(dbs.last_runtime_error, MICRODB_OK);
+    ASSERT_EQ(dbs.last_recovery_status, MICRODB_OK);
+    ASSERT_EQ(kvs.live_keys, 0u);
+    ASSERT_EQ(kvs.tombstones, 0u);
+    ASSERT_EQ(tss.stream_count, 0u);
+    ASSERT_EQ(tss.retained_samples, 0u);
+    ASSERT_EQ(rls.table_count, 0u);
+    ASSERT_EQ(rls.rows_live, 0u);
+}
+
+MDB_TEST(test_split_stats_api_kv_ts_rel) {
+    microdb_schema_t s;
+    microdb_table_t *t = NULL;
+    uint8_t row[32] = {0};
+    uint32_t id = 1u;
+    uint8_t state = 3u;
+    microdb_kv_stats_t kvs;
+    microdb_ts_stats_t tss;
+    microdb_rel_stats_t rls;
+    uint32_t deleted = 0u;
+    uint8_t v = 42u;
+
+    ASSERT_EQ(microdb_kv_set(&g_db, "k", &v, 1u, 0u), MICRODB_OK);
+    ASSERT_EQ(microdb_kv_del(&g_db, "k"), MICRODB_OK);
+    ASSERT_EQ(microdb_get_kv_stats(&g_db, &kvs), MICRODB_OK);
+    ASSERT_EQ(kvs.live_keys, 0u);
+    ASSERT_GT(kvs.tombstones, 0u);
+
+    ASSERT_EQ(microdb_ts_register(&g_db, "s", MICRODB_TS_U32, 0u), MICRODB_OK);
+    ASSERT_EQ(microdb_ts_insert(&g_db, "s", 1u, &id), MICRODB_OK);
+    ASSERT_EQ(microdb_get_ts_stats(&g_db, &tss), MICRODB_OK);
+    ASSERT_EQ(tss.stream_count, 1u);
+    ASSERT_EQ(tss.retained_samples, 1u);
+
+    ASSERT_EQ(microdb_schema_init(&s, "devices", 2u), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&s, "id", MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&s, "state", MICRODB_COL_U8, sizeof(uint8_t), false), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_seal(&s), MICRODB_OK);
+    ASSERT_EQ(microdb_table_create(&g_db, &s), MICRODB_OK);
+    ASSERT_EQ(microdb_table_get(&g_db, "devices", &t), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(t, row, "id", &id), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(t, row, "state", &state), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_insert(&g_db, t, row), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_delete(&g_db, t, &id, &deleted), MICRODB_OK);
+    ASSERT_EQ(deleted, 1u);
+    ASSERT_EQ(microdb_get_rel_stats(&g_db, &rls), MICRODB_OK);
+    ASSERT_EQ(rls.table_count, 1u);
+    ASSERT_EQ(rls.rows_live, 0u);
+    ASSERT_EQ(rls.rows_free, 2u);
+    ASSERT_EQ(rls.indexed_tables, 1u);
+}
+
+MDB_TEST(test_split_db_stats_storage_fields) {
+    microdb_db_stats_t dbs;
+    uint32_t compact_before = 0u;
+    uint8_t value = 9u;
+
+    ASSERT_EQ(microdb_get_db_stats(&g_db, &dbs), MICRODB_OK);
+    ASSERT_GT(dbs.effective_capacity_bytes, 0u);
+    compact_before = dbs.compact_count;
+
+    ASSERT_EQ(microdb_kv_set(&g_db, "wal2", &value, 1u, 0u), MICRODB_OK);
+    ASSERT_EQ(microdb_flush(&g_db), MICRODB_OK);
+    ASSERT_EQ(microdb_get_db_stats(&g_db, &dbs), MICRODB_OK);
+    ASSERT_GT(dbs.compact_count, compact_before);
+    ASSERT_EQ(dbs.last_runtime_error, MICRODB_OK);
+}
+
+MDB_TEST(test_effective_capacity_api) {
+    microdb_effective_capacity_t cap;
+
+    ASSERT_EQ(microdb_get_effective_capacity(&g_db, &cap), MICRODB_OK);
+    ASSERT_GT(cap.kv_entries_usable, 0u);
+    ASSERT_GE(cap.kv_entries_usable, cap.kv_entries_free);
+    ASSERT_GT(cap.kv_value_bytes_usable, 0u);
+    ASSERT_GE(cap.kv_value_bytes_usable, cap.kv_value_bytes_free_now);
+    ASSERT_GE(cap.ts_samples_usable, cap.ts_samples_retained);
+}
+
+MDB_TEST(test_admission_api_kv_ts_rel) {
+    microdb_admission_t a;
+    microdb_schema_t s;
+    microdb_table_t *t = NULL;
+    uint8_t row[32] = {0};
+    uint32_t id = 1u;
+    uint8_t state = 1u;
+    uint32_t ts_val = 3u;
+
+    ASSERT_EQ(microdb_admit_kv_set(&g_db, "preflight", 8u, &a), MICRODB_OK);
+    ASSERT_EQ(a.status, MICRODB_OK);
+    ASSERT_EQ(a.deterministic_budget_ok, 1u);
+
+    ASSERT_EQ(microdb_ts_register(&g_db, "pre_ts", MICRODB_TS_U32, 0u), MICRODB_OK);
+    ASSERT_EQ(microdb_admit_ts_insert(&g_db, "pre_ts", sizeof(ts_val), &a), MICRODB_OK);
+    ASSERT_EQ(a.status, MICRODB_OK);
+
+    ASSERT_EQ(microdb_schema_init(&s, "pre_rel", 2u), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&s, "id", MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&s, "state", MICRODB_COL_U8, sizeof(uint8_t), false), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_seal(&s), MICRODB_OK);
+    ASSERT_EQ(microdb_table_create(&g_db, &s), MICRODB_OK);
+    ASSERT_EQ(microdb_table_get(&g_db, "pre_rel", &t), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(t, row, "id", &id), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(t, row, "state", &state), MICRODB_OK);
+    ASSERT_EQ(microdb_admit_rel_insert(&g_db, "pre_rel", microdb_table_row_size(t), &a), MICRODB_OK);
+    ASSERT_EQ(a.status, MICRODB_OK);
+}
+
+MDB_TEST(test_pressure_api) {
+    microdb_pressure_t p;
+    uint8_t value = 7u;
+    uint32_t ts_val = 11u;
+
+    ASSERT_EQ(microdb_kv_set(&g_db, "pressure_k", &value, 1u, 0u), MICRODB_OK);
+    ASSERT_EQ(microdb_ts_register(&g_db, "pressure_s", MICRODB_TS_U32, 0u), MICRODB_OK);
+    ASSERT_EQ(microdb_ts_insert(&g_db, "pressure_s", 1u, &ts_val), MICRODB_OK);
+
+    ASSERT_EQ(microdb_get_pressure(&g_db, &p), MICRODB_OK);
+    ASSERT_LE(p.kv_fill_pct, 100u);
+    ASSERT_LE(p.ts_fill_pct, 100u);
+    ASSERT_LE(p.rel_fill_pct, 100u);
+    ASSERT_LE(p.wal_fill_pct, 100u);
+    ASSERT_LE(p.compact_pressure_pct, 100u);
+    ASSERT_LE(p.near_full_risk_pct, 100u);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, test_inspect_empty_db);
     MDB_RUN_TEST(setup_db, teardown_db, test_inspect_kv_entries);
     MDB_RUN_TEST(setup_db, teardown_db, test_inspect_kv_eviction);
     MDB_RUN_TEST(setup_db, teardown_db, test_inspect_ts_samples);
+    MDB_RUN_TEST(setup_db, teardown_db, test_split_stats_api_empty_db);
+    MDB_RUN_TEST(setup_db, teardown_db, test_split_stats_api_kv_ts_rel);
+    MDB_RUN_TEST(setup_db, teardown_db, test_effective_capacity_api);
+    MDB_RUN_TEST(setup_db, teardown_db, test_admission_api_kv_ts_rel);
+    MDB_RUN_TEST(setup_db, teardown_db, test_pressure_api);
     MDB_RUN_TEST(setup_storage_db, teardown_storage_db, test_inspect_wal);
+    MDB_RUN_TEST(setup_storage_db, teardown_storage_db, test_split_db_stats_storage_fields);
     return MDB_RESULT();
 }

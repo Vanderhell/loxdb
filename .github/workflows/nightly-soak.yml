@@ -1,0 +1,64 @@
+name: Nightly Soak
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  soak:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-debug
+            configure_preset: ci-debug-linux
+            build_preset: ci-debug-linux
+            exe_dir: build/ci-debug-linux/Debug
+            ops: 450000
+          - os: windows-latest
+            label: windows-debug
+            configure_preset: ci-debug-windows
+            build_preset: ci-debug-windows
+            exe_dir: build/ci-debug-windows/Debug
+            ops: 450000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.configure_preset }}
+
+      - name: Build soak binaries
+        run: cmake --build --preset ${{ matrix.build_preset }} --target soak_runner worstcase_matrix_runner
+
+      - name: Run worstcase matrix
+        shell: pwsh
+        timeout-minutes: 30
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $profiles = @("deterministic", "balanced", "stress")
+          foreach ($p in $profiles) {
+            & "./${{ matrix.exe_dir }}/worstcase_matrix_runner.exe" --profile $p 2>&1 |
+              Tee-Object -FilePath ("artifacts/worstcase_matrix_{0}.csv" -f $p)
+          }
+
+      - name: Run long soak
+        shell: pwsh
+        timeout-minutes: 90
+        run: |
+          $profiles = @("deterministic", "balanced", "stress")
+          foreach ($p in $profiles) {
+            & "./${{ matrix.exe_dir }}/soak_runner.exe" --profile $p --ops ${{ matrix.ops }} 2>&1 |
+              Tee-Object -FilePath ("artifacts/soak_{0}.csv" -f $p)
+          }
+
+      - name: Upload soak artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-soak-${{ matrix.label }}
+          path: artifacts/*

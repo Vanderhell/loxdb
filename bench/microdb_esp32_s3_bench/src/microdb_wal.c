@@ -5,93 +5,6 @@
 
 #include <string.h>
 
-#if !MICRODB_ENABLE_TS
-static microdb_err_t microdb_ts_register_stub(microdb_t *db, const char *name, microdb_ts_type_t type, size_t raw_size) {
-    (void)db;
-    (void)name;
-    (void)type;
-    (void)raw_size;
-    return MICRODB_ERR_DISABLED;
-}
-static microdb_err_t microdb_ts_insert_stub(microdb_t *db, const char *name, microdb_timestamp_t ts, const void *val) {
-    (void)db;
-    (void)name;
-    (void)ts;
-    (void)val;
-    return MICRODB_ERR_DISABLED;
-}
-static microdb_err_t microdb_ts_clear_stub(microdb_t *db, const char *name) {
-    (void)db;
-    (void)name;
-    return MICRODB_ERR_DISABLED;
-}
-#define microdb_ts_register microdb_ts_register_stub
-#define microdb_ts_insert microdb_ts_insert_stub
-#define microdb_ts_clear microdb_ts_clear_stub
-#endif
-
-#if !MICRODB_ENABLE_REL
-static microdb_err_t microdb_schema_init_stub(microdb_schema_t *schema, const char *name, uint32_t max_rows) {
-    (void)schema;
-    (void)name;
-    (void)max_rows;
-    return MICRODB_ERR_DISABLED;
-}
-static microdb_err_t microdb_schema_add_stub(microdb_schema_t *schema,
-                                             const char *col_name,
-                                             microdb_col_type_t type,
-                                             size_t size,
-                                             bool is_index) {
-    (void)schema;
-    (void)col_name;
-    (void)type;
-    (void)size;
-    (void)is_index;
-    return MICRODB_ERR_DISABLED;
-}
-static microdb_err_t microdb_schema_seal_stub(microdb_schema_t *schema) {
-    (void)schema;
-    return MICRODB_ERR_DISABLED;
-}
-static microdb_err_t microdb_table_create_stub(microdb_t *db, microdb_schema_t *schema) {
-    (void)db;
-    (void)schema;
-    return MICRODB_ERR_DISABLED;
-}
-static microdb_err_t microdb_table_get_stub(microdb_t *db, const char *name, microdb_table_t **out_table) {
-    (void)db;
-    (void)name;
-    (void)out_table;
-    return MICRODB_ERR_DISABLED;
-}
-static microdb_err_t microdb_rel_insert_stub(microdb_t *db, microdb_table_t *table, const void *row_buf) {
-    (void)db;
-    (void)table;
-    (void)row_buf;
-    return MICRODB_ERR_DISABLED;
-}
-static microdb_err_t microdb_rel_delete_stub(microdb_t *db, microdb_table_t *table, const void *search_val, uint32_t *out_deleted) {
-    (void)db;
-    (void)table;
-    (void)search_val;
-    (void)out_deleted;
-    return MICRODB_ERR_DISABLED;
-}
-static microdb_err_t microdb_rel_clear_stub(microdb_t *db, microdb_table_t *table) {
-    (void)db;
-    (void)table;
-    return MICRODB_ERR_DISABLED;
-}
-#define microdb_schema_init microdb_schema_init_stub
-#define microdb_schema_add microdb_schema_add_stub
-#define microdb_schema_seal microdb_schema_seal_stub
-#define microdb_table_create microdb_table_create_stub
-#define microdb_table_get microdb_table_get_stub
-#define microdb_rel_insert microdb_rel_insert_stub
-#define microdb_rel_delete microdb_rel_delete_stub
-#define microdb_rel_clear microdb_rel_clear_stub
-#endif
-
 enum {
     MICRODB_WAL_MAGIC = 0x4D44424Cu,
     MICRODB_WAL_VERSION = 0x00010000u,
@@ -169,18 +82,11 @@ static bool microdb_storage_ready(const microdb_core_t *core) {
 }
 
 static microdb_err_t microdb_storage_read_bytes(microdb_core_t *core, uint32_t offset, void *buf, size_t len) {
-    microdb_err_t err;
-    MICRODB_IO_BEFORE_READ(offset, len);
-    err = core->storage->read(core->storage->ctx, offset, buf, len);
-    MICRODB_IO_AFTER_READ(offset, len, err);
-    return err;
+    return core->storage->read(core->storage->ctx, offset, buf, len);
 }
 
 static microdb_err_t microdb_storage_write_bytes(microdb_core_t *core, uint32_t offset, const void *buf, size_t len) {
-    microdb_err_t err;
-    MICRODB_IO_BEFORE_WRITE(offset, len);
-    err = core->storage->write(core->storage->ctx, offset, buf, len);
-    MICRODB_IO_AFTER_WRITE(offset, len, err);
+    microdb_err_t err = core->storage->write(core->storage->ctx, offset, buf, len);
     if (err == MICRODB_OK) {
         core->storage_bytes_written += (uint32_t)len;
     }
@@ -191,9 +97,7 @@ static microdb_err_t microdb_storage_erase_region(microdb_core_t *core, uint32_t
     uint32_t pos;
 
     for (pos = 0u; pos < size; pos += core->storage->erase_size) {
-        MICRODB_IO_BEFORE_ERASE(offset + pos, core->storage->erase_size);
         microdb_err_t err = core->storage->erase(core->storage->ctx, offset + pos);
-        MICRODB_IO_AFTER_ERASE(offset + pos, core->storage->erase_size, err);
         if (err != MICRODB_OK) {
             return err;
         }
@@ -203,11 +107,7 @@ static microdb_err_t microdb_storage_erase_region(microdb_core_t *core, uint32_t
 }
 
 static microdb_err_t microdb_storage_sync_core(microdb_core_t *core) {
-    microdb_err_t err;
-    MICRODB_IO_BEFORE_SYNC();
-    err = core->storage->sync(core->storage->ctx);
-    MICRODB_IO_AFTER_SYNC(err);
-    return err;
+    return core->storage->sync(core->storage->ctx);
 }
 
 static microdb_err_t microdb_write_wal_header(microdb_core_t *core) {
@@ -1449,11 +1349,6 @@ static microdb_err_t microdb_replay_wal(microdb_t *db, bool *out_had_entries, bo
     }
 
     *out_had_entries = true;
-    /* Recovery invariant:
-     * - TXN_KV WAL entries are staged only during replay.
-     * - Staged txn entries become visible only after durable TXN_COMMIT marker.
-     * - Corrupt/truncated WAL tail is ignored from first invalid entry onward.
-     */
     core->wal_replaying = true;
     for (i = 0u; i < entry_count; ++i) {
         uint8_t entry_header[16];
@@ -1667,24 +1562,9 @@ microdb_err_t microdb_storage_bootstrap(microdb_t *db) {
     core->wal_sequence = 0u;
     core->wal_entry_count = 0u;
     core->wal_used = MICRODB_WAL_HEADER_SIZE;
-    core->last_recovery_status = MICRODB_OK;
 
     if (!microdb_storage_ready(core)) {
         return MICRODB_OK;
-    }
-    if (core->storage->erase_size == 0u) {
-        MICRODB_LOG("ERROR", "Storage contract violation: erase_size must be > 0");
-        return MICRODB_ERR_INVALID;
-    }
-    if (core->storage->write_size == 0u) {
-        MICRODB_LOG("ERROR", "Storage contract violation: write_size must be 1 (got 0)");
-        return MICRODB_ERR_INVALID;
-    }
-    if (core->storage->write_size != 1u) {
-        MICRODB_LOG("ERROR",
-                    "Storage contract violation: write_size=%u unsupported (only 1 is supported in this release)",
-                    (unsigned)core->storage->write_size);
-        return MICRODB_ERR_INVALID;
     }
 
     {
@@ -1748,11 +1628,6 @@ microdb_err_t microdb_storage_bootstrap(microdb_t *db) {
     super_a_valid = microdb_validate_superblock(super_a, &super_a_gen, &super_a_bank);
     super_b_valid = microdb_validate_superblock(super_b, &super_b_gen, &super_b_bank);
 
-    /* Boot selection invariant:
-     * 1) prefer newest valid superblock;
-     * 2) if no valid superblock exists, fallback to fully valid bank scan;
-     * 3) selected bank pages must all pass header+payload CRC validation.
-     */
     if (super_a_valid || super_b_valid) {
         if (super_a_valid && (!super_b_valid || super_a_gen >= super_b_gen)) {
             selected_bank = super_a_bank;
@@ -1782,7 +1657,6 @@ microdb_err_t microdb_storage_bootstrap(microdb_t *db) {
     }
 
     if (have_selected) {
-        core->reopen_count++;
         core->storage_loading = true;
         err = microdb_load_kv_page(db, selected_bank, selected_gen);
         if (err == MICRODB_OK) {
@@ -1852,28 +1726,14 @@ microdb_err_t microdb_storage_bootstrap(microdb_t *db) {
 
     err = microdb_replay_wal(db, &had_entries, &reset_header);
     if (err != MICRODB_OK) {
-        core->last_recovery_status = err;
-        microdb_record_error(core, err);
         return err;
     }
 
     if (had_entries || reset_header) {
-        err = microdb_storage_flush(db);
-        core->last_recovery_status = err;
-        if (err == MICRODB_OK) {
-            core->recovery_count++;
-        } else {
-            microdb_record_error(core, err);
-        }
-        return err;
+        return microdb_storage_flush(db);
     }
 
-    err = microdb_reset_wal(core, core->wal_sequence);
-    core->last_recovery_status = err;
-    if (err != MICRODB_OK) {
-        microdb_record_error(core, err);
-    }
-    return err;
+    return microdb_reset_wal(core, core->wal_sequence);
 }
 
 static microdb_err_t microdb_append_wal_entry(microdb_t *db,
@@ -1952,10 +1812,6 @@ static microdb_err_t microdb_compact_nolock(microdb_t *db) {
     if (!microdb_storage_ready(core)) {
         return MICRODB_OK;
     }
-    /* Durability invariant:
-     * - active bank is never erased in-place.
-     * - compact writes full snapshot into inactive bank, syncs, then switches superblock.
-     */
     next_bank = (core->layout.active_bank == 0u) ? 1u : 0u;
     next_generation = core->layout.active_generation + 1u;
     err = microdb_write_snapshot_bank(core, next_bank, next_generation);
@@ -1977,14 +1833,8 @@ static microdb_err_t microdb_compact_nolock(microdb_t *db) {
     core->layout.active_bank = next_bank;
     core->layout.active_generation = next_generation;
     if (core->wal_enabled) {
-        err = microdb_reset_wal(core, core->wal_sequence + 1u);
-        if (err != MICRODB_OK) {
-            return err;
-        }
-        core->compact_count++;
-        return MICRODB_OK;
+        return microdb_reset_wal(core, core->wal_sequence + 1u);
     }
-    core->compact_count++;
     return MICRODB_OK;
 }
 
@@ -2003,19 +1853,13 @@ microdb_err_t microdb_compact(microdb_t *db) {
         return MICRODB_ERR_INVALID;
     }
     rc = microdb_compact_nolock(db);
-    microdb_record_error(core, rc);
     MICRODB_UNLOCK(db);
     return rc;
 }
 
 microdb_err_t microdb_storage_flush(microdb_t *db) {
     microdb_core_t *core = microdb_core(db);
-    microdb_err_t rc;
 
-    /* Ordering invariant:
-     * - flush never runs during bootstrap load or WAL replay.
-     * - it must not serialize transient replay/load state.
-     */
     if (!microdb_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return MICRODB_OK;
     }
@@ -2026,9 +1870,7 @@ microdb_err_t microdb_storage_flush(microdb_t *db) {
                     (unsigned)core->wal_entry_count);
     }
 
-    rc = microdb_compact_nolock(db);
-    microdb_record_error(core, rc);
-    return rc;
+    return microdb_compact_nolock(db);
 }
 
 microdb_err_t microdb_persist_kv_set(microdb_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {

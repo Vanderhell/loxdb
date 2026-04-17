@@ -1,0 +1,49 @@
+# Fail-Code Contract
+
+This document defines the external error semantics for `microdb` public API.
+
+## Core Error Codes
+
+- `MICRODB_ERR_INVALID`
+  - Invalid handle, null pointer, invalid argument, API misuse before init/after deinit.
+  - Storage contract violation at init/open, including:
+    - `erase_size == 0`
+    - `write_size == 0`
+    - `write_size != 1` (current releases support only `write_size = 1`)
+- `MICRODB_ERR_NO_MEM`
+  - RAM allocation/init budget failure.
+- `MICRODB_ERR_FULL`
+  - Capacity limit reached for bounded containers (for example REL table max rows).
+- `MICRODB_ERR_NOT_FOUND`
+  - Missing key/stream/row.
+- `MICRODB_ERR_EXPIRED`
+  - KV value exists but TTL expired.
+- `MICRODB_ERR_STORAGE`
+  - Storage backend I/O failure (`read/write/erase/sync`) or insufficient storage budget.
+- `MICRODB_ERR_CORRUPT`
+  - Corrupt persisted page/snapshot/WAL record detected in strict decode paths.
+- `MICRODB_ERR_SEALED`
+  - REL schema modification attempted after `schema_seal`.
+- `MICRODB_ERR_EXISTS`
+  - Duplicate registration/create for existing object.
+- `MICRODB_ERR_DISABLED`
+  - Feature disabled at compile time.
+- `MICRODB_ERR_OVERFLOW`
+  - User output buffer too small.
+- `MICRODB_ERR_SCHEMA`
+  - Schema mismatch or unsupported migration path.
+- `MICRODB_ERR_TXN_ACTIVE`
+  - Nested/conflicting transaction state.
+
+## Recovery Contract Notes
+
+- WAL header CRC corruption and WAL tail truncation are treated as **recoverable replay conditions**.
+  - Behavior: init/open succeeds, invalid WAL tail is dropped, committed state is preserved.
+  - These cases do not necessarily surface as immediate `MICRODB_ERR_CORRUPT` to the caller.
+- Hard decode failures in strict snapshot/page paths return `MICRODB_ERR_CORRUPT`.
+
+## Verified By Tests
+
+- API contract matrix: `tests/test_api_contract_matrix.c`
+- Fail-code and recovery contract: `tests/test_fail_code_contract.c`
+- Additional durability/recovery coverage: `tests/test_wal.c`, `tests/test_durability_closure.c`

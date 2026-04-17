@@ -1,0 +1,394 @@
+#include "microtest.h"
+#include "microdb.h"
+
+#include <string.h>
+
+static microdb_t g_db;
+
+static void setup_db(void) {
+    microdb_cfg_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    memset(&g_db, 0, sizeof(g_db));
+    cfg.storage = NULL;
+    cfg.ram_kb = 32u;
+    ASSERT_EQ(microdb_init(&g_db, &cfg), MICRODB_OK);
+}
+
+static void teardown_db(void) {
+    (void)microdb_deinit(&g_db);
+}
+
+static void make_rel_table(microdb_table_t **out_table) {
+    microdb_schema_t schema;
+    microdb_err_t rc;
+
+    rc = microdb_table_get(&g_db, "m", out_table);
+    if (rc == MICRODB_OK) return;
+    ASSERT_EQ(rc, MICRODB_ERR_NOT_FOUND);
+
+    ASSERT_EQ(microdb_schema_init(&schema, "m", 16u), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&schema, "id", MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&schema, "v", MICRODB_COL_U8, sizeof(uint8_t), false), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_seal(&schema), MICRODB_OK);
+    ASSERT_EQ(microdb_table_create(&g_db, &schema), MICRODB_OK);
+    ASSERT_EQ(microdb_table_get(&g_db, "m", out_table), MICRODB_OK);
+}
+
+/* Core */
+MDB_TEST(core_init_null_db_invalid) {
+    microdb_cfg_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.storage = NULL;
+    cfg.ram_kb = 32u;
+    ASSERT_EQ(microdb_init(NULL, &cfg), MICRODB_ERR_INVALID);
+}
+MDB_TEST(core_init_null_cfg_invalid) { ASSERT_EQ(microdb_init(&g_db, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(core_deinit_null_db_invalid) { ASSERT_EQ(microdb_deinit(NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(core_flush_null_db_invalid) { ASSERT_EQ(microdb_flush(NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(core_inspect_null_db_invalid) {
+    microdb_stats_t st;
+    ASSERT_EQ(microdb_inspect(NULL, &st), MICRODB_ERR_INVALID);
+}
+MDB_TEST(core_inspect_null_out_invalid) { ASSERT_EQ(microdb_inspect(&g_db, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(core_stats_null_db_invalid) {
+    microdb_stats_t st;
+    ASSERT_EQ(microdb_stats(NULL, &st), MICRODB_ERR_INVALID);
+}
+MDB_TEST(core_stats_null_out_invalid) { ASSERT_EQ(microdb_stats(&g_db, NULL), MICRODB_ERR_INVALID); }
+
+/* TXN */
+MDB_TEST(txn_begin_null_db_invalid) { ASSERT_EQ(microdb_txn_begin(NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(txn_commit_null_db_invalid) { ASSERT_EQ(microdb_txn_commit(NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(txn_rollback_null_db_invalid) { ASSERT_EQ(microdb_txn_rollback(NULL), MICRODB_ERR_INVALID); }
+
+/* KV null db */
+MDB_TEST(kv_set_null_db_invalid) {
+    uint8_t v = 1u;
+    ASSERT_EQ(microdb_kv_set(NULL, "k", &v, 1u, 0u), MICRODB_ERR_INVALID);
+}
+MDB_TEST(kv_get_null_db_invalid) {
+    uint8_t out = 0u;
+    size_t out_len = 0u;
+    ASSERT_EQ(microdb_kv_get(NULL, "k", &out, 1u, &out_len), MICRODB_ERR_INVALID);
+}
+MDB_TEST(kv_del_null_db_invalid) { ASSERT_EQ(microdb_kv_del(NULL, "k"), MICRODB_ERR_INVALID); }
+MDB_TEST(kv_exists_null_db_invalid) { ASSERT_EQ(microdb_kv_exists(NULL, "k"), MICRODB_ERR_INVALID); }
+MDB_TEST(kv_iter_null_db_invalid) { ASSERT_EQ(microdb_kv_iter(NULL, (microdb_kv_iter_cb_t)1, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(kv_purge_null_db_invalid) { ASSERT_EQ(microdb_kv_purge_expired(NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(kv_clear_null_db_invalid) { ASSERT_EQ(microdb_kv_clear(NULL), MICRODB_ERR_INVALID); }
+
+/* KV arg validation */
+MDB_TEST(kv_set_null_key_invalid) {
+    uint8_t v = 1u;
+    ASSERT_EQ(microdb_kv_set(&g_db, NULL, &v, 1u, 0u), MICRODB_ERR_INVALID);
+}
+MDB_TEST(kv_set_null_val_invalid) { ASSERT_EQ(microdb_kv_set(&g_db, "k", NULL, 1u, 0u), MICRODB_ERR_INVALID); }
+MDB_TEST(kv_get_null_buf_invalid) {
+    size_t out_len = 0u;
+    ASSERT_EQ(microdb_kv_get(&g_db, "k", NULL, 1u, &out_len), MICRODB_ERR_INVALID);
+}
+MDB_TEST(kv_del_null_key_invalid) { ASSERT_EQ(microdb_kv_del(&g_db, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(kv_exists_null_key_invalid) { ASSERT_EQ(microdb_kv_exists(&g_db, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(kv_iter_null_cb_invalid) { ASSERT_EQ(microdb_kv_iter(&g_db, NULL, NULL), MICRODB_ERR_INVALID); }
+
+/* TS null db */
+MDB_TEST(ts_register_null_db_invalid) { ASSERT_EQ(microdb_ts_register(NULL, "s", MICRODB_TS_U32, 0u), MICRODB_ERR_INVALID); }
+MDB_TEST(ts_insert_null_db_invalid) {
+    uint32_t v = 1u;
+    ASSERT_EQ(microdb_ts_insert(NULL, "s", 1u, &v), MICRODB_ERR_INVALID);
+}
+MDB_TEST(ts_last_null_db_invalid) {
+    microdb_ts_sample_t s;
+    ASSERT_EQ(microdb_ts_last(NULL, "s", &s), MICRODB_ERR_INVALID);
+}
+MDB_TEST(ts_query_null_db_invalid) {
+    ASSERT_EQ(microdb_ts_query(NULL, "s", 0u, 1u, (microdb_ts_query_cb_t)1, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(ts_query_buf_null_db_invalid) {
+    microdb_ts_sample_t b[1];
+    size_t n = 0u;
+    ASSERT_EQ(microdb_ts_query_buf(NULL, "s", 0u, 1u, b, 1u, &n), MICRODB_ERR_INVALID);
+}
+MDB_TEST(ts_count_null_db_invalid) {
+    size_t n = 0u;
+    ASSERT_EQ(microdb_ts_count(NULL, "s", 0u, 1u, &n), MICRODB_ERR_INVALID);
+}
+MDB_TEST(ts_clear_null_db_invalid) { ASSERT_EQ(microdb_ts_clear(NULL, "s"), MICRODB_ERR_INVALID); }
+
+/* TS arg validation */
+MDB_TEST(ts_register_null_name_invalid) { ASSERT_EQ(microdb_ts_register(&g_db, NULL, MICRODB_TS_U32, 0u), MICRODB_ERR_INVALID); }
+MDB_TEST(ts_insert_null_val_invalid) { ASSERT_EQ(microdb_ts_insert(&g_db, "s", 1u, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(ts_last_null_out_invalid) { ASSERT_EQ(microdb_ts_last(&g_db, "s", NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(ts_query_null_cb_invalid) { ASSERT_EQ(microdb_ts_query(&g_db, "s", 0u, 1u, NULL, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(ts_query_buf_null_buf_invalid) {
+    size_t n = 0u;
+    ASSERT_EQ(microdb_ts_query_buf(&g_db, "s", 0u, 1u, NULL, 1u, &n), MICRODB_ERR_INVALID);
+}
+MDB_TEST(ts_count_null_out_invalid) { ASSERT_EQ(microdb_ts_count(&g_db, "s", 0u, 1u, NULL), MICRODB_ERR_INVALID); }
+
+/* REL schema validation */
+MDB_TEST(rel_schema_init_null_schema_invalid) { ASSERT_EQ(microdb_schema_init(NULL, "t", 1u), MICRODB_ERR_INVALID); }
+MDB_TEST(rel_schema_init_null_name_invalid) {
+    microdb_schema_t s;
+    ASSERT_EQ(microdb_schema_init(&s, NULL, 1u), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_schema_add_null_schema_invalid) {
+    ASSERT_EQ(microdb_schema_add(NULL, "id", MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_schema_add_null_name_invalid) {
+    microdb_schema_t s;
+    ASSERT_EQ(microdb_schema_init(&s, "t", 1u), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&s, NULL, MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_schema_seal_null_schema_invalid) { ASSERT_EQ(microdb_schema_seal(NULL), MICRODB_ERR_INVALID); }
+
+/* REL table validation */
+MDB_TEST(rel_table_create_null_db_invalid) {
+    microdb_schema_t s;
+    ASSERT_EQ(microdb_schema_init(&s, "t", 1u), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&s, "id", MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_seal(&s), MICRODB_OK);
+    ASSERT_EQ(microdb_table_create(NULL, &s), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_table_create_null_schema_invalid) { ASSERT_EQ(microdb_table_create(&g_db, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(rel_table_get_null_db_invalid) {
+    microdb_table_t *t = NULL;
+    ASSERT_EQ(microdb_table_get(NULL, "t", &t), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_table_get_null_name_invalid) {
+    microdb_table_t *t = NULL;
+    ASSERT_EQ(microdb_table_get(&g_db, NULL, &t), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_table_get_null_out_invalid) { ASSERT_EQ(microdb_table_get(&g_db, "t", NULL), MICRODB_ERR_INVALID); }
+
+/* REL row buffer validation */
+MDB_TEST(rel_row_set_null_table_invalid) {
+    uint8_t row[8] = {0};
+    uint8_t v = 1u;
+    ASSERT_EQ(microdb_row_set(NULL, row, "id", &v), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_row_set_null_row_invalid) {
+    microdb_table_t *t = NULL;
+    uint8_t v = 1u;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_row_set(t, NULL, "id", &v), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_row_set_null_col_invalid) {
+    microdb_table_t *t = NULL;
+    uint8_t row[64] = {0};
+    uint8_t v = 1u;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_row_set(t, row, NULL, &v), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_row_set_null_val_invalid) {
+    microdb_table_t *t = NULL;
+    uint8_t row[64] = {0};
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_row_set(t, row, "id", NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_row_get_null_table_invalid) {
+    uint8_t row[8] = {0};
+    uint8_t out = 0u;
+    ASSERT_EQ(microdb_row_get(NULL, row, "id", &out, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_row_get_null_row_invalid) {
+    microdb_table_t *t = NULL;
+    uint8_t out = 0u;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_row_get(t, NULL, "id", &out, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_row_get_null_col_invalid) {
+    microdb_table_t *t = NULL;
+    uint8_t row[64] = {0};
+    uint8_t out = 0u;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_row_get(t, row, NULL, &out, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_row_get_null_out_invalid) {
+    microdb_table_t *t = NULL;
+    uint8_t row[64] = {0};
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_row_get(t, row, "id", NULL, NULL), MICRODB_ERR_INVALID);
+}
+
+/* REL runtime null db */
+MDB_TEST(rel_insert_null_db_invalid) {
+    uint8_t row[8] = {0};
+    ASSERT_EQ(microdb_rel_insert(NULL, NULL, row), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_find_null_db_invalid) {
+    uint32_t id = 1u;
+    ASSERT_EQ(microdb_rel_find(NULL, NULL, &id, (microdb_rel_iter_cb_t)1, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_find_by_null_db_invalid) {
+    uint32_t id = 1u;
+    uint8_t row[8] = {0};
+    ASSERT_EQ(microdb_rel_find_by(NULL, NULL, "id", &id, row), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_delete_null_db_invalid) {
+    uint32_t id = 1u;
+    ASSERT_EQ(microdb_rel_delete(NULL, NULL, &id, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_iter_null_db_invalid) { ASSERT_EQ(microdb_rel_iter(NULL, NULL, (microdb_rel_iter_cb_t)1, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(rel_clear_null_db_invalid) { ASSERT_EQ(microdb_rel_clear(NULL, NULL), MICRODB_ERR_INVALID); }
+
+/* REL runtime arg validation with valid table */
+MDB_TEST(rel_insert_null_table_invalid) {
+    uint8_t row[64] = {0};
+    ASSERT_EQ(microdb_rel_insert(&g_db, NULL, row), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_insert_null_row_invalid) {
+    microdb_table_t *t = NULL;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_rel_insert(&g_db, t, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_find_null_table_invalid) {
+    uint32_t id = 1u;
+    ASSERT_EQ(microdb_rel_find(&g_db, NULL, &id, (microdb_rel_iter_cb_t)1, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_find_null_search_invalid) {
+    microdb_table_t *t = NULL;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_rel_find(&g_db, t, NULL, (microdb_rel_iter_cb_t)1, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_find_null_cb_invalid) {
+    microdb_table_t *t = NULL;
+    uint32_t id = 1u;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_rel_find(&g_db, t, &id, NULL, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_find_by_null_table_invalid) {
+    uint32_t id = 1u;
+    uint8_t out[64] = {0};
+    ASSERT_EQ(microdb_rel_find_by(&g_db, NULL, "id", &id, out), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_find_by_null_col_invalid) {
+    microdb_table_t *t = NULL;
+    uint32_t id = 1u;
+    uint8_t out[64] = {0};
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_rel_find_by(&g_db, t, NULL, &id, out), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_find_by_null_search_invalid) {
+    microdb_table_t *t = NULL;
+    uint8_t out[64] = {0};
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_rel_find_by(&g_db, t, "id", NULL, out), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_find_by_null_out_invalid) {
+    microdb_table_t *t = NULL;
+    uint32_t id = 1u;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_rel_find_by(&g_db, t, "id", &id, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_delete_null_table_invalid) {
+    uint32_t id = 1u;
+    ASSERT_EQ(microdb_rel_delete(&g_db, NULL, &id, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_delete_null_search_invalid) {
+    microdb_table_t *t = NULL;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_rel_delete(&g_db, t, NULL, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_iter_null_table_invalid) { ASSERT_EQ(microdb_rel_iter(&g_db, NULL, (microdb_rel_iter_cb_t)1, NULL), MICRODB_ERR_INVALID); }
+MDB_TEST(rel_iter_null_cb_invalid) {
+    microdb_table_t *t = NULL;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_rel_iter(&g_db, t, NULL, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_count_null_table_invalid) { ASSERT_EQ(microdb_rel_count(NULL, &(uint32_t){0u}), MICRODB_ERR_INVALID); }
+MDB_TEST(rel_count_null_out_invalid) {
+    microdb_table_t *t = NULL;
+    make_rel_table(&t);
+    ASSERT_EQ(microdb_rel_count(t, NULL), MICRODB_ERR_INVALID);
+}
+MDB_TEST(rel_clear_null_table_invalid) { ASSERT_EQ(microdb_rel_clear(&g_db, NULL), MICRODB_ERR_INVALID); }
+
+int main(void) {
+    MDB_RUN_TEST(setup_db, teardown_db, core_init_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, core_init_null_cfg_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, core_deinit_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, core_flush_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, core_inspect_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, core_inspect_null_out_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, core_stats_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, core_stats_null_out_invalid);
+
+    MDB_RUN_TEST(setup_db, teardown_db, txn_begin_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, txn_commit_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, txn_rollback_null_db_invalid);
+
+    MDB_RUN_TEST(setup_db, teardown_db, kv_set_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_get_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_del_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_exists_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_iter_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_purge_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_clear_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_set_null_key_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_set_null_val_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_get_null_buf_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_del_null_key_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_exists_null_key_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, kv_iter_null_cb_invalid);
+
+    MDB_RUN_TEST(setup_db, teardown_db, ts_register_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_insert_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_last_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_query_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_query_buf_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_count_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_clear_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_register_null_name_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_insert_null_val_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_last_null_out_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_query_null_cb_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_query_buf_null_buf_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, ts_count_null_out_invalid);
+
+    MDB_RUN_TEST(setup_db, teardown_db, rel_schema_init_null_schema_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_schema_init_null_name_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_schema_add_null_schema_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_schema_add_null_name_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_schema_seal_null_schema_invalid);
+
+    MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_null_schema_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_table_get_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_table_get_null_name_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_table_get_null_out_invalid);
+
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_set_null_table_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_set_null_row_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_set_null_col_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_set_null_val_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_get_null_table_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_get_null_row_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_get_null_col_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_get_null_out_invalid);
+
+    MDB_RUN_TEST(setup_db, teardown_db, rel_insert_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_delete_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_iter_null_db_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_clear_null_db_invalid);
+
+    MDB_RUN_TEST(setup_db, teardown_db, rel_insert_null_table_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_insert_null_row_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_null_table_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_null_search_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_null_cb_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_null_table_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_null_col_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_null_search_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_null_out_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_delete_null_table_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_delete_null_search_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_iter_null_table_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_iter_null_cb_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_count_null_table_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_count_null_out_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_clear_null_table_invalid);
+    return MDB_RESULT();
+}

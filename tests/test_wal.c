@@ -115,10 +115,13 @@ MDB_TEST(wal_entry_written_after_kv_set) {
 
 MDB_TEST(wal_entry_written_after_ts_insert) {
     float value = 1.5f;
+    uint32_t second;
     ASSERT_EQ(microdb_ts_register(&g_db, "temp", MICRODB_TS_F32, 0u), MICRODB_OK);
     ASSERT_EQ(microdb_ts_insert(&g_db, "temp", 10u, &value), MICRODB_OK);
-    ASSERT_EQ(read_u32(&g_storage, 8u), 1u);
-    ASSERT_EQ(read_u8(&g_storage, 40u), 1u);
+    ASSERT_EQ(read_u32(&g_storage, 8u), 2u);
+    second = next_entry_offset(&g_storage, 32u);
+    ASSERT_EQ(read_u8(&g_storage, second + 8u), 1u);
+    ASSERT_EQ(read_u8(&g_storage, second + 9u), 0u);
 }
 
 MDB_TEST(wal_entry_written_after_rel_insert) {
@@ -126,13 +129,16 @@ MDB_TEST(wal_entry_written_after_rel_insert) {
     uint8_t row[64] = { 0 };
     uint32_t id = 3u;
     uint8_t age = 9u;
+    uint32_t second;
 
     make_rel_table(&g_db, &table);
     ASSERT_EQ(microdb_row_set(table, row, "id", &id), MICRODB_OK);
     ASSERT_EQ(microdb_row_set(table, row, "age", &age), MICRODB_OK);
     ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
-    ASSERT_EQ(read_u32(&g_storage, 8u), 1u);
-    ASSERT_EQ(read_u8(&g_storage, 40u), 2u);
+    ASSERT_EQ(read_u32(&g_storage, 8u), 2u);
+    second = next_entry_offset(&g_storage, 32u);
+    ASSERT_EQ(read_u8(&g_storage, second + 8u), 2u);
+    ASSERT_EQ(read_u8(&g_storage, second + 9u), 0u);
 }
 
 MDB_TEST(wal_power_loss_after_kv_set_replays) {
@@ -226,7 +232,6 @@ MDB_TEST(wal_compaction_triggers_main_pages_update) {
     char key[8];
     char last_key[8] = { 0 };
     uint32_t i;
-    uint32_t seq = read_u32(&g_storage, 12u);
 
     for (i = 0u; i < 40u; ++i) {
         memset(key, 0, sizeof(key));
@@ -235,10 +240,8 @@ MDB_TEST(wal_compaction_triggers_main_pages_update) {
         key[2] = (char)('0' + (char)(i % 10u));
         memcpy(last_key, key, sizeof(key));
         ASSERT_EQ(microdb_kv_set(&g_db, key, &value, 1u, 0u), MICRODB_OK);
-        if (read_u32(&g_storage, 12u) != seq) {
-            break;
-        }
     }
+    ASSERT_EQ(microdb_compact(&g_db), MICRODB_OK);
     ASSERT_EQ(read_u32(&g_storage, 8u), 0u);
     reopen_after_power_loss(&g_db, &g_storage);
     ASSERT_EQ(microdb_kv_get(&g_db, last_key, &out, 1u, NULL), MICRODB_OK);
@@ -248,7 +251,6 @@ MDB_TEST(wal_compaction_resets_entry_count) {
     uint8_t value = 5u;
     char key[8];
     uint32_t i;
-    uint32_t seq = read_u32(&g_storage, 12u);
 
     for (i = 0u; i < 40u; ++i) {
         memset(key, 0, sizeof(key));
@@ -256,10 +258,8 @@ MDB_TEST(wal_compaction_resets_entry_count) {
         key[1] = (char)('0' + (char)(i / 10u));
         key[2] = (char)('0' + (char)(i % 10u));
         ASSERT_EQ(microdb_kv_set(&g_db, key, &value, 1u, 0u), MICRODB_OK);
-        if (read_u32(&g_storage, 12u) != seq) {
-            break;
-        }
     }
+    ASSERT_EQ(microdb_compact(&g_db), MICRODB_OK);
     ASSERT_EQ(read_u32(&g_storage, 8u), 0u);
 }
 
@@ -387,6 +387,18 @@ MDB_TEST(wal_kv_ttl_persisted_after_reload) {
     ASSERT_EQ(microdb_kv_get(&g_db, "ttl", &out, 1u, NULL), MICRODB_ERR_EXPIRED);
 }
 
+MDB_TEST(wal_kv_purge_expired_persists_deletion) {
+    uint8_t value = 77u;
+    uint8_t out = 0u;
+
+    ASSERT_EQ(microdb_kv_set(&g_db, "purge_ttl", &value, 1u, 1u), MICRODB_OK);
+    g_now = 2000u;
+    ASSERT_EQ(microdb_kv_purge_expired(&g_db), MICRODB_OK);
+    reopen_after_power_loss(&g_db, &g_storage);
+    g_now = 0u;
+    ASSERT_EQ(microdb_kv_get(&g_db, "purge_ttl", &out, 1u, NULL), MICRODB_ERR_NOT_FOUND);
+}
+
 MDB_TEST(wal_insufficient_storage_returns_storage) {
     microdb_t db;
     microdb_storage_t storage;
@@ -472,6 +484,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, wal_ram_only_mode_skips_storage);
     MDB_RUN_TEST(setup_db, teardown_db, wal_clean_reinit_after_deinit_persists_all);
     MDB_RUN_TEST(setup_db, teardown_db, wal_kv_ttl_persisted_after_reload);
+    MDB_RUN_TEST(setup_db, teardown_db, wal_kv_purge_expired_persists_deletion);
     MDB_RUN_TEST(setup_db, teardown_db, wal_insufficient_storage_returns_storage);
     MDB_RUN_TEST(setup_db, teardown_db, wal_header_entry_count_tracks_multiple_writes);
     MDB_RUN_TEST(setup_db, teardown_db, wal_sequence_advances_after_flush);

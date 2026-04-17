@@ -259,13 +259,15 @@ MDB_TEST(kv_ttl_one_expires_after_one_second) {
     ASSERT_EQ(microdb_kv_exists(&g_db, "ttl1"), MICRODB_ERR_EXPIRED);
 }
 
-MDB_TEST(kv_get_expired_key_deletes_it) {
+MDB_TEST(kv_get_expired_key_is_read_only_until_purge) {
     uint8_t value = 4u;
     uint8_t out = 0u;
 
     ASSERT_EQ(microdb_kv_set(&g_db, "expire_get", &value, sizeof(value), 5u), MICRODB_OK);
     g_mock_time = 1006u;
     ASSERT_EQ(microdb_kv_get(&g_db, "expire_get", &out, sizeof(out), NULL), MICRODB_ERR_EXPIRED);
+    ASSERT_EQ(microdb_kv_get(&g_db, "expire_get", &out, sizeof(out), NULL), MICRODB_ERR_EXPIRED);
+    ASSERT_EQ(microdb_kv_purge_expired(&g_db), MICRODB_OK);
     ASSERT_EQ(microdb_kv_get(&g_db, "expire_get", &out, sizeof(out), NULL), MICRODB_ERR_NOT_FOUND);
 }
 
@@ -443,7 +445,7 @@ int main(void) {
     MDB_RUN_TEST(setup_basic, teardown_db, kv_binary_all_ff_roundtrip);
     MDB_RUN_TEST(setup_ttl, teardown_db, kv_ttl_zero_never_expires);
     MDB_RUN_TEST(setup_ttl, teardown_db, kv_ttl_one_expires_after_one_second);
-    MDB_RUN_TEST(setup_ttl, teardown_db, kv_get_expired_key_deletes_it);
+    MDB_RUN_TEST(setup_ttl, teardown_db, kv_get_expired_key_is_read_only_until_purge);
     MDB_RUN_TEST(setup_ttl, teardown_db, kv_exists_live_key_ok);
     MDB_RUN_TEST(setup_ttl, teardown_db, kv_exists_expired_key_returns_expired);
     MDB_RUN_TEST(setup_ttl, teardown_db, kv_purge_expired_removes_all_expired);

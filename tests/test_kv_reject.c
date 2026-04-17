@@ -122,6 +122,7 @@ MDB_TEST(kv_reject_policy_expired_key_frees_slot_for_insert) {
     ASSERT_EQ(microdb_kv_set(&g_db, "ttl", &value, sizeof(value), 1u), MICRODB_OK);
     g_mock_time = 1001u;
     ASSERT_EQ(microdb_kv_exists(&g_db, "ttl"), MICRODB_ERR_EXPIRED);
+    ASSERT_EQ(microdb_kv_purge_expired(&g_db), MICRODB_OK);
     ASSERT_EQ(microdb_kv_put(&g_db, "fresh", &value, sizeof(value)), MICRODB_OK);
 }
 

@@ -1,0 +1,173 @@
+name: Baseline Rollup
+
+on:
+  schedule:
+    - cron: "30 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  collect:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-debug
+            configure_preset: ci-debug-linux
+            build_preset: ci-debug-linux
+            test_preset: ci-debug-linux
+          - os: windows-latest
+            label: windows-debug
+            configure_preset: ci-debug-windows
+            build_preset: ci-debug-windows
+            test_preset: ci-debug-windows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.configure_preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.build_preset }}
+
+      - name: Run managed and fs lanes
+        shell: pwsh
+        run: |
+          $managedLog = Join-Path $pwd "managed_stress_ctest.log"
+          $fsLog = Join-Path $pwd "fs_matrix_ctest.log"
+          ctest --preset "${{ matrix.test_preset }}" -R "test_backend_managed_stress_(smoke|long)" --output-on-failure 2>&1 |
+            Tee-Object -FilePath $managedLog
+          ctest --preset "${{ matrix.test_preset }}" -R "test_backend_fs_matrix_.*" --output-on-failure 2>&1 |
+            Tee-Object -FilePath $fsLog
+
+      - name: Extract runtime snapshots
+        shell: pwsh
+        run: |
+          function Parse-Lane($txt, $name) {
+            $m = [regex]::Match($txt, ("{0}[.\s]+Passed\s+([0-9.]+)\s+sec" -f $name))
+            if (-not $m.Success) { throw "Unable to parse lane '$name'." }
+            return [math]::Round(([double]$m.Groups[1].Value) * 1000.0, 2)
+          }
+
+          $managedTxt = Get-Content (Join-Path $pwd "managed_stress_ctest.log") -Raw
+          $fsTxt = Get-Content (Join-Path $pwd "fs_matrix_ctest.log") -Raw
+
+          $managedSmoke = Parse-Lane $managedTxt "test_backend_managed_stress_smoke"
+          $managedLong = Parse-Lane $managedTxt "test_backend_managed_stress_long"
+          $fsSmoke = Parse-Lane $fsTxt "test_backend_fs_matrix_smoke"
+          $fsLong = Parse-Lane $fsTxt "test_backend_fs_matrix_long"
+
+          $managedJson = @"
+          {
+            "os": "${{ matrix.label }}",
+            "preset": "${{ matrix.test_preset }}",
+            "date_utc": "$((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))",
+            "smoke_runtime_ms": $managedSmoke,
+            "long_runtime_ms": $managedLong,
+            "smoke_budget_ms": 0,
+            "long_budget_ms": 0
+          }
+          "@
+          Set-Content -Path "managed_stress_baseline_${{ matrix.label }}.json" -Value $managedJson -Encoding ascii
+
+          $fsJson = @"
+          {
+            "os": "${{ matrix.label }}",
+            "preset": "${{ matrix.test_preset }}",
+            "date_utc": "$((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))",
+            "smoke_runtime_ms": $fsSmoke,
+            "long_runtime_ms": $fsLong,
+            "smoke_budget_ms": 0,
+            "long_budget_ms": 0
+          }
+          "@
+          Set-Content -Path "fs_matrix_baseline_${{ matrix.label }}.json" -Value $fsJson -Encoding ascii
+
+      - name: Inject preset budgets into snapshots
+        shell: pwsh
+        run: |
+          $presets = Get-Content ./CMakePresets.json -Raw | ConvertFrom-Json
+          $preset = $presets.configurePresets | Where-Object { $_.name -eq "${{ matrix.configure_preset }}" } | Select-Object -First 1
+          if ($null -eq $preset) { throw "Missing preset '${{ matrix.configure_preset }}'." }
+
+          $managedPath = "managed_stress_baseline_${{ matrix.label }}.json"
+          $managed = Get-Content $managedPath -Raw | ConvertFrom-Json
+          $managed.smoke_budget_ms = [double]$preset.cacheVariables.MICRODB_MANAGED_STRESS_SMOKE_MAX_MS
+          $managed.long_budget_ms = [double]$preset.cacheVariables.MICRODB_MANAGED_STRESS_LONG_MAX_MS
+          Set-Content -Path $managedPath -Value ($managed | ConvertTo-Json -Depth 8) -Encoding ascii
+
+          $fsPath = "fs_matrix_baseline_${{ matrix.label }}.json"
+          $fs = Get-Content $fsPath -Raw | ConvertFrom-Json
+          $fs.smoke_budget_ms = [double]$preset.cacheVariables.MICRODB_FS_MATRIX_SMOKE_MAX_MS
+          $fs.long_budget_ms = [double]$preset.cacheVariables.MICRODB_FS_MATRIX_LONG_MAX_MS
+          Set-Content -Path $fsPath -Value ($fs | ConvertTo-Json -Depth 8) -Encoding ascii
+
+      - name: Upload rollup snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-rollup-snapshots-${{ matrix.label }}
+          path: |
+            managed_stress_ctest.log
+            fs_matrix_ctest.log
+            managed_stress_baseline_${{ matrix.label }}.json
+            fs_matrix_baseline_${{ matrix.label }}.json
+
+  build-report:
+    name: Build Report
+    needs: collect
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download snapshots
+        uses: actions/download-artifact@v4
+        with:
+          pattern: baseline-rollup-snapshots-*
+          path: baseline-rollup-input
+          merge-multiple: true
+
+      - name: Build recommendations and rollup
+        shell: pwsh
+        run: |
+          ./scripts/recommend-managed-baselines.ps1 `
+            -InputDir ./baseline-rollup-input `
+            -Quantile 0.95 `
+            -MarginPct 20 `
+            -MinHeadroomMs 50 `
+            -OutputJson ./managed-baseline-recommendations.json `
+            -OutputMarkdown ./managed-baseline-recommendations.md
+
+          ./scripts/recommend-fs-matrix-baselines.ps1 `
+            -InputDir ./baseline-rollup-input `
+            -Quantile 0.95 `
+            -MarginPct 20 `
+            -MinHeadroomMs 50 `
+            -OutputJson ./fs-matrix-baseline-recommendations.json `
+            -OutputMarkdown ./fs-matrix-baseline-recommendations.md
+
+          ./scripts/build-baseline-rollup.ps1 `
+            -ManagedRecommendationsJson ./managed-baseline-recommendations.json `
+            -FsRecommendationsJson ./fs-matrix-baseline-recommendations.json `
+            -WarnPct 15 `
+            -OutputMarkdown ./baseline-rollup.md |
+            Tee-Object -FilePath ./baseline-rollup.log
+
+          "### Baseline drift rollup" >> $env:GITHUB_STEP_SUMMARY
+          Get-Content ./baseline-rollup.md | Select-Object -First 60 >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload rollup report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-rollup-report
+          path: |
+            baseline-rollup.md
+            baseline-rollup.log
+            managed-baseline-recommendations.json
+            managed-baseline-recommendations.md
+            fs-matrix-baseline-recommendations.json
+            fs-matrix-baseline-recommendations.md

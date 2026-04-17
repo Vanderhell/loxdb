@@ -7,16 +7,23 @@
 static microdb_t g_db;
 static microdb_storage_t g_storage;
 static const char *g_path = "txn_test.bin";
+static uint32_t g_now = 1000u;
+
+static microdb_timestamp_t mock_now(void) {
+    return g_now;
+}
 
 static void open_db(void) {
     microdb_cfg_t cfg;
 
     memset(&g_db, 0, sizeof(g_db));
     memset(&g_storage, 0, sizeof(g_storage));
+    g_now = 1000u;
     ASSERT_EQ(microdb_port_posix_init(&g_storage, g_path, 65536u), MICRODB_OK);
     memset(&cfg, 0, sizeof(cfg));
     cfg.storage = &g_storage;
     cfg.ram_kb = 32u;
+    cfg.now = mock_now;
     ASSERT_EQ(microdb_init(&g_db, &cfg), MICRODB_OK);
 }
 
@@ -112,6 +119,62 @@ MDB_TEST(test_txn_no_commit_survives_reinit) {
     ASSERT_EQ(microdb_kv_get(&g_db, "A", &out, 1u, NULL), MICRODB_ERR_NOT_FOUND);
 }
 
+MDB_TEST(test_txn_commit_under_wal_pressure_replays_after_reopen) {
+    microdb_stats_t st;
+    uint8_t filler = 9u;
+    uint8_t out = 0u;
+    uint32_t i;
+
+    for (i = 0u; i < 256u; ++i) {
+        char key[12] = { 0 };
+        key[0] = 'p';
+        key[1] = (char)('0' + (char)((i / 100u) % 10u));
+        key[2] = (char)('0' + (char)((i / 10u) % 10u));
+        key[3] = (char)('0' + (char)(i % 10u));
+        ASSERT_EQ(microdb_kv_set(&g_db, key, &filler, 1u, 0u), MICRODB_OK);
+        ASSERT_EQ(microdb_inspect(&g_db, &st), MICRODB_OK);
+        if (st.wal_fill_pct >= 65u) {
+            break;
+        }
+    }
+    ASSERT_GE(st.wal_fill_pct, 65u);
+
+    ASSERT_EQ(microdb_txn_begin(&g_db), MICRODB_OK);
+    ASSERT_EQ(microdb_kv_put(&g_db, "T1", &(uint8_t){ 1u }, 1u), MICRODB_OK);
+    ASSERT_EQ(microdb_kv_put(&g_db, "T2", &(uint8_t){ 2u }, 1u), MICRODB_OK);
+    ASSERT_EQ(microdb_txn_commit(&g_db), MICRODB_OK);
+
+    reopen_db();
+    ASSERT_EQ(microdb_kv_get(&g_db, "T1", &out, 1u, NULL), MICRODB_OK);
+    ASSERT_EQ(out, 1u);
+    ASSERT_EQ(microdb_kv_get(&g_db, "T2", &out, 1u, NULL), MICRODB_OK);
+    ASSERT_EQ(out, 2u);
+}
+
+MDB_TEST(test_txn_flush_while_active_does_not_commit_staged) {
+    uint8_t out = 0u;
+
+    ASSERT_EQ(microdb_txn_begin(&g_db), MICRODB_OK);
+    ASSERT_EQ(microdb_kv_put(&g_db, "X", &(uint8_t){ 1u }, 1u), MICRODB_OK);
+    ASSERT_EQ(microdb_flush(&g_db), MICRODB_OK);
+    reopen_db();
+    ASSERT_EQ(microdb_kv_get(&g_db, "X", &out, 1u, NULL), MICRODB_ERR_NOT_FOUND);
+}
+
+MDB_TEST(test_txn_commit_replay_idempotent_across_reboots) {
+    uint8_t out = 0u;
+    uint32_t i;
+
+    ASSERT_EQ(microdb_txn_begin(&g_db), MICRODB_OK);
+    ASSERT_EQ(microdb_kv_put(&g_db, "IDEMP", &(uint8_t){ 7u }, 1u), MICRODB_OK);
+    ASSERT_EQ(microdb_txn_commit(&g_db), MICRODB_OK);
+    for (i = 0u; i < 5u; ++i) {
+        reopen_db();
+        ASSERT_EQ(microdb_kv_get(&g_db, "IDEMP", &out, 1u, NULL), MICRODB_OK);
+        ASSERT_EQ(out, 7u);
+    }
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, test_txn_commit_makes_values_visible);
     MDB_RUN_TEST(setup_db, teardown_db, test_txn_rollback_discards_values);
@@ -120,5 +183,8 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, test_txn_del_inside_txn);
     MDB_RUN_TEST(setup_db, teardown_db, test_kv_put_outside_txn_unaffected);
     MDB_RUN_TEST(setup_db, teardown_db, test_txn_no_commit_survives_reinit);
+    MDB_RUN_TEST(setup_db, teardown_db, test_txn_commit_under_wal_pressure_replays_after_reopen);
+    MDB_RUN_TEST(setup_db, teardown_db, test_txn_flush_while_active_does_not_commit_staged);
+    MDB_RUN_TEST(setup_db, teardown_db, test_txn_commit_replay_idempotent_across_reboots);
     return MDB_RESULT();
 }
