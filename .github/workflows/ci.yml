@@ -7,6 +7,14 @@ on:
     branches: [ master, main ]
 
 jobs:
+  spdx-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SPDX Header Check
+        shell: pwsh
+        run: ./tools/check_spdx_headers.ps1
+
   build:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -25,3 +33,19 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
+
+  sanitize-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Configure (ASan/UBSan)
+        run: cmake --preset ci-asan-ubsan-linux
+      - name: Build (ASan/UBSan)
+        run: cmake --build --preset ci-asan-ubsan-linux
+      - name: Test (ASan/UBSan)
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --preset ci-asan-ubsan-linux

@@ -10,7 +10,7 @@
 [![Language: C99](https://img.shields.io/badge/language-C99-blue)](https://en.wikipedia.org/wiki/C99)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform: ESP32](https://img.shields.io/badge/platform-ESP32-orange)](https://github.com/Vanderhell/microdb)
-[![Tests: 175+](https://img.shields.io/badge/tests-175%2B-brightgreen)](https://github.com/Vanderhell/microdb)
+[![Tests](https://img.shields.io/badge/tests-ctest-brightgreen)](https://github.com/Vanderhell/microdb/actions/workflows/ci.yml)
 
 ## What is microdb?
 
@@ -30,10 +30,12 @@ and can operate either in RAM-only mode or with a storage HAL for persistence an
 - Product brief (1 page): see [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md)
 - Profile guarantees and limits: see [PROFILE_GUARANTEES.md](docs/PROFILE_GUARANTEES.md)
 - Fail-code contract: see [FAIL_CODE_CONTRACT.md](docs/FAIL_CODE_CONTRACT.md)
+- Runtime error text helper: `microdb_err_to_string(microdb_err_t)`
 - Offline verifier contract: see [OFFLINE_VERIFIER.md](docs/OFFLINE_VERIFIER.md)
 - Footprint-min contract: see [FOOTPRINT_MIN_CONTRACT.md](docs/FOOTPRINT_MIN_CONTRACT.md)
 - Latest hard verdict: see [hard_verdict_20260412.md](docs/results/hard_verdict_20260412.md)
 - Getting started (5 min): see [GETTING_STARTED_5_MIN.md](docs/GETTING_STARTED_5_MIN.md)
+- Programmer manual: see [PROGRAMMER_MANUAL.md](docs/PROGRAMMER_MANUAL.md)
 - Release checklist: see [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
 - Release tag template: see [RELEASE_TAG_TEMPLATE.md](docs/RELEASE_TAG_TEMPLATE.md)
 
@@ -287,9 +289,8 @@ For embedded use cases this is negligible. Not suitable for `MICRODB_KV_MAX_KEYS
 Enable `MICRODB_THREAD_SAFE=1` and provide `lock_create/lock/unlock/lock_destroy`
 hooks in `microdb_cfg_t` to integrate your RTOS/application mutex.
 
-**No compression, no encryption.**
-Use `microcodec` for compression and `microcrypt` for encryption before storing.
-Both are part of the micro-toolkit ecosystem.
+**No built-in compression or encryption.**
+If your product needs those, apply them in your application layer before calling microdb APIs.
 
 ## Test coverage
 
@@ -305,13 +306,9 @@ The repository covers:
 - tiny-footprint profile checks (`test_tiny_footprint` + `test_tiny_size_guard`)
 - canonical footprint-min baseline + hard section/linkage gate (`test_footprint_min_baseline` + `test_footprint_min_size_gate_release`, Release contract)
 
-## Part of micro-toolkit
+## Integration note
 
-microdb is intended to sit alongside the rest of the micro-toolkit stack:
-
-- `microcodec` for compact serialization and compression
-- `microcrypt` for encryption and authentication
-- transport or protocol layers above the database as needed by the application
+microdb is storage-focused. Transport, serialization, and cryptography are handled by surrounding application components.
 
 ## Wiki
 
@@ -321,3 +318,11 @@ That keeps documentation versioned in the main repository and ready to publish i
 ## License
 
 MIT.
+
+License details and file-level SPDX policy:
+
+- [LICENSE](LICENSE)
+- [docs/FREE_EDITION_LICENSING.md](docs/FREE_EDITION_LICENSING.md)
+- SPDX tooling:
+  - `tools/apply_spdx_headers.ps1`
+  - `tools/check_spdx_headers.ps1`

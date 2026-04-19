@@ -58,3 +58,7 @@ Use microdb when you want:
 - one small library covering KV, TS, and relational storage
 
 Use SQLite instead when you need dynamic schemas, SQL, concurrent access, or large indexes.
+
+For full API and integration details, use repository doc:
+
+- `docs/PROGRAMMER_MANUAL.md`

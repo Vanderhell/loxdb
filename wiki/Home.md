@@ -22,6 +22,7 @@ It combines three engines behind one API:
 - [Configuration](Configuration)
 - [Storage HAL](Storage-HAL)
 - [Testing](Testing)
+- Programmer manual (repo doc): `docs/PROGRAMMER_MANUAL.md`
 
 ## Repository
 
