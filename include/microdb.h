@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef MICRODB_H
 #define MICRODB_H
 
@@ -282,6 +283,11 @@ typedef enum {
     MICRODB_ERR_SCHEMA = -12,
     MICRODB_ERR_TXN_ACTIVE = -13
 } microdb_err_t;
+
+/* Returns a stable symbolic name for a microdb error code.
+ * Unknown values return "MICRODB_ERR_UNKNOWN".
+ */
+const char *microdb_err_to_string(microdb_err_t err);
 
 typedef struct {
     /* Legacy aggregate stats (kept for backward compatibility). */
