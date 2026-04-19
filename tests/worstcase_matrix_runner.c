@@ -75,7 +75,7 @@ static int fail_status(const char *op, const char *status_name, int status_code,
 }
 
 static int fail_microdb(const char *op, microdb_err_t rc, int ret) {
-    fprintf(stderr, "%s failed: %s (%d)\n", op, microdb_err_to_string(rc), (int)rc);
+    fprintf(stderr, "%s failed: rc=%d\n", op, (int)rc);
     return ret;
 }
 
