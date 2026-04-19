@@ -30,9 +30,26 @@
    - drift warnings when thresholds tighten/loosen beyond policy
 
 ## Next Roadmap (Post-Hardening)
-1. [todo] Add sanitizer lanes (ASan/UBSan) for debug presets on Linux.
-2. [todo] Add REL corruption injection corpus and replay fixtures.
-3. [todo] Add long-run trend dashboard generated from `docs/results/` history.
+1. [done] Add sanitizer lanes (ASan/UBSan) for debug presets on Linux.
+2. [done] Add REL corruption injection corpus and replay fixtures.
+3. [done] Add long-run trend dashboard generated from `docs/results/` history.
+
+## Next Roadmap (Modularization)
+1. [done] Finish linker-friendly modular split:
+   - separate modules so link-time stripping can exclude unused features cleanly
+   - keep stable public boundaries across module interfaces
+2. [done] Add JSON wrapper module:
+   - thin JSON encode/decode wrapper on top of core APIs
+   - no contract regression in core C API
+3. [done] Add import/export flow:
+   - export selected DB objects to portable payload
+   - import with explicit validation and fail-code mapping
+4. [done] Robustness hardening landed:
+   - `microdb_json_wrapper` module (separate target, separate header)
+   - `microdb_import_export` module (separate target, separate header)
+   - TS/REL support added to import/export with explicit descriptors
+   - dedicated tests: `test_json_wrapper`, `test_import_export`, `test_import_export_fuzz` (PASS)
+   - strip gate: `test_optional_module_strip_gate` ensures module symbols do not leak into core
 
 ## Current Truth (Do Not Relax)
 - Core storage contract remains strict:

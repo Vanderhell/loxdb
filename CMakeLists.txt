@@ -11,6 +11,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 option(MICRODB_BUILD_TESTS "Build tests" ON)
 option(MICRODB_BUILD_TOOLS "Build offline tools" ON)
+option(MICRODB_BUILD_JSON_WRAPPER "Build JSON wrapper module (separate from core)" ON)
+option(MICRODB_BUILD_IMPORT_EXPORT "Build import/export module (separate from core)" ON)
 option(MICRODB_BUILD_OPTIONAL_BACKENDS "Build optional backend adapter modules (not linked into core)" ON)
 option(MICRODB_BUILD_BACKEND_ALIGNED_STUB "Build aligned backend stub module" ON)
 option(MICRODB_BUILD_BACKEND_NAND_STUB "Build NAND managed backend stub module" ON)
@@ -315,6 +317,22 @@ create_microdb_profile_variant(microdb_profile_core_wal MICRODB_PROFILE_CORE_WAL
 create_microdb_profile_variant(microdb_profile_core_perf MICRODB_PROFILE_CORE_PERF)
 create_microdb_profile_variant(microdb_profile_core_himem MICRODB_PROFILE_CORE_HIMEM)
 
+if(MICRODB_BUILD_JSON_WRAPPER)
+    add_library(microdb_json_wrapper STATIC src/modules/microdb_json_wrapper.c)
+    target_include_directories(microdb_json_wrapper PUBLIC include PRIVATE src)
+    target_link_libraries(microdb_json_wrapper PUBLIC microdb)
+endif()
+
+if(MICRODB_BUILD_IMPORT_EXPORT)
+    add_library(microdb_import_export STATIC src/modules/microdb_import_export.c)
+    target_include_directories(microdb_import_export PUBLIC include PRIVATE src)
+    if(TARGET microdb_json_wrapper)
+        target_link_libraries(microdb_import_export PUBLIC microdb_json_wrapper)
+    else()
+        target_link_libraries(microdb_import_export PUBLIC microdb)
+    endif()
+endif()
+
 if(MICRODB_BUILD_OPTIONAL_BACKENDS)
     set(MICRODB_OPTIONAL_BACKEND_TARGETS "")
 
@@ -420,7 +438,9 @@ foreach(_optional_backend_target
         microdb_backend_emmc_stub
         microdb_backend_sd_stub
         microdb_backend_fs_stub
-        microdb_backend_block_stub)
+        microdb_backend_block_stub
+        microdb_json_wrapper
+        microdb_import_export)
     if(TARGET ${_optional_backend_target})
         get_target_property(_microdb_links microdb LINK_LIBRARIES)
         if(_microdb_links)
@@ -453,6 +473,12 @@ if(MSVC)
     target_compile_options(microdb_profile_core_wal PRIVATE /W4)
     target_compile_options(microdb_profile_core_perf PRIVATE /W4)
     target_compile_options(microdb_profile_core_himem PRIVATE /W4)
+    if(TARGET microdb_json_wrapper)
+        target_compile_options(microdb_json_wrapper PRIVATE /W4)
+    endif()
+    if(TARGET microdb_import_export)
+        target_compile_options(microdb_import_export PRIVATE /W4)
+    endif()
     foreach(_opt_target
             microdb_backend_registry
             microdb_backend_compat
@@ -492,6 +518,12 @@ else()
     target_compile_options(microdb_profile_core_wal PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_profile_core_perf PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(microdb_profile_core_himem PRIVATE -Wall -Wextra -Wpedantic)
+    if(TARGET microdb_json_wrapper)
+        target_compile_options(microdb_json_wrapper PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    if(TARGET microdb_import_export)
+        target_compile_options(microdb_import_export PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
     foreach(_opt_target
             microdb_backend_registry
             microdb_backend_compat
@@ -521,6 +553,24 @@ install(
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
+if(TARGET microdb_json_wrapper)
+    install(
+        TARGETS microdb_json_wrapper
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
+
+if(TARGET microdb_import_export)
+    install(
+        TARGETS microdb_import_export
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
+
 install(
     FILES
         port/ram/microdb_port_ram.h
@@ -531,6 +581,8 @@ install(
 install(
     FILES
         include/microdb_capacity_profile.h
+        include/microdb_json_wrapper.h
+        include/microdb_import_export.h
         include/microdb_backend_adapter.h
         include/microdb_backend_compat.h
         include/microdb_backend_decision.h
@@ -606,6 +658,38 @@ if(MICRODB_BUILD_TESTS)
     target_link_libraries(test_stats PRIVATE microdb)
     add_test(NAME test_stats COMMAND test_stats)
 
+    add_executable(test_error_strings tests/test_error_strings.c)
+    target_include_directories(test_error_strings PRIVATE include tests port/ram src)
+    target_link_libraries(test_error_strings PRIVATE microdb)
+    add_test(NAME test_error_strings COMMAND test_error_strings)
+
+    if(TARGET microdb_json_wrapper AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_json_wrapper.c")
+        add_executable(test_json_wrapper tests/test_json_wrapper.c)
+        target_include_directories(test_json_wrapper PRIVATE include tests port/ram src)
+        target_link_libraries(test_json_wrapper PRIVATE microdb_json_wrapper)
+        add_test(NAME test_json_wrapper COMMAND test_json_wrapper)
+    else()
+        message(STATUS "Skipping test_json_wrapper: missing module target or tests/test_json_wrapper.c")
+    endif()
+
+    if(TARGET microdb_import_export AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_import_export.c")
+        add_executable(test_import_export tests/test_import_export.c)
+        target_include_directories(test_import_export PRIVATE include tests port/ram src)
+        target_link_libraries(test_import_export PRIVATE microdb_import_export)
+        add_test(NAME test_import_export COMMAND test_import_export)
+    else()
+        message(STATUS "Skipping test_import_export: missing module target or tests/test_import_export.c")
+    endif()
+
+    if(TARGET microdb_import_export AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_import_export_fuzz.c")
+        add_executable(test_import_export_fuzz tests/test_import_export_fuzz.c)
+        target_include_directories(test_import_export_fuzz PRIVATE include tests port/ram src)
+        target_link_libraries(test_import_export_fuzz PRIVATE microdb_import_export)
+        add_test(NAME test_import_export_fuzz COMMAND test_import_export_fuzz)
+    else()
+        message(STATUS "Skipping test_import_export_fuzz: missing module target or tests/test_import_export_fuzz.c")
+    endif()
+
     add_executable(test_thread_safety tests/test_thread_safety.c)
     target_include_directories(test_thread_safety PRIVATE include tests port/ram port/posix src)
     target_compile_definitions(test_thread_safety PRIVATE MICRODB_THREAD_SAFE=1)
@@ -658,6 +742,20 @@ if(MICRODB_BUILD_TESTS)
         add_test(NAME test_resilience COMMAND test_resilience)
     else()
         message(STATUS "Skipping test_resilience: missing tests/test_resilience.c")
+    endif()
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rel_corruption_replay.c")
+        add_executable(test_rel_corruption_replay tests/test_rel_corruption_replay.c)
+        target_include_directories(test_rel_corruption_replay PRIVATE include tests port/ram port/posix src)
+        target_compile_definitions(
+            test_rel_corruption_replay
+            PRIVATE
+                MICRODB_REL_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus/rel"
+        )
+        target_link_libraries(test_rel_corruption_replay PRIVATE microdb)
+        add_test(NAME test_rel_corruption_replay COMMAND test_rel_corruption_replay)
+    else()
+        message(STATUS "Skipping test_rel_corruption_replay: missing tests/test_rel_corruption_replay.c")
     endif()
 
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_api_contract_matrix.c")
@@ -1156,6 +1254,14 @@ if(MICRODB_BUILD_TESTS)
                 -DDEFAULT_LIB=$<TARGET_FILE:microdb>
                 -DLLVM_READOBJ=${MICRODB_LLVM_READOBJ}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_optional_backends_unlinked.cmake
+        )
+
+        add_test(
+            NAME test_optional_module_strip_gate
+            COMMAND ${CMAKE_COMMAND}
+                -DDEFAULT_LIB=$<TARGET_FILE:microdb>
+                -DLLVM_READOBJ=${MICRODB_LLVM_READOBJ}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_optional_modules_unlinked.cmake
         )
     endif()
 endif()
