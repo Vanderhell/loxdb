@@ -31,6 +31,24 @@
       }
     },
     {
+      "name": "ci-asan-ubsan-linux",
+      "displayName": "CI ASan+UBSan Linux",
+      "binaryDir": "${sourceDir}/build/ci-asan-ubsan-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_FLAGS_DEBUG": "-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer",
+        "CMAKE_CXX_FLAGS_DEBUG": "-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer",
+        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=address,undefined",
+        "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=address,undefined",
+        "MICRODB_MANAGED_STRESS_SMOKE_MAX_MS": "3000",
+        "MICRODB_MANAGED_STRESS_LONG_MAX_MS": "12000",
+        "MICRODB_FS_MATRIX_SMOKE_MAX_MS": "3500",
+        "MICRODB_FS_MATRIX_LONG_MAX_MS": "15000"
+      }
+    },
+    {
       "name": "release-linux",
       "displayName": "Release Linux",
       "binaryDir": "${sourceDir}/build/release-linux",
@@ -69,6 +87,11 @@
       "configuration": "Debug"
     },
     {
+      "name": "ci-asan-ubsan-linux",
+      "configurePreset": "ci-asan-ubsan-linux",
+      "configuration": "Debug"
+    },
+    {
       "name": "release-linux",
       "configurePreset": "release-linux",
       "configuration": "Release"
@@ -91,6 +114,14 @@
     {
       "name": "ci-debug-windows",
       "configurePreset": "ci-debug-windows",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-asan-ubsan-linux",
+      "configurePreset": "ci-asan-ubsan-linux",
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true
