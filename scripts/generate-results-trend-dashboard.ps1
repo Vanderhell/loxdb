@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 param(
     [string]$ResultsDir = "docs/results",
     [int]$TopRuns = 20,
