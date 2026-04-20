@@ -40,6 +40,8 @@ and can operate either in RAM-only mode or with a storage HAL for persistence an
 - Latest hard verdict: see [hard_verdict_20260412.md](docs/results/hard_verdict_20260412.md)
 - Getting started (5 min): see [GETTING_STARTED_5_MIN.md](docs/GETTING_STARTED_5_MIN.md)
 - Programmer manual: see [PROGRAMMER_MANUAL.md](docs/PROGRAMMER_MANUAL.md)
+- Backend integration guide: see [BACKEND_INTEGRATION_GUIDE.md](docs/BACKEND_INTEGRATION_GUIDE.md)
+- Port authoring guide (ESP32 reference): see [PORT_AUTHORING_GUIDE.md](docs/PORT_AUTHORING_GUIDE.md)
 - Release checklist: see [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
 - Release tag template: see [RELEASE_TAG_TEMPLATE.md](docs/RELEASE_TAG_TEMPLATE.md)
 

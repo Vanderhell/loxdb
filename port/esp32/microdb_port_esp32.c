@@ -15,6 +15,7 @@ static microdb_err_t microdb_port_esp32_read(void *ctx, uint32_t offset, void *b
         return MICRODB_ERR_INVALID;
     }
 
+    /* Port mapping: storage.read -> esp_partition_read */
     return (esp_partition_read(esp32->partition, offset, buf, len) == ESP_OK) ? MICRODB_OK : MICRODB_ERR_STORAGE;
 }
 
@@ -25,6 +26,7 @@ static microdb_err_t microdb_port_esp32_write(void *ctx, uint32_t offset, const 
         return MICRODB_ERR_INVALID;
     }
 
+    /* Port mapping: storage.write -> esp_partition_write */
     return (esp_partition_write(esp32->partition, offset, buf, len) == ESP_OK) ? MICRODB_OK : MICRODB_ERR_STORAGE;
 }
 
@@ -35,6 +37,7 @@ static microdb_err_t microdb_port_esp32_erase(void *ctx, uint32_t offset) {
         return MICRODB_ERR_INVALID;
     }
 
+    /* Erase contract: one erase block per call at the requested offset. */
     return (esp_partition_erase_range(esp32->partition, offset, esp32->partition->erase_size) == ESP_OK)
                ? MICRODB_OK
                : MICRODB_ERR_STORAGE;
@@ -42,6 +45,7 @@ static microdb_err_t microdb_port_esp32_erase(void *ctx, uint32_t offset) {
 
 static microdb_err_t microdb_port_esp32_sync(void *ctx) {
     (void)ctx;
+    /* ESP32 partition API path here is synchronous enough for this port contract. */
     return MICRODB_OK;
 }
 
@@ -64,6 +68,7 @@ microdb_err_t microdb_port_esp32_init(microdb_storage_t *storage, const char *pa
     storage->sync = microdb_port_esp32_sync;
     storage->capacity = g_microdb_esp32_ctx.partition->size;
     storage->erase_size = g_microdb_esp32_ctx.partition->erase_size;
+    /* Core contract today requires byte-write semantics. */
     storage->write_size = 1u;
     storage->ctx = &g_microdb_esp32_ctx;
     return MICRODB_OK;

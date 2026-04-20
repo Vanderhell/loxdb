@@ -56,3 +56,31 @@
   - `erase_size > 0`
   - `write_size == 1`
 - Adapter paths may broaden media support, but must not relax core durability rules.
+
+## Next Roadmap (Integration & Ecosystem Gaps)
+1. [ ] Add `docs/BACKEND_INTEGRATION_GUIDE.md`:
+   - end-to-end backend-open flow (`descriptor -> decision -> adapter -> microdb_init`)
+   - practical integration recipes for raw byte-write, aligned-write, and managed media
+   - explicit "what stubs are / are not" section (capability descriptors, not drivers)
+2. [ ] Improve documentation discoverability from top-level entry points:
+   - add "Backend Integration" and "Migration" quick links in `README.md`
+   - add docs map/navigation page linking backend contracts and stress/baseline docs
+   - make `port/esp32/microdb_port_esp32.c` explicitly discoverable as a reference implementation
+   - mirror the same structure in GitHub Wiki sidebar/home
+3. [ ] Add RTOS reference port skeletons:
+   - `examples/freertos_port/` minimal `microdb_storage_t` adapter scaffolding
+   - `examples/zephyr_port/` minimal `microdb_storage_t` adapter scaffolding
+   - document required sync/flush semantics and lock hooks (`cfg.lock_create/lock/unlock/lock_destroy`)
+   - include guidance from `src/microdb_lock.h` for single-thread vs thread-safe builds
+4. [ ] Add reference "real driver glue" example for non-byte-write media:
+   - aligned/block path example showing bounce-buffer + sync lifecycle
+   - clearly separate demo glue code from production requirements
+5. [ ] Add `docs/SCHEMA_MIGRATION_GUIDE.md`:
+   - relational `schema_version` and `on_migrate` workflow
+   - migration patterns (add/remove/reshape columns) and compatibility constraints
+   - tested migration example with persisted data across reopen/recovery
+6. [ ] Add `docs/PORT_AUTHORING_GUIDE.md` with annotated walkthrough:
+   - use `port/esp32/microdb_port_esp32.c` as live reference port
+   - explain field-by-field `microdb_storage_t` mapping to real driver hooks
+   - call out `write_size = 1` core contract and when to use aligned adapter path
+   - describe async erase/sync caveats and expected durability semantics
