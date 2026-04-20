@@ -7,6 +7,7 @@ Primary live reference:
 - `port/esp32/microdb_port_esp32.c`
 - `examples/freertos_port/main.c` (RTOS lock/storage skeleton)
 - `examples/zephyr_port/main.c` (RTOS lock/storage skeleton)
+- `examples/aligned_block_port/main.c` (non-byte-write aligned adapter skeleton)
 
 Use it as a template for mapping your platform driver to `microdb_storage_t`.
 

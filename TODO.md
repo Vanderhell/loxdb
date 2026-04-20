@@ -72,10 +72,10 @@
    - `examples/zephyr_port/` minimal `microdb_storage_t` adapter scaffolding
    - document required sync/flush semantics and lock hooks (`cfg.lock_create/lock/unlock/lock_destroy`)
    - include guidance from `src/microdb_lock.h` for single-thread vs thread-safe builds
-4. [ ] Add reference "real driver glue" example for non-byte-write media:
+4. [done] Add reference "real driver glue" example for non-byte-write media:
    - aligned/block path example showing bounce-buffer + sync lifecycle
    - clearly separate demo glue code from production requirements
-5. [ ] Add `docs/SCHEMA_MIGRATION_GUIDE.md`:
+5. [done] Add `docs/SCHEMA_MIGRATION_GUIDE.md`:
    - relational `schema_version` and `on_migrate` workflow
    - migration patterns (add/remove/reshape columns) and compatibility constraints
    - tested migration example with persisted data across reopen/recovery

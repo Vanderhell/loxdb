@@ -102,6 +102,7 @@ Detailed contract:
 
 - `docs/FS_BLOCK_ADAPTER_CONTRACT.md`
 - `docs/PROGRAMMER_MANUAL.md` (backend APIs and open wrapper sections)
+- `examples/aligned_block_port/main.c` (reference aligned/block glue skeleton)
 
 ## 5) Common pitfalls
 
