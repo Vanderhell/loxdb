@@ -18,11 +18,13 @@ It combines three engines behind one API:
 ## Start here
 
 - [Getting Started](Getting-Started)
+- [Integration](Integration)
 - [Architecture](Architecture)
 - [Configuration](Configuration)
 - [Storage HAL](Storage-HAL)
 - [Testing](Testing)
 - Programmer manual (repo doc): `docs/PROGRAMMER_MANUAL.md`
+- Docs map (repo doc): `docs/DOCS_MAP.md`
 
 ## Repository
 

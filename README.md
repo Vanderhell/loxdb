@@ -42,6 +42,7 @@ and can operate either in RAM-only mode or with a storage HAL for persistence an
 - Programmer manual: see [PROGRAMMER_MANUAL.md](docs/PROGRAMMER_MANUAL.md)
 - Backend integration guide: see [BACKEND_INTEGRATION_GUIDE.md](docs/BACKEND_INTEGRATION_GUIDE.md)
 - Port authoring guide (ESP32 reference): see [PORT_AUTHORING_GUIDE.md](docs/PORT_AUTHORING_GUIDE.md)
+- Full docs map: see [DOCS_MAP.md](docs/DOCS_MAP.md)
 - Release checklist: see [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
 - Release tag template: see [RELEASE_TAG_TEMPLATE.md](docs/RELEASE_TAG_TEMPLATE.md)
 

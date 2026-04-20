@@ -58,11 +58,11 @@
 - Adapter paths may broaden media support, but must not relax core durability rules.
 
 ## Next Roadmap (Integration & Ecosystem Gaps)
-1. [ ] Add `docs/BACKEND_INTEGRATION_GUIDE.md`:
+1. [done] Add `docs/BACKEND_INTEGRATION_GUIDE.md`:
    - end-to-end backend-open flow (`descriptor -> decision -> adapter -> microdb_init`)
    - practical integration recipes for raw byte-write, aligned-write, and managed media
    - explicit "what stubs are / are not" section (capability descriptors, not drivers)
-2. [ ] Improve documentation discoverability from top-level entry points:
+2. [done] Improve documentation discoverability from top-level entry points:
    - add "Backend Integration" and "Migration" quick links in `README.md`
    - add docs map/navigation page linking backend contracts and stress/baseline docs
    - make `port/esp32/microdb_port_esp32.c` explicitly discoverable as a reference implementation
