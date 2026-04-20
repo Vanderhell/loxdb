@@ -25,6 +25,10 @@
 - `4` = unrecoverable corruption
 - `5` = uninitialized image (cold-start state)
 
+On failure, stderr uses a stable format:
+
+- `<operation> failed: <VERIFY_CODE_NAME> (<numeric_code>) - <detail>`
+
 ## Usage
 
 ```bash

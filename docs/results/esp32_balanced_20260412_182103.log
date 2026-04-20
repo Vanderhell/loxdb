@@ -1,0 +1,57 @@
+microdb-bench> [PROFILE] switched to balanced paced=OFF
+[OK] DB ready (wipe=1, profile=balanced)
+microdb-bench> 
+=== microdb ESP32-S3 benchmark start (profile=balanced) ===
+[EFFECTIVE] kv_capacity=376 (target=320) wal_total=32736B
+[BENCH] kv_put           total=22.665 ms avg=70.828 us p50=70 p95=75 min=64 max=132 max_op~0 xmax/p50=1.9 spk>1ms=0@0 spk>5ms=0@0 ops/s=14118.7 MB/s=0.054 ops=320 samp=320 heap_d=0
+[SLO] kv_put           OK (max=132<=15000, spk>5ms=0<=12)
+[PHASE] kv_put           cold_ops=64 cold_avg=68.938 us steady_ops=256 steady_avg=71.301 us
+[BENCH] kv_get           total=2.849 ms avg=8.903 us p50=9 p95=10 min=6 max=26 max_op~0 xmax/p50=2.9 spk>1ms=0@0 spk>5ms=0@0 ops/s=112320.1 MB/s=0.428 ops=320 samp=320 heap_d=0
+[SLO] kv_get           OK (max=26<=15000, spk>5ms=0<=12)
+[PHASE] kv_get           cold_ops=64 cold_avg=8.438 us steady_ops=256 steady_avg=9.020 us
+[BENCH] kv_del           total=32.814 ms avg=102.544 us p50=100 p95=106 min=98 max=229 max_op~160 xmax/p50=2.3 spk>1ms=0@0 spk>5ms=0@0 ops/s=9751.9 MB/s=0.000 ops=320 samp=320 heap_d=0
+[SLO] kv_del           OK (max=229<=15000, spk>5ms=0<=12)
+[PHASE] kv_del           cold_ops=64 cold_avg=103.891 us steady_ops=256 steady_avg=102.207 us
+[CHECK] KV benchmark: PASS
+[BENCH] ts_insert        total=22.813 ms avg=35.645 us p50=21 p95=22 min=20 max=9484 max_op~374 xmax/p50=451.6 spk>1ms=1@374 spk>5ms=1@374 ops/s=28054.2 MB/s=0.107 ops=640 samp=640 heap_d=0
+[SLO] ts_insert        OK (max=9484<=15000, spk>5ms=1<=12)
+[PHASE] ts_insert        cold_ops=64 cold_avg=21.391 us steady_ops=576 steady_avg=37.229 us
+[TS] target=640 retained=640 dropped=0
+[BENCH] ts_query_buf     total=0.122 ms avg=122.000 us p50=122 p95=122 min=122 max=122 max_op~0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=8196.7 MB/s=10.006 ops=1 samp=1 heap_d=0
+[CHECK] TS benchmark: PASS
+[BENCH] rel_insert       total=40.616 ms avg=81.232 us p50=32 p95=206 min=24 max=225 max_op~259 xmax/p50=7.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=12310.4 MB/s=0.094 ops=500 samp=500 heap_d=0
+[SLO] rel_insert       OK (max=225<=15000, spk>5ms=0<=12)
+[PHASE] rel_insert       cold_ops=64 cold_avg=26.250 us steady_ops=436 steady_avg=89.303 us
+[BENCH] rel_find(index)  total=0.018 ms avg=18.000 us p50=18 p95=18 min=18 max=18 max_op~0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=55555.6 MB/s=0.424 ops=1 samp=1 heap_d=0
+[REL] rows_expected=500 rows_actual=500
+[CHECK] REL benchmark: PASS
+[WAL] baseline before warmup: used=0 total=32736 fill=0%
+[BENCH] wal_kv_put       total=30.604 ms avg=79.698 us p50=80 p95=84 min=74 max=123 max_op~0 xmax/p50=1.5 spk>1ms=0@0 spk>5ms=0@0 ops/s=12547.4 MB/s=0.383 ops=384 samp=77 heap_d=0
+[SLO] wal_kv_put       OK (max=123<=15000, spk>5ms=0<=12)
+[WAL] warmup target_fill=75% reached=75% peak=75% ops_done=384/9600 steady_ops=320 (min=128)
+[PHASE] wal_kv_put       cold_ops=64 cold_avg=76.328 us steady_ops=320 steady_avg=80.372 us
+[WAL] before compact: used=24624 total=32736 fill=75%
+[BENCH] compact          total=14.850 ms avg=14850.000 us p50=14850 p95=14850 min=14850 max=14850 max_op~0 xmax/p50=1.0 spk>1ms=1@0 spk>5ms=1@0 ops/s=67.3 MB/s=0.000 ops=1 samp=1 heap_d=0
+[WAL] after compact:  used=0 total=32736 fill=0%
+[CHECK] WAL compact: PASS
+[BENCH] reopen           total=56.662 ms avg=56662.000 us p50=56662 p95=56662 min=56662 max=56662 max_op~0 xmax/p50=1.0 spk>1ms=1@0 spk>5ms=1@0 ops/s=17.6 MB/s=0.000 ops=1 samp=1 heap_d=0
+[CHECK] Reopen integrity: PASS
+[MIGRATE] calls=1 old=1 new=2
+[CHECK] Migration callback: PASS
+[CHECK] TXN commit/rollback: PASS
+[STATS] kv=202/376 (53%) coll=43 evict=0
+[STATS] ts_streams=1 ts_samples=640 ts_fill=12%
+[STATS] wal=96/32736 (0%) rel_tables=2 rel_rows=500
+=== microdb ESP32-S3 benchmark end ===
+microdb-bench> [METRICS] count=10
+[METRIC] kv_put total=22.665ms avg=70.828us p50=70 p95=75 max=132@0 xmax/p50=1.9 spk>1ms=0@0 spk>5ms=0@0 ops/s=14118.7 MB/s=0.054 heap_d=0
+[METRIC] kv_get total=2.849ms avg=8.903us p50=9 p95=10 max=26@0 xmax/p50=2.9 spk>1ms=0@0 spk>5ms=0@0 ops/s=112320.1 MB/s=0.428 heap_d=0
+[METRIC] kv_del total=32.814ms avg=102.544us p50=100 p95=106 max=229@160 xmax/p50=2.3 spk>1ms=0@0 spk>5ms=0@0 ops/s=9751.9 MB/s=0.000 heap_d=0
+[METRIC] ts_insert total=22.813ms avg=35.645us p50=21 p95=22 max=9484@374 xmax/p50=451.6 spk>1ms=1@374 spk>5ms=1@374 ops/s=28054.2 MB/s=0.107 heap_d=0
+[METRIC] ts_query_buf total=0.122ms avg=122.000us p50=122 p95=122 max=122@0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=8196.7 MB/s=10.006 heap_d=0
+[METRIC] rel_insert total=40.616ms avg=81.232us p50=32 p95=206 max=225@259 xmax/p50=7.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=12310.4 MB/s=0.094 heap_d=0
+[METRIC] rel_find(index) total=0.018ms avg=18.000us p50=18 p95=18 max=18@0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=55555.6 MB/s=0.424 heap_d=0
+[METRIC] wal_kv_put total=30.604ms avg=79.698us p50=80 p95=84 max=123@0 xmax/p50=1.5 spk>1ms=0@0 spk>5ms=0@0 ops/s=12547.4 MB/s=0.383 heap_d=0
+[METRIC] compact total=14.850ms avg=14850.000us p50=14850 p95=14850 max=14850@0 xmax/p50=1.0 spk>1ms=1@0 spk>5ms=1@0 ops/s=67.3 MB/s=0.000 heap_d=0
+[METRIC] reopen total=56.662ms avg=56662.000us p50=56662 p95=56662 max=56662@0 xmax/p50=1.0 spk>1ms=1@0 spk>5ms=1@0 ops/s=17.6 MB/s=0.000 heap_d=0
+microdb-bench> 

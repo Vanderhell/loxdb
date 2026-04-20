@@ -1,0 +1,7 @@
+microdb-bench> [PROFILE] switched to stress paced=OFF
+[WARN] deinit returned -1
+[ERR] db_open failed: -6
+microdb-bench> 
+=== microdb ESP32-S3 benchmark start (profile=stress) ===
+[ERR] pre-run reset/open failed
+microdb-bench> 

@@ -867,12 +867,20 @@ static void print_last_metrics(void) {
 static void run_full_bench_once(void) {
   bool ok;
   bool stage_flush = g_paced_mode || is_deterministic_profile();
+  microdb_err_t deinit_rc;
+  microdb_err_t open_rc;
   clear_metrics();
   MDB_CONSOLE.println();
   MDB_CONSOLE.printf("=== microdb ESP32-S3 benchmark start (profile=%s) ===\n", P()->name);
 
-  if (microdb_deinit(&g_db) != MICRODB_OK || db_open(true, false) != MICRODB_OK) {
-    MDB_CONSOLE.println("[ERR] pre-run reset/open failed");
+  deinit_rc = microdb_deinit(&g_db);
+  open_rc = db_open(true, false);
+  if (deinit_rc != MICRODB_OK || open_rc != MICRODB_OK) {
+    MDB_CONSOLE.printf("[ERR] pre-run reset/open failed: deinit=%s (%d), open=%s (%d)\n",
+                       microdb_err_to_string(deinit_rc),
+                       (int)deinit_rc,
+                       microdb_err_to_string(open_rc),
+                       (int)open_rc);
     return;
   }
   print_effective_capacity();
@@ -937,7 +945,7 @@ static void reset_db_and_open(bool wipe) {
   {
     microdb_err_t o = db_open(wipe, false);
     if (o != MICRODB_OK)
-      MDB_CONSOLE.printf("[ERR] db_open failed: %d\n", (int)o);
+      MDB_CONSOLE.printf("[ERR] db_open failed: %s (%d)\n", microdb_err_to_string(o), (int)o);
     else
       MDB_CONSOLE.printf("[OK] DB ready (wipe=%u, profile=%s)\n", wipe ? 1u : 0u, P()->name);
   }
@@ -1041,7 +1049,7 @@ void setup(void) {
   storage_reset();
   err = db_open(true, false);
   if (err != MICRODB_OK) {
-    MDB_CONSOLE.printf("[FATAL] microdb_init failed: %d\n", (int)err);
+    MDB_CONSOLE.printf("[FATAL] microdb_init failed: %s (%d)\n", microdb_err_to_string(err), (int)err);
     return;
   }
 

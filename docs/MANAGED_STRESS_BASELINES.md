@@ -38,14 +38,11 @@ Defined in `CMakePresets.json` and consumed by `.github/workflows/release.yml`:
   - `MICRODB_MANAGED_STRESS_SMOKE_MAX_MS=7000`
   - `MICRODB_MANAGED_STRESS_LONG_MAX_MS=25000`
 
-## Reference Baseline (Windows, Debug, local)
+## Reference Baselines
 
-- Date: 2026-04-16
-- `test_backend_managed_stress_smoke`: ~70 ms
-- `test_backend_managed_stress_long`: ~40 ms
-
-Keep configured gates well above baseline jitter but low enough to catch serious
-performance regressions.
+Baselines should be taken from recent workflow artifacts (`managed-baseline-refresh`),
+not from ad-hoc local runs. Keep configured gates above normal jitter while still
+tight enough to catch real regressions.
 
 ## Periodic Refresh
 

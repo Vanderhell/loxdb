@@ -1,49 +1,34 @@
 # Release Tag and Announcement Template
 
-## Tag Message Template
+## Tag message template
 
 ```text
 microdb <version>
 
-Deterministic durable storage core for MCU/embedded systems.
+Embedded C99 database core for MCU/edge systems.
 
-Highlights:
-- Desktop full matrix+soak: PASS (deterministic/balanced/stress)
-- ESP32 validation: PASS (deterministic/balanced/stress)
-- Product contract updated:
-  - profile guarantees
-  - fail-code contract
-  - hard verdict report
+This release includes:
+- updated source and tests
+- release artifacts for supported platforms
+- updated contracts/docs in docs/
 ```
 
-## Short Announcement Template
+## Short announcement template
 
 ```text
 Released microdb <version>.
 
-microdb is a deterministic durable storage core for MCU/embedded systems with power-fail-safe KV/TS/REL persistence.
-
-This release includes:
-- validated desktop matrix+soak results
-- validated ESP32 profile runs
-- updated profile guarantees and hard verdict report
-
-Hard scope notes:
-- supported/unsupported is documented explicitly
-- effective capacity is not target capacity
-- stress is not a low-latency profile
-- deterministic is the profile for controlled latencies
-- reopen and compact are maintenance operations, not normal write latency
+microdb provides KV, TS, and REL APIs for embedded systems with optional WAL-backed durability.
 
 Start here:
 - README.md
 - docs/GETTING_STARTED_5_MIN.md
+- docs/FAIL_CODE_CONTRACT.md
 - docs/PROFILE_GUARANTEES.md
 ```
 
-## Release Text Guardrails
+## Guardrails
 
-- do not add marketing filler
-- do not claim "enterprise-grade" without hard proof
-- do not hide worst-case latencies
-- keep text short, factual, and contract-aligned
+- only claim what is validated by current code/tests
+- avoid hardware-latency claims unless accompanied by dated benchmark context
+- keep unsupported scope explicit

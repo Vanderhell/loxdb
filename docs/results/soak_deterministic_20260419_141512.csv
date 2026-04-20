@@ -1,0 +1,12 @@
+﻿soak_start profile=deterministic ops=80000 reopen_every=800 compact_every=4000 flush_every=200 power_loss_every=0
+progress ops=10000/80000
+progress ops=20000/80000
+progress ops=30000/80000
+progress ops=40000/80000
+progress ops=50000/80000
+progress ops=60000/80000
+progress ops=70000/80000
+progress ops=80000/80000
+soak_done profile=deterministic ops=80000 max_kv_put_us=24238 max_kv_del_us=24561 max_ts_insert_us=23793 max_rel_insert_us=23860 max_rel_del_us=23446 max_compact_us=19318 max_reopen_us=46408 spikes_gt_1ms=64143 spikes_gt_5ms=928 slo_pass=1
+profile,ops,max_kv_put_us,max_kv_del_us,max_ts_insert_us,max_rel_insert_us,max_rel_del_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,slo_pass
+deterministic,80000,24238,24561,23793,23860,23446,19318,46408,64143,928,0,1

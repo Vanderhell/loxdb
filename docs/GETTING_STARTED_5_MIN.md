@@ -79,3 +79,9 @@ Use the terminal bench and run:
 - `profile stress` + `run`
 
 Then check `metrics` and `config` output.
+
+## 8. Full programmer guide
+
+For complete API and integration coverage, see:
+
+- `docs/PROGRAMMER_MANUAL.md`

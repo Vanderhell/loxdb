@@ -1,52 +1,37 @@
-# Release Notes Template
+# Release Notes
 
 ## Title
 
-`microdb <version>`
+`microdb v1.0.0`
 
-## Suggested release text
+## Release text
 
-microdb release for C99 embedded builds with versioned binary bundles for Windows and Linux.
+This release updates the `microdb` embedded database library and associated tooling/docs.
 
-Included in this release:
+Included:
 
-- prebuilt static library package for Windows x64
-- prebuilt static library package for Linux x64
-- SHA256 checksum for each archive
+- source updates
+- test updates
+- Windows release archive
+- SHA256 checksum for the published archive
 
-Highlights:
+## Published artifacts (this release)
 
-- unified CI build and test flow
-- versioned installable archive layout
-- repository-tracked wiki content
-- MIT license added
+- Windows archive: `microdb-1.0.0-windows-x64.zip`
+- Windows checksum: `microdb-1.0.0-windows-x64.zip.sha256`
 
-## Files to attach
+Promised platform scope for this release:
 
-- Windows archive: `microdb-<version>-windows-x64.zip`
-- Windows checksum: `microdb-<version>-windows-x64.zip.sha256`
-- Linux archive: `microdb-<version>-linux-x64.tar.gz`
-- Linux checksum: `microdb-<version>-linux-x64.tar.gz.sha256`
+- `windows-x64`
 
-## Upload pairs
+## Contract links
 
-Upload both files for each platform:
+- `README.md`
+- `docs/GETTING_STARTED_5_MIN.md`
+- `docs/FAIL_CODE_CONTRACT.md`
+- `docs/PROFILE_GUARANTEES.md`
+- `docs/OFFLINE_VERIFIER.md`
 
-- `microdb-<version>-windows-x64.zip` + `microdb-<version>-windows-x64.zip.sha256`
-- `microdb-<version>-linux-x64.tar.gz` + `microdb-<version>-linux-x64.tar.gz.sha256`
+## Repository topics reference
 
-## Topics to set on the repository
-
-- `c`
-- `c99`
-- `embedded`
-- `embedded-database`
-- `database`
-- `microcontroller`
-- `esp32`
-- `iot`
-- `time-series`
-- `key-value-store`
-- `relational-database`
-- `wal`
-- `firmware`
+See `docs/repository-topics.md`.

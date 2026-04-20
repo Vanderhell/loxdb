@@ -1,0 +1,4 @@
+name=overflow_col_count
+mutation=overflow_col_count
+expect=MICRODB_OK_OR_CORRUPT
+description=Set REL schema column count above MICRODB_REL_MAX_COLS.

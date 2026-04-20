@@ -1,81 +1,49 @@
 # Mega Test Checklist Status
 
-Source plan: `bench/microdb_esp32_s3_bench/MEGA_BENCH_TEST_PLAN.md`
+Source checklist:
 
-## Summary
+- `bench/microdb_esp32_s3_bench/MEGA_BENCH_TEST_PLAN.md`
 
-- Current `MDB_TEST(...)` count target after this update: `300+`.
-- Existing coverage is strongest in: KV, TS, REL, WAL replay/corruption, migration basics, txn replay/idempotence, reopen/persistence, profile matrix.
-- Main historical gaps were: explicit API misuse/contract matrix and broader mixed random workload combinations.
+This file is a reality check against tests currently present in `tests/` and CTest wiring in `CMakeLists.txt`.
 
-## Section Status
+## Current status summary
 
-### 1. Boot / open / close / reopen
-- Status: Mostly covered
-- Covered by: `test_integration.c`, `test_wal.c`, `test_compact.c`, `test_durability_closure.c`, `test_resilience.c`
-- Remaining: explicit storage-driver forced read/write error injection on open path
+- Core API domains (KV/TS/REL/WAL/txn/migration/stats) have dedicated tests.
+- Recovery and resilience paths have dedicated tests.
+- Optional backend adapter matrix paths are covered by dedicated tests.
+- Stress lanes exist for managed and fs/block matrix paths.
 
-### 2. KV basic
-- Status: Covered
-- Covered by: `test_kv.c`, `test_kv_reject.c`, `test_integration.c`
+## Areas with explicit test files
 
-### 3. KV correctness / edge cases
-- Status: Covered (high)
-- Covered by: `test_kv.c`, `test_kv_reject.c`, `test_wal.c`, `test_integration.c`
+- Boot/open/reopen, integration and durability:
+  - `test_integration.c`, `test_wal.c`, `test_compact.c`, `test_durability_closure.c`, `test_resilience.c`
+- KV:
+  - `test_kv.c`, `test_kv_reject.c`
+- TS:
+  - `test_ts.c`, `test_ts_reject.c`, `test_ts_downsample.c`
+- REL:
+  - `test_rel.c`, `test_rel_corruption_replay.c`
+- Transactions:
+  - `test_txn.c`
+- Contracts/validation:
+  - `test_api_contract_matrix.c`, `test_fail_code_contract.c`, `test_error_strings.c`, `test_offline_verifier.c`
+- Capacity/profile variants:
+  - `test_limits.c`, `test_profile_matrix.c`, `test_storage_capacity_profiles.c`, `test_tiny_footprint.c`, `footprint_min_baseline.c`
+- Thread safety/C++ wrapper:
+  - `test_thread_safety.c`, `test_cpp_wrapper.cpp`
+- Optional backend modules:
+  - `test_backend_compat.c`, `test_backend_decision.c`, `test_backend_registry.c`, `test_backend_open.c`
+  - `test_backend_aligned_adapter.c`, `test_backend_managed_adapter.c`, `test_backend_fs_adapter.c`
+  - `test_backend_aligned_recovery.c`, `test_backend_managed_recovery.c`, `test_backend_fs_recovery.c`
+  - `test_backend_managed_stress.c`, `test_backend_fs_matrix.c`
 
-### 4. TS basic
-- Status: Covered
-- Covered by: `test_ts.c`, `test_ts_reject.c`, `test_ts_downsample.c`, `test_integration.c`
+## Remaining practical gaps (still recommended)
 
-### 5. TS ordering / retention / correctness
-- Status: Covered (high)
-- Covered by: `test_ts.c`, `test_ts_reject.c`, `test_ts_downsample.c`, `test_integration.c`
+- broader storage-driver fault injection matrices on open path
+- wider corruption corpus breadth beyond current deterministic fixtures
+- explicit CI latency guardrails for target hardware (outside generic host CI)
 
-### 6. REL basic
-- Status: Covered
-- Covered by: `test_rel.c`, `test_integration.c`, `test_wal.c`
+## Notes
 
-### 7. REL indexy / constraints / correctness
-- Status: Covered (high)
-- Covered by: `test_rel.c`, `test_wal.c`, `test_integration.c`
-- Remaining: explicit deep corruption detection for synthetic broken REL row/index payloads
-
-### 8. WAL / journaling
-- Status: Covered (high)
-- Covered by: `test_wal.c`, `test_wal_kv128.c`, `test_wal_no_wal.c`, `test_compact.c`
-
-### 9. Transactions
-- Status: Covered (high)
-- Covered by: `test_txn.c`, `test_durability_closure.c`, `test_wal.c`
-
-### 10. Migration / schema
-- Status: Covered (medium-high)
-- Covered by: `test_migration.c`, `test_integration.c`
-- Remaining: explicit multi-step migration chains and downgrade/future-version rejection matrix
-
-### 11. Corruption / recovery / power-fail
-- Status: Covered (high)
-- Covered by: `test_wal.c`, `test_durability_closure.c`, `test_compact.c`, `test_resilience.c`
-
-### 12. Capacity / limits / stress
-- Status: Covered (high)
-- Covered by: `test_limits.c`, `test_integration.c`, `test_resilience.c`
-
-### 13. API / contract / misuse
-- Status: Covered (high) after contract matrix extension
-- Covered by: `test_kv.c`, `test_ts.c`, `test_rel.c`, `test_integration.c`, `test_resilience.c`, `test_api_contract_matrix.c`
-
-### 14. Stats / inspect / observability
-- Status: Covered
-- Covered by: `test_stats.c`, `test_integration.c`, `test_wal.c`, `test_resilience.c`
-
-### 15. Performance regression tests
-- Status: Partially covered
-- Covered by: ESP32 bench (`bench/microdb_esp32_s3_bench`) with SLO + latency output
-- Remaining: host-side CI assertions with fixed latency envelopes
-
-## Next Recommended Gaps
-
-- Storage backend fault-injection hooks for open/read/write/erase/sync error matrix.
-- REL corruption-injection tests (broken row/index records).
-- CI-friendly perf guardrails (soft thresholds with profile-specific variance windows).
+- Historical numeric targets are intentionally omitted here.
+- For exact active tests, use `ctest -N` in your configured build directory.

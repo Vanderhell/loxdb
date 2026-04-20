@@ -1,0 +1,16 @@
+﻿soak_start profile=balanced ops=120000 reopen_every=1000 compact_every=5000 flush_every=250 power_loss_every=0
+progress ops=10000/120000
+progress ops=20000/120000
+progress ops=30000/120000
+progress ops=40000/120000
+progress ops=50000/120000
+progress ops=60000/120000
+progress ops=70000/120000
+progress ops=80000/120000
+progress ops=90000/120000
+progress ops=100000/120000
+progress ops=110000/120000
+progress ops=120000/120000
+soak_done profile=balanced ops=120000 max_kv_put_us=48931 max_kv_del_us=74577 max_ts_insert_us=66702 max_rel_insert_us=43066 max_rel_del_us=78950 max_compact_us=32050 max_reopen_us=68356 spikes_gt_1ms=96158 spikes_gt_5ms=2145 slo_pass=0
+profile,ops,max_kv_put_us,max_kv_del_us,max_ts_insert_us,max_rel_insert_us,max_rel_del_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,slo_pass
+balanced,120000,48931,74577,66702,43066,78950,32050,68356,96158,2145,0,0

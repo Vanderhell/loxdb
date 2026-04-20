@@ -2,6 +2,12 @@
 
 This document defines the external error semantics for `microdb` public API.
 
+## Error String Mapping
+
+- Use `microdb_err_to_string(microdb_err_t)` to convert return codes to stable symbolic names.
+- The function always returns a non-null string.
+- Unknown numeric values map to `MICRODB_ERR_UNKNOWN`.
+
 ## Core Error Codes
 
 - `MICRODB_ERR_INVALID`
@@ -46,4 +52,5 @@ This document defines the external error semantics for `microdb` public API.
 
 - API contract matrix: `tests/test_api_contract_matrix.c`
 - Fail-code and recovery contract: `tests/test_fail_code_contract.c`
+- Error-code string mapping: `tests/test_error_strings.c`
 - Additional durability/recovery coverage: `tests/test_wal.c`, `tests/test_durability_closure.c`

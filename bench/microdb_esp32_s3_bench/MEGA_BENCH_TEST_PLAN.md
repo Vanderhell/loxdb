@@ -1,309 +1,304 @@
 # Mega Bench Test Plan (Draft)
 
-Podľa toho, čo máme v jadre (KV, TS, REL, WAL/compact, migrate, txn, reopen/reset/inspect), toto je checklist testov na neskoršiu implementáciu.
+Based on current core scope (KV, TS, REL, WAL/compact, migration, txn, reopen/reset/inspect), this is the long-horizon checklist for expanded coverage.
 
 ## 1. Boot / open / close / reopen
 
-- Open prázdnej DB
-- Open po wipe
-- Reopen bez zmien
-- Reopen po KV zápisoch
-- Reopen po TS zápisoch
-- Reopen po REL zápisoch
-- Reopen po mixed workload
-- Reopen po compact
-- Reopen po migrate
-- Reopen po successful txn commit
-- Reopen po txn rollback
-- Open s poškodeným headerom
-- Open s neplatnou verziou formátu
-- Open s neplatným magic
-- Open s čiastočne zapísaným headerom
-- Open s poškodeným inspect/stats metadata
-- Open po dvoch reopen za sebou
-- Open po mnohonásobnom open/close cykle
-- Open keď storage driver vracia chybu read
-- Open keď storage driver vracia chybu write
+- open empty DB
+- open after wipe
+- reopen without changes
+- reopen after KV writes
+- reopen after TS writes
+- reopen after REL writes
+- reopen after mixed workload
+- reopen after compact
+- reopen after migration
+- reopen after successful txn commit
+- reopen after txn rollback
+- open with corrupted header
+- open with invalid format version
+- open with invalid magic
+- open with partially written header
+- open with corrupted inspect/stats metadata
+- repeated reopen cycles
+- open when storage driver read fails
+- open when storage driver write fails
 
 ## 2. KV basic
 
-- Put nového kľúča
-- Put existujúceho kľúča overwrite
-- Get existujúceho kľúča
-- Get neexistujúceho kľúča
-- Delete existujúceho kľúča
-- Delete neexistujúceho kľúča
-- Put key s minimálnou dĺžkou
-- Put key s maximálnou dĺžkou
-- Put value s nulovou dĺžkou
-- Put value s maximálnou povolenou dĺžkou
-- Put value o 1 byte väčšej než limit
-- Put viacerých rôznych kľúčov
-- Put rovnakého kľúča veľa krát
-- Get po overwrite viackrát za sebou
-- Delete a následný Get
-- Delete a následný Put rovnakého kľúča
-- Put binárnych dát s nulovými bytmi
-- Put binárnych dát s 0xFF pattern
-- Put binárnych dát s náhodným obsahom
-- KV scan všetkých položiek
+- put new key
+- put existing key overwrite
+- get existing key
+- get missing key
+- delete existing key
+- delete missing key
+- put key with min length
+- put key with max length
+- put zero-length value
+- put max-length value
+- put value one byte over limit
+- put many distinct keys
+- repeatedly overwrite one key
+- get after repeated overwrite
+- delete then get
+- delete then re-put same key
+- put binary payload with zero bytes
+- put binary payload with `0xFF` pattern
+- put random binary payload
+- iterate all KV items
 
 ## 3. KV correctness / edge cases
 
-- Kolízia hash/index pre dva rôzne kľúče
-- Veľa kolízií v jednom buckete
-- Eviction path korektne zachová nové dáta
-- Eviction path nezničí staré dáta
-- KV pri takmer plnej kapacite
-- KV pri úplne plnej kapacite
-- Put po full condition po compact/reclaim
-- Delete tombstone zachovaný po reopen
-- Viacnásobný delete toho istého kľúča
-- Put→delete→put→delete rovnakého kľúča
-- Iterácia nevracia delete položky
-- Iterácia vracia najnovšiu verziu key
-- Put key s rovnakým prefixom ako iný key
-- Case-sensitive keys fungujú správne
-- Long key + short value
-- Short key + long value
-- KV integrity po reopen
-- KV integrity po compact
-- KV integrity po migrate
-- KV benchmark zároveň kontroluje obsah, nie len count
+- hash/index collision handling for distinct keys
+- heavy collision bucket behavior
+- eviction path preserves newest data
+- eviction path does not corrupt old data
+- near-full KV behavior
+- full KV behavior
+- put after full condition and reclaim/compact
+- tombstone persistence after reopen
+- repeated delete of same key
+- put/delete sequence on same key
+- iterator excludes deleted records
+- iterator returns latest version
+- same-prefix key handling
+- case-sensitive key behavior
+- long key + short value
+- short key + long value
+- KV integrity after reopen
+- KV integrity after compact
+- KV integrity after migration
+- benchmark validation checks data, not only counts
 
 ## 4. TS basic
 
-- Create nového streamu
-- Insert prvého sample do streamu
-- Insert viacerých sample s rastúcim timestampom
-- Query celý stream
-- Query časového rozsahu
-- Query prázdneho rozsahu
-- Query neexistujúceho streamu
-- Insert sample s minimálnym timestampom
-- Insert sample s maximálnym timestampom
-- Insert sample s nulovou payload dĺžkou
-- Insert sample s maximálnou payload dĺžkou
-- Insert sample väčšieho než limit
-- Insert veľa sample do jedného streamu
-- Insert sample do viacerých streamov
-- Query po reopen
-- Query po compact
-- Query po migrate
-- Query posledného sample
-- Query prvého sample
-- Count sample v streame
+- create stream
+- insert first sample
+- insert multiple increasing timestamps
+- query full stream
+- query bounded range
+- query empty range
+- query missing stream
+- insert min timestamp
+- insert max timestamp
+- insert zero-length payload (if supported)
+- insert max-length payload
+- insert payload over limit
+- high sample count in one stream
+- multi-stream inserts
+- query after reopen
+- query after compact
+- query after migration
+- query last sample
+- query first sample
+- sample count by range
 
 ## 5. TS ordering / retention / correctness
 
-- Insert out-of-order timestampu a očakávané správanie
-- Insert duplicitného timestampu
-- Insert duplicitného timestampu s inou hodnotou
-- Query vracia správne poradie
-- Query vracia len rozsah, nie susedné sample
-- TS pri zaplnení segmentu
-- TS rollover do ďalšieho segmentu
-- TS retention zahodí najstaršie sample
-- TS retention nepoškodí novšie sample
-- TS stream metadata po reopen
-- TS stream metadata po compact
-- TS mixed inserts KV+TS
-- TS mixed inserts REL+TS
-- TS payload s binárnymi nulami
-- TS payload s náhodnými dátami
-- Query veľkého rozsahu cez viac segmentov
-- Query streamu s jedným sample
-- Query streamu po delete/reset DB
-- TS fill percent zodpovedá realite
-- TS inspect count sedí s reálnym počtom sample
+- out-of-order insert behavior
+- duplicate timestamp insert behavior
+- duplicate timestamp with different value
+- query ordering correctness
+- query strict-range correctness
+- segment-full behavior
+- rollover behavior
+- retention drops oldest samples
+- retention preserves newer samples
+- stream metadata persistence after reopen
+- stream metadata persistence after compact
+- mixed KV+TS workload
+- mixed REL+TS workload
+- binary payload edge cases
+- large-range query across segments
+- one-sample stream query
+- query after reset/wipe
+- TS fill-percent consistency
+- inspect sample counts consistency
 
 ## 6. REL basic
 
-- Create tabuľky
-- Create dvoch tabuliek
-- Insert jedného riadku
-- Insert viacerých riadkov
-- Find row podľa primary key
-- Find row podľa indexu
-- Find neexistujúceho riadku
-- Insert row s minimálnou veľkosťou
-- Insert row s maximálnou veľkosťou
-- Insert row väčšieho než limit
-- Update existujúceho riadku
-- Update neexistujúceho riadku
-- Delete existujúceho riadku
-- Delete neexistujúceho riadku
-- Scan celej tabuľky
-- Scan prázdnej tabuľky
-- Reopen a find row
-- Compact a find row
-- Migrate a find row
-- Mixed inserts do dvoch tabuliek
+- create table
+- create multiple tables
+- insert one row
+- insert many rows
+- find by primary key
+- find by index
+- find missing row
+- insert min-size row
+- insert max-size row
+- insert over-limit row
+- update existing row
+- update missing row
+- delete existing row
+- delete missing row
+- full table scan
+- empty table scan
+- reopen and find row
+- compact and find row
+- migrate and find row
+- mixed inserts across tables
 
-## 7. REL indexy / constraints / correctness
+## 7. REL indexes / constraints / correctness
 
-- Index sa vytvorí korektne
-- Index nájde správny riadok
-- Index nenájde zmazaný riadok
-- Index sa opraví po update indexed field
-- Duplicate key je správne odmietnutý
-- Duplicate key v txn rollback sa neprepíše
-- Delete row odstráni index entry
-- Reopen zachová index konzistenciu
-- Compact zachová index konzistenciu
-- Scan poradie je definované alebo aspoň stabilne testované
-- Insert s NULL-like hodnotami, ak ich formát podporuje
-- Find po veľkom počte insertov
-- Find po delete+insert rovnakého key
-- Viacnásobný update toho istého row
-- Row count sedí po mixed workload
-- Table metadata po reopen
-- Table metadata po compact
-- Corrupt row record je detegovaný
-- Corrupt index record je detegovaný
-- REL inspect stats sú korektné
+- index creation correctness
+- index lookup correctness
+- deleted-row index exclusion
+- index update after indexed-field change
+- duplicate-key rejection
+- duplicate-key rollback behavior
+- index cleanup on delete
+- index consistency after reopen
+- index consistency after compact
+- scan order deterministic/stable behavior
+- nullable-like field behavior (if format allows)
+- lookup after high insert volume
+- lookup after delete+insert same key
+- repeated updates on same row
+- row count consistency under mixed workload
+- table metadata after reopen
+- table metadata after compact
+- corrupted row record detection
+- corrupted index record detection
+- inspect stats consistency
 
 ## 8. WAL / journaling
 
-- WAL append jedného záznamu
-- WAL append viacerých záznamov
-- WAL replay po reopen
-- WAL replay po simulated crash
-- WAL partial write posledného záznamu
-- WAL corrupt header
-- WAL corrupt tail
-- WAL corrupt CRC v jednom recorde
-- WAL compact na prázdnom WAL
-- WAL compact na čiastočne zaplnenom WAL
-- WAL compact na takmer plnom WAL
-- WAL compact zachová validné dáta
-- WAL compact odstráni obsolete dáta
-- WAL fill percent pred compact je korektné
-- WAL fill percent po compact je korektné
-- WAL reopen po compact
-- WAL compact opakovane za sebou
-- WAL append po compact
-- WAL replay idempotentne po dvoch reopen
-- WAL benchmark validuje obsah po compact
+- append one record
+- append many records
+- replay after reopen
+- replay after simulated crash
+- partial-write tail handling
+- corrupted WAL header handling
+- corrupted WAL tail handling
+- corrupted record CRC handling
+- compact on empty WAL
+- compact on partially full WAL
+- compact on nearly full WAL
+- compact preserves valid state
+- compact removes obsolete data
+- WAL fill-percent before/after compact
+- reopen after compact
+- repeated compact cycles
+- append after compact
+- replay idempotence after repeated reopen
+- benchmark validates post-compact content
 
 ## 9. Transactions
 
-- TXN begin→commit bez operácií
-- TXN begin→rollback bez operácií
-- TXN KV put→commit
-- TXN KV put→rollback
-- TXN KV delete→commit
-- TXN KV delete→rollback
-- TXN TS insert→commit
-- TXN TS insert→rollback
-- TXN REL insert→commit
-- TXN REL insert→rollback
-- TXN mixed KV+TS+REL commit
-- TXN mixed KV+TS+REL rollback
-- TXN viaceré operácie na rovnakom key commit
-- TXN viaceré operácie na rovnakom key rollback
-- TXN commit po reopen
-- TXN rollback po reopen
-- Simulated crash pred commit marker
-- Simulated crash po commit marker pred finalize
-- Simulated crash počas rollback
-- Txn recovery je idempotentná
+- begin/commit empty txn
+- begin/rollback empty txn
+- KV put in txn commit
+- KV put in txn rollback
+- KV delete in txn commit
+- KV delete in txn rollback
+- TS insert in txn commit
+- TS insert in txn rollback
+- REL insert in txn commit
+- REL insert in txn rollback
+- mixed KV+TS+REL commit
+- mixed KV+TS+REL rollback
+- repeated same-key operations in txn
+- commit behavior after reopen
+- rollback behavior after reopen
+- crash before commit marker
+- crash after commit marker before finalize
+- crash during rollback path
+- txn recovery idempotence
 
 ## 10. Migration / schema
 
-- Open DB s old schema a migrate na new
-- Migration callback sa zavolá presne raz
-- Migration callback sa nezavolá pri rovnakej verzii
-- Migration callback zlyhá a DB ostane konzistentná
-- Partial migration po crash
-- Recovery po partial migration
-- Migrate KV dáta bez straty
-- Migrate TS metadata bez straty
-- Migrate REL tabuľky bez straty
-- Migrate a následný reopen
-- Migrate a následný compact
-- Migrate dvoch verzií za sebou
-- Downgrade nepovolený je odmietnutý
-- Unknown future schema version je odmietnutá
-- Migration mení len to, čo má zmeniť
+- open old schema and migrate to new
+- migration callback called exactly once
+- no callback on equal version
+- callback failure keeps DB consistent
+- partial migration crash behavior
+- recovery after partial migration
+- KV data preserved across migration
+- TS metadata preserved across migration
+- REL tables preserved across migration
+- migrate then reopen
+- migrate then compact
+- chained migrations across versions
+- rejected downgrade behavior
+- rejected unknown-future-version behavior
+- migration modifies only intended fields
 
 ## 11. Corruption / recovery / power-fail
 
-- Power-cut počas header write
-- Power-cut počas KV append
-- Power-cut počas TS append
-- Power-cut počas REL insert
-- Power-cut počas WAL append
-- Power-cut počas compact
-- Power-cut počas metadata update
-- Recovery po jednom poškodenom recorde
-- Recovery po poškodenom segmente
-- Recovery po poškodenom CRC
-- Recovery po náhodných bytoch v tail oblasti
-- Recovery po odtrhnutom poslednom write
-- Recovery nevráti ghost records
-- Recovery zachová last committed state
-- Recovery po opakovanom crash cykle
+- power cut during header write
+- power cut during KV append
+- power cut during TS append
+- power cut during REL insert
+- power cut during WAL append
+- power cut during compact
+- power cut during metadata update
+- recovery after single corrupted record
+- recovery after segment corruption
+- recovery after CRC corruption
+- recovery after random tail bytes
+- recovery after torn last write
+- recovery excludes ghost records
+- recovery preserves last committed state
+- recovery after repeated crash loops
 
 ## 12. Capacity / limits / stress
 
-- Fill DB až po limit len KV
-- Fill DB až po limit len TS
-- Fill DB až po limit len REL
-- Fill DB mixed workload do limitu
-- Správanie pri ENOSPC stave
-- Správanie po reclaim uvoľní miesto
-- Long-run 10k operácií
-- Long-run 100k operácií
-- Reopen každých N operácií
-- Compact každých N operácií
-- Random mixed workload
-- Random mixed workload + reopen
-- Random mixed workload + compact
-- Random mixed workload + crash injection
-- Inspect stats po stress teste
+- fill to limit with KV-only
+- fill to limit with TS-only
+- fill to limit with REL-only
+- fill mixed workload to limit
+- ENOSPC behavior validation
+- reclaim behavior after frees/deletes
+- long run 10k operations
+- long run 100k operations
+- periodic reopen every N ops
+- periodic compact every N ops
+- randomized mixed workload
+- randomized mixed + reopen
+- randomized mixed + compact
+- randomized mixed + crash injection
+- inspect stats after stress
 
 ## 13. API / contract / misuse
 
-- Null pointer parameter je odmietnutý
-- Invalid handle je odmietnutý
-- Double close sa správa definovane
-- API volanie pred open je odmietnuté
-- API volanie po close je odmietnuté
-- Buffer too small v query/read
-- Output length je korektne vrátená
-- Unsupported mode je odmietnutý
-- Invalid table/stream name je odmietnuté
-- Error codes sú stabilné a správne
+- null pointer rejection
+- invalid handle rejection
+- double close defined behavior
+- API call before open rejection
+- API call after close rejection
+- too-small output buffer handling
+- output length correctness
+- unsupported mode rejection
+- invalid stream/table name rejection
+- stable error-code contract
 
 ## 14. Stats / inspect / observability
 
-- Stats po fresh DB
-- Stats po KV writes
-- Stats po TS writes
-- Stats po REL writes
-- Stats po delete
-- Stats po compact
-- Stats po reopen
-- Stats po migrate
-- Stats po txn commit
-- Stats po txn rollback
-- Collision count sedí
-- Evict count sedí
-- WAL used/total sedí
-- TS fill percent sedí
-- REL row count sedí
+- stats on fresh DB
+- stats after KV writes
+- stats after TS writes
+- stats after REL writes
+- stats after delete
+- stats after compact
+- stats after reopen
+- stats after migration
+- stats after txn commit
+- stats after txn rollback
+- collision count consistency
+- eviction count consistency
+- WAL used/total consistency
+- TS fill-percent consistency
+- REL row-count consistency
 
 ## 15. Performance regression tests
 
-- KV put latency median pod limit
-- KV put worst-case pod limit
-- TS insert latency median pod limit
-- TS insert worst-case pod limit
-- REL insert latency median pod limit
-- REL find latency pod limit
-- Compact latency pod limit
-- Reopen latency pod limit
-- Migration latency pod limit
-- Recovery latency pod limit
-
+- KV put median under target
+- KV put tail under target
+- TS insert median under target
+- TS insert tail under target
+- REL insert median under target
+- REL lookup under target
+- compact latency under target
+- reopen latency under target
+- migration latency under target
+- recovery latency under target

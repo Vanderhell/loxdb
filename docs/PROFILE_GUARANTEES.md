@@ -1,30 +1,86 @@
 # Profile Guarantees and Limits
 
-This table is the product-facing contract for current profiles.
+This document is the contract-level summary of what the current codebase guarantees.
 
 ## Scope
-- Numbers are based on latest validation artifacts from `2026-04-12`.
-- Desktop values come from `docs/results/validation_summary_20260412_214613.md`.
-- ESP values come from:
-  - `docs/results/esp32_deterministic_20260412_203442.log`
-  - `docs/results/esp32_balanced_20260412_203442.log`
-  - `docs/results/esp32_stress_20260412_205405.log`
-- `run_det` validates deterministic profile latency only, not all profiles/workloads.
 
-## Contract Table
+- Source of truth: `include/microdb.h`, `CMakeLists.txt`, and test coverage in `tests/`.
+- This document intentionally avoids historical benchmark numbers.
+- Runtime metrics in `docs/results/` are snapshots, not API contract.
 
-| Profile | Goal | Guarantees | Does Not Guarantee | Typical Latency (ESP p50) | Worst-Case Latency (latest ESP run) | Reopen Time (latest ESP run) | Effective Capacity (ESP) |
-|---|---|---|---|---|---|---|---|
-| deterministic | Tight latency and predictable behavior | benchmark checks pass, migration/txn checks pass, low tail under deterministic workload | best latency under stress-like data volume | KV put/get/del ~67/9/99 us, TS insert ~21 us, REL insert ~29 us, WAL put ~75 us | max op ~10.9 ms (compact excluded), compact ~10.9 ms | ~21.4 ms | kv_capacity=376 (target=192), wal_total=32736B |
-| balanced | Throughput + stability compromise | benchmark checks pass, SLO checks pass in balanced envelope | deterministic worst-case bounds | KV put/get/del ~68/9/101 us, TS insert ~21 us, REL insert ~32 us, WAL put ~79 us | max op ~9.5 ms (ts_insert), compact ~14.9 ms | ~56.7 ms | kv_capacity=376 (target=320), wal_total=32736B |
-| stress | High data pressure and capacity burn | benchmark checks pass, stress SLO checks pass, robust open/run after storage-layout fix | low tail latency / hard deterministic bounds | KV put/get/del ~68/9/102 us, TS insert ~20 us, REL insert ~182 us, WAL put ~87 us | max op ~18.6 ms (wal_kv_put), compact ~21.6 ms | ~301.2 ms | kv_capacity=376 (target=900), wal_total=8160B |
+## Supported compile-time core profiles
 
-## Effective Capacity Transparency
-- `target_*` values are workload targets for benchmark pressure.
-- `kv_capacity` is compile/layout-limited effective capacity.
-- `target > effective` means workload is intentionally pressuring limits, not promising retained capacity.
+Exactly one profile macro can be enabled:
 
-## Recommendation
-- Use `deterministic` for latency-sensitive control loops.
-- Use `balanced` for general embedded products.
-- Use `stress` for endurance/capacity validation and soak, not as a deterministic latency profile.
+- `MICRODB_PROFILE_CORE_MIN`
+- `MICRODB_PROFILE_CORE_WAL`
+- `MICRODB_PROFILE_CORE_PERF`
+- `MICRODB_PROFILE_CORE_HIMEM`
+- `MICRODB_PROFILE_FOOTPRINT_MIN`
+
+If none is set, `MICRODB_PROFILE_CORE_WAL` is selected by default.
+
+## Durable storage contract (current releases)
+
+Validated at `microdb_init()` / open path:
+
+- `erase_size > 0`
+- `write_size == 1`
+
+If violated, initialization fails with `MICRODB_ERR_INVALID`.
+
+## Engine guarantees by build/profile
+
+- KV: available when `MICRODB_ENABLE_KV=1`.
+- TS: available when `MICRODB_ENABLE_TS=1`.
+- REL: available when `MICRODB_ENABLE_REL=1`.
+- WAL durability path: available when `MICRODB_ENABLE_WAL=1` and storage HAL is provided.
+
+`MICRODB_PROFILE_FOOTPRINT_MIN` contract:
+
+- KV enabled
+- TS disabled
+- REL disabled
+- WAL enabled
+
+`microdb_tiny` variant (CMake target) is not equivalent to footprint-min durability:
+
+- TS disabled
+- REL disabled
+- WAL disabled
+
+## Error contract
+
+Stable public error enum is `microdb_err_t`.
+String mapping helper:
+
+- `microdb_err_to_string(microdb_err_t)`
+
+Detailed semantics:
+
+- `docs/FAIL_CODE_CONTRACT.md`
+
+## Recovery and verification
+
+- Recovery behavior and power-loss expectations are validated by WAL/recovery tests in `tests/`.
+- Offline image verification contract is documented in `docs/OFFLINE_VERIFIER.md`.
+
+## What this document does not guarantee
+
+- absolute latency numbers
+- platform-independent throughput
+- fixed retention counts for every custom macro combination
+
+Those must be validated on the target hardware/workload.
+
+## Explicit release statements
+
+- Effective capacity is runtime/layout-dependent and is not equal to raw/target capacity.
+- Stress profile is a throughput/pressure profile and is not a low-latency profile.
+- Deterministic profile is the profile for controlled latencies.
+- `reopen` and `compact` are maintenance operations and are not normal write-path latency.
+
+## Latest validated snapshots
+
+- Desktop full validation (all profiles PASS): `docs/results/validation_summary_20260419_180500.md`
+- Consolidated verdict/report: `docs/results/hard_verdict_20260419.md`
