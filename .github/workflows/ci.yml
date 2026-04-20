@@ -48,4 +48,4 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ctest --preset ci-asan-ubsan-linux
+        run: ctest --preset ci-asan-ubsan-linux --output-on-failure --stop-on-failure -V
