@@ -21,6 +21,12 @@ Behavior when table already exists:
    - if callback returns `MICRODB_OK`, new version is persisted
    - callback error is propagated
 
+Version lifecycle rule:
+
+- set `schema.schema_version` before calling `microdb_schema_seal(...)`
+- after seal, `schema_version` is treated as immutable
+- mutating `schema.schema_version` after seal is rejected by `microdb_table_create(...)` with `MICRODB_ERR_SCHEMA`
+
 ## 2) Minimal migration callback
 
 ```c
@@ -83,4 +89,3 @@ Covered scenarios:
 - no callback call for matching version
 - version mismatch without callback returns `MICRODB_ERR_SCHEMA`
 - callback error propagation
-

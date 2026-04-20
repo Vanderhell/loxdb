@@ -407,6 +407,9 @@ microdb_err_t microdb_schema_seal(microdb_schema_t *schema) {
     }
 
     impl->row_size = (offset + 3u) & ~3u;
+    /* schema_version is captured at seal-time and treated as immutable afterwards.
+     * Any post-seal mutation of schema->schema_version is rejected in table_create.
+     */
     impl->schema_version = schema->schema_version;
     impl->sealed = true;
     return MICRODB_OK;
@@ -442,6 +445,7 @@ microdb_err_t microdb_table_create(microdb_t *db, microdb_schema_t *schema) {
         rc = MICRODB_ERR_INVALID;
         goto unlock;
     }
+    /* Defensive contract check: callers must set schema_version before seal. */
     if (schema->schema_version != impl->schema_version) {
         rc = MICRODB_ERR_SCHEMA;
         goto unlock;
