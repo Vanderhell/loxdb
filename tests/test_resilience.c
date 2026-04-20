@@ -2,7 +2,9 @@
 #include "microtest.h"
 #include "microdb.h"
 #include "../port/posix/microdb_port_posix.h"
+#include "../src/microdb_internal.h"
 
+#include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -62,19 +64,36 @@ static void setup_db(void) {
 }
 
 static void teardown_db(void) {
-    (void)microdb_deinit(&g_db);
+    if (microdb_core_const(&g_db)->magic == MICRODB_MAGIC) {
+        microdb_err_t rc = microdb_deinit(&g_db);
+        if (rc != MICRODB_OK && microdb_core_const(&g_db)->magic == MICRODB_MAGIC) {
+            free(microdb_core(&g_db)->heap);
+            memset(&g_db, 0, sizeof(g_db));
+        }
+    }
     microdb_port_posix_deinit(&g_storage);
     microdb_port_posix_remove(g_path);
 }
 
 static void reopen_clean(void) {
-    ASSERT_EQ(microdb_deinit(&g_db), MICRODB_OK);
+    if (microdb_core_const(&g_db)->magic == MICRODB_MAGIC) {
+        microdb_err_t rc = microdb_deinit(&g_db);
+        ASSERT_EQ(rc, MICRODB_OK);
+        if (rc != MICRODB_OK && microdb_core_const(&g_db)->magic == MICRODB_MAGIC) {
+            free(microdb_core(&g_db)->heap);
+            memset(&g_db, 0, sizeof(g_db));
+        }
+    }
     microdb_port_posix_deinit(&g_storage);
     open_db();
 }
 
 static void reopen_power_loss(void) {
     microdb_port_posix_simulate_power_loss(&g_storage);
+    if (microdb_core_const(&g_db)->magic == MICRODB_MAGIC) {
+        free(microdb_core(&g_db)->heap);
+        memset(&g_db, 0, sizeof(g_db));
+    }
     microdb_port_posix_deinit(&g_storage);
     open_db();
 }
