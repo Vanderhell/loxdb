@@ -24,6 +24,12 @@ static size_t microdb_slice_bytes(size_t total, uint32_t pct) {
     return (total * (size_t)pct) / 100u;
 }
 
+static uint8_t *microdb_align_ptr(uint8_t *ptr, size_t align) {
+    uintptr_t p = (uintptr_t)ptr;
+    uintptr_t a = (p + (uintptr_t)(align - 1u)) & ~((uintptr_t)align - 1u);
+    return (uint8_t *)a;
+}
+
 const char *microdb_err_to_string(microdb_err_t err) {
     switch (err) {
         case MICRODB_OK:
@@ -180,7 +186,6 @@ microdb_err_t microdb_init(microdb_t *db, const microdb_cfg_t *cfg) {
     size_t total_bytes;
     size_t kv_bytes;
     size_t ts_bytes;
-    size_t rel_bytes;
     microdb_err_t err;
 
     if (db == NULL || cfg == NULL) {
@@ -243,14 +248,37 @@ microdb_err_t microdb_init(microdb_t *db, const microdb_cfg_t *cfg) {
 
     kv_bytes = microdb_slice_bytes(total_bytes, kv_pct);
     ts_bytes = microdb_slice_bytes(total_bytes, ts_pct);
-    rel_bytes = total_bytes - kv_bytes - ts_bytes;
 
     cursor = core->heap;
     microdb_arena_init(&core->kv_arena, cursor, kv_bytes);
     cursor += kv_bytes;
-    microdb_arena_init(&core->ts_arena, cursor, ts_bytes);
-    cursor += ts_bytes;
-    microdb_arena_init(&core->rel_arena, cursor, rel_bytes);
+    {
+        uint8_t *heap_end = core->heap + total_bytes;
+        uint8_t *ts_base = microdb_align_ptr(cursor, sizeof(uint32_t));
+        uint8_t *ts_end;
+        uint8_t *rel_base;
+
+        if (ts_base > heap_end) {
+            free(core->heap);
+            memset(db, 0, sizeof(*db));
+            return MICRODB_ERR_NO_MEM;
+        }
+        if ((size_t)(heap_end - ts_base) < ts_bytes) {
+            free(core->heap);
+            memset(db, 0, sizeof(*db));
+            return MICRODB_ERR_NO_MEM;
+        }
+        ts_end = ts_base + ts_bytes;
+        rel_base = microdb_align_ptr(ts_end, sizeof(void *));
+        if (rel_base > heap_end) {
+            free(core->heap);
+            memset(db, 0, sizeof(*db));
+            return MICRODB_ERR_NO_MEM;
+        }
+
+        microdb_arena_init(&core->ts_arena, ts_base, ts_bytes);
+        microdb_arena_init(&core->rel_arena, rel_base, (size_t)(heap_end - rel_base));
+    }
 
     err = microdb_kv_init(db);
     if (err != MICRODB_OK) {
