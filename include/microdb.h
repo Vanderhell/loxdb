@@ -262,6 +262,7 @@ typedef struct {
 
 typedef struct {
     uint16_t schema_version;
+    uintptr_t _align;
     uint8_t _opaque[MICRODB_SCHEMA_SIZE];
 } microdb_schema_t;
 
