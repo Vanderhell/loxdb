@@ -84,3 +84,29 @@
    - explain field-by-field `microdb_storage_t` mapping to real driver hooks
    - call out `write_size = 1` core contract and when to use aligned adapter path
    - describe async erase/sync caveats and expected durability semantics
+
+## New Findings (2026-04-20)
+1. [done] `microdb_rel_delete` durability edge case for multi-row delete:
+   - verify power-loss window between in-memory delete progress and WAL append
+   - confirm WAL guarantees for N-row delete with single `WAL_OP_DEL` record
+   - add explicit durability test for partial-progress crash point (`wal_rel_delete_multirow_replayed_atomically`)
+2. [done] `microdb_rel_find` callback relock index staleness:
+   - `idx`/`index_count` may change after callback-unlock window
+   - define and document iteration consistency semantics under concurrent mutation
+   - fix implementation or document best-effort behavior explicitly
+3. [done] `microdb_ts_query` relock snapshot staleness:
+   - `snapshot_tail`/`snapshot_count` and traversal index are not refreshed after relock
+   - validate behavior under concurrent inserts during callback-unlock window
+   - align semantics with `microdb_ts_query_buf` or document divergence
+4. [done] `microdb_table_create` migration callback reentrancy risk:
+   - evaluate recursive migration scenarios (`on_migrate` calling table APIs)
+   - add guard/detection or documented reentrancy contract
+5. [done] `schema_version` lifecycle ergonomics:
+   - clarify and enforce when `schema_version` is read (pre-seal only)
+   - prevent or warn on post-seal public-field mutation mismatch
+6. [done] `microdb_ts_downsample_oldest` RAW stream semantics:
+   - define merge policy for `MICRODB_TS_RAW` when overflow policy is downsample
+   - implement deterministic behavior or return explicit unsupported/fail path
+7. [done] `rel_find_free_row` performance improvement:
+   - optimize alive bitmap scan from bit-by-bit to byte-level fast path
+   - add benchmark/regression check for fragmented-table insert path

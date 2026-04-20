@@ -57,6 +57,7 @@ static microdb_err_t microdb_ts_register_apply(microdb_core_t *core,
             stream->count = 0u;
             stream->registered = true;
             core->ts.registered_streams++;
+            core->ts.mutation_seq++;
             return MICRODB_OK;
         }
     }
@@ -130,6 +131,12 @@ static void microdb_ts_downsample_oldest(microdb_ts_stream_t *stream) {
         a->v.i32 = (a->v.i32 / 2) + (b->v.i32 / 2);
     } else if (stream->type == MICRODB_TS_U32) {
         a->v.u32 = (a->v.u32 / 2u) + (b->v.u32 / 2u);
+    } else {
+        size_t i;
+        for (i = 0u; i < stream->raw_size; ++i) {
+            uint16_t merged = (uint16_t)a->v.raw[i] + (uint16_t)b->v.raw[i];
+            a->v.raw[i] = (uint8_t)(merged / 2u);
+        }
     }
 
     idx = i1;
@@ -231,6 +238,9 @@ microdb_err_t microdb_ts_register(microdb_t *db, const char *name, microdb_ts_ty
         if (restore_index != UINT32_MAX) {
             core->ts.streams[restore_index] = restore_stream;
         }
+        if (core->ts.mutation_seq != 0u) {
+            core->ts.mutation_seq--;
+        }
     }
 
 unlock:
@@ -294,6 +304,7 @@ microdb_err_t microdb_ts_insert(microdb_t *db, const char *name, microdb_timesta
         }
 #endif
         microdb_ts_rb_insert(stream, &sample);
+        core->ts.mutation_seq++;
         microdb__maybe_compact(db);
     }
 
@@ -344,6 +355,7 @@ microdb_err_t microdb_ts_query(microdb_t *db,
     microdb_ts_stream_t *stream;
     uint32_t i;
     uint32_t idx;
+    uint32_t snapshot_mutation_seq;
     microdb_err_t rc = MICRODB_OK;
 
     if (db == NULL || cb == NULL) {
@@ -367,6 +379,7 @@ microdb_err_t microdb_ts_query(microdb_t *db,
         uint32_t snapshot_tail = stream->tail;
         uint32_t snapshot_count = stream->count;
         uint32_t cap = stream->capacity;
+        snapshot_mutation_seq = core->ts.mutation_seq;
         idx = snapshot_tail;
         for (i = 0u; i < snapshot_count; ++i) {
             microdb_ts_sample_t sample = stream->buf[idx];
@@ -385,6 +398,10 @@ microdb_err_t microdb_ts_query(microdb_t *db,
             stream = microdb_ts_find(core, name);
             if (stream == NULL) {
                 rc = MICRODB_ERR_NOT_FOUND;
+                goto unlock;
+            }
+            if (core->ts.mutation_seq != snapshot_mutation_seq) {
+                rc = MICRODB_ERR_INVALID;
                 goto unlock;
             }
         }
@@ -530,6 +547,7 @@ microdb_err_t microdb_ts_clear(microdb_t *db, const char *name) {
         stream->head = 0u;
         stream->tail = 0u;
         stream->count = 0u;
+        core->ts.mutation_seq++;
         goto unlock;
     }
 
@@ -539,11 +557,13 @@ microdb_err_t microdb_ts_clear(microdb_t *db, const char *name) {
     stream->head = 0u;
     stream->tail = 0u;
     stream->count = 0u;
+    core->ts.mutation_seq++;
     rc = microdb_storage_flush(db);
     if (rc != MICRODB_OK) {
         stream->head = saved_head;
         stream->tail = saved_tail;
         stream->count = saved_count;
+        core->ts.mutation_seq--;
     }
 
 unlock:

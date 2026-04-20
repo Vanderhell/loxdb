@@ -13,6 +13,10 @@ static uint32_t g_migrate_calls = 0u;
 static uint16_t g_migrate_old = 0u;
 static uint16_t g_migrate_new = 0u;
 static microdb_err_t g_migrate_result = MICRODB_OK;
+static uint32_t g_nested_migrate_calls = 0u;
+static microdb_err_t g_nested_migrate_result = MICRODB_OK;
+
+static microdb_err_t create_users_table(uint16_t schema_version);
 
 static microdb_err_t on_migrate_cb(microdb_t *db, const char *table_name, uint16_t old_version, uint16_t new_version) {
     (void)db;
@@ -21,6 +25,17 @@ static microdb_err_t on_migrate_cb(microdb_t *db, const char *table_name, uint16
     g_migrate_old = old_version;
     g_migrate_new = new_version;
     return g_migrate_result;
+}
+
+static microdb_err_t on_migrate_recursive_cb(microdb_t *db, const char *table_name, uint16_t old_version, uint16_t new_version) {
+    (void)db;
+    (void)table_name;
+    g_migrate_calls++;
+    g_migrate_old = old_version;
+    g_migrate_new = new_version;
+    g_nested_migrate_calls++;
+    g_nested_migrate_result = create_users_table((uint16_t)(new_version + 1u));
+    return g_nested_migrate_result;
 }
 
 static void open_db(microdb_err_t (*on_migrate)(microdb_t *, const char *, uint16_t, uint16_t)) {
@@ -48,6 +63,8 @@ static void setup_db(void) {
     g_migrate_old = 0u;
     g_migrate_new = 0u;
     g_migrate_result = MICRODB_OK;
+    g_nested_migrate_calls = 0u;
+    g_nested_migrate_result = MICRODB_OK;
     open_db(NULL);
 }
 
@@ -119,10 +136,20 @@ MDB_TEST(test_migration_error_propagated) {
     ASSERT_EQ(create_users_table(2u), MICRODB_ERR_INVALID);
 }
 
+MDB_TEST(test_recursive_migration_callback_rejected) {
+    ASSERT_EQ(create_users_table(1u), MICRODB_OK);
+    reopen_db(on_migrate_recursive_cb);
+    ASSERT_EQ(create_users_table(2u), MICRODB_ERR_SCHEMA);
+    ASSERT_EQ(g_migrate_calls, 1u);
+    ASSERT_EQ(g_nested_migrate_calls, 1u);
+    ASSERT_EQ(g_nested_migrate_result, MICRODB_ERR_SCHEMA);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, test_migration_called_on_version_bump);
     MDB_RUN_TEST(setup_db, teardown_db, test_no_migration_on_matching_version);
     MDB_RUN_TEST(setup_db, teardown_db, test_mismatch_without_callback_returns_err_schema);
     MDB_RUN_TEST(setup_db, teardown_db, test_migration_error_propagated);
+    MDB_RUN_TEST(setup_db, teardown_db, test_recursive_migration_callback_rejected);
     return MDB_RESULT();
 }

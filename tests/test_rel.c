@@ -8,6 +8,7 @@
 
 static microdb_t g_db;
 static microdb_storage_t g_ram_storage;
+static bool g_rel_mutate_once = false;
 
 typedef struct {
     uint32_t count;
@@ -80,6 +81,21 @@ static bool rel_collect_id_stop_after_two(const void *row_buf, void *ctx) {
     memcpy(&id, row, sizeof(id));
     iter->ids[iter->count++] = id;
     return iter->count < 2u;
+}
+
+typedef struct {
+    microdb_table_t *table;
+    uint32_t id;
+} rel_find_mutate_ctx_t;
+
+static bool rel_find_mutating_cb(const void *row_buf, void *ctx) {
+    rel_find_mutate_ctx_t *mctx = (rel_find_mutate_ctx_t *)ctx;
+    (void)row_buf;
+    if (!g_rel_mutate_once) {
+        g_rel_mutate_once = true;
+        (void)microdb_rel_delete(&g_db, mctx->table, &mctx->id, NULL);
+    }
+    return true;
 }
 
 MDB_TEST(rel_schema_init_ok) {
@@ -178,6 +194,13 @@ MDB_TEST(rel_table_create_duplicate_ok) {
     ASSERT_EQ(make_indexed_schema(&schema, "users", 16u), MICRODB_OK);
     ASSERT_EQ(microdb_table_create(&g_db, &schema), MICRODB_OK);
     ASSERT_EQ(microdb_table_create(&g_db, &schema), MICRODB_OK);
+}
+
+MDB_TEST(rel_table_create_schema_version_changed_after_seal_returns_err_schema) {
+    microdb_schema_t schema;
+    ASSERT_EQ(make_indexed_schema(&schema, "users", 16u), MICRODB_OK);
+    schema.schema_version = 7u;
+    ASSERT_EQ(microdb_table_create(&g_db, &schema), MICRODB_ERR_SCHEMA);
 }
 
 MDB_TEST(rel_table_create_beyond_max_tables_full) {
@@ -452,6 +475,29 @@ MDB_TEST(rel_find_no_match_cb_never_called) {
     ASSERT_EQ(ctx.count, 0u);
 }
 
+MDB_TEST(rel_find_mutation_during_callback_returns_invalid) {
+    microdb_schema_t schema;
+    microdb_table_t *table = NULL;
+    uint8_t row[128] = { 0 };
+    uint32_t id = 42u;
+    uint8_t age = 3u;
+    rel_find_mutate_ctx_t ctx;
+
+    ASSERT_EQ(make_indexed_schema(&schema, "users", 4u), MICRODB_OK);
+    ASSERT_EQ(make_table(&schema, &table), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(table, row, "id", &id), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(table, row, "age", &age), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
+    age = 4u;
+    ASSERT_EQ(microdb_row_set(table, row, "age", &age), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
+
+    g_rel_mutate_once = false;
+    ctx.table = table;
+    ctx.id = id;
+    ASSERT_EQ(microdb_rel_find(&g_db, table, &id, rel_find_mutating_cb, &ctx), MICRODB_ERR_INVALID);
+}
+
 MDB_TEST(rel_find_without_index_invalid) {
     microdb_schema_t schema;
     microdb_table_t *table = NULL;
@@ -638,6 +684,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_sealed_ok);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_unsealed_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_duplicate_ok);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_schema_version_changed_after_seal_returns_err_schema);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_beyond_max_tables_full);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_get_existing_ok);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_get_unknown_not_found);
@@ -656,6 +703,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, rel_insert_null_row_buf_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_index_returns_rows);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_no_match_cb_never_called);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_mutation_during_callback_returns_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_without_index_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_non_index_correct);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_no_match);

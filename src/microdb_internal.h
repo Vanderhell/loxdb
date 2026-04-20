@@ -57,6 +57,7 @@ typedef struct {
 typedef struct {
     microdb_ts_stream_t streams[MICRODB_TS_MAX_STREAMS];
     uint32_t registered_streams;
+    uint32_t mutation_seq;
 } microdb_ts_state_t;
 
 typedef struct {
@@ -88,6 +89,7 @@ struct microdb_table_s {
     uint32_t live_count;
     uint32_t index_count;
     uint32_t order_count;
+    uint32_t mutation_seq;
     bool registered;
 };
 
@@ -151,6 +153,7 @@ typedef struct {
     bool storage_loading;
     bool wal_replaying;
     uint32_t ts_dropped_samples;
+    bool migration_in_progress;
 } microdb_core_t;
 
 typedef struct {

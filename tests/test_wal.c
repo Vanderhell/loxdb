@@ -324,6 +324,40 @@ MDB_TEST(wal_rel_delete_replayed) {
     ASSERT_EQ(ids.count, 0u);
 }
 
+MDB_TEST(wal_rel_delete_multirow_replayed_atomically) {
+    microdb_table_t *table = NULL;
+    uint8_t row[64] = { 0 };
+    uint8_t out[64] = { 0 };
+    uint32_t id = 6u;
+    uint32_t other_id = 7u;
+    uint8_t age = 1u;
+    uint8_t other_age = 2u;
+    uint32_t deleted = 0u;
+    rel_ids_t ids = { 0 };
+    uint32_t out_id = 0u;
+
+    make_rel_table(&g_db, &table);
+    ASSERT_EQ(microdb_row_set(table, row, "id", &id), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(table, row, "age", &age), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
+    age = 3u;
+    ASSERT_EQ(microdb_row_set(table, row, "age", &age), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(table, row, "id", &other_id), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(table, row, "age", &other_age), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
+
+    ASSERT_EQ(microdb_rel_delete(&g_db, table, &id, &deleted), MICRODB_OK);
+    ASSERT_EQ(deleted, 2u);
+    reopen_after_power_loss(&g_db, &g_storage);
+    ASSERT_EQ(microdb_table_get(&g_db, "users", &table), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_find(&g_db, table, &id, rel_collect_ids, &ids), MICRODB_OK);
+    ASSERT_EQ(ids.count, 0u);
+    ASSERT_EQ(microdb_rel_find_by(&g_db, table, "id", &other_id, out), MICRODB_OK);
+    ASSERT_EQ(microdb_row_get(table, out, "id", &out_id, NULL), MICRODB_OK);
+    ASSERT_EQ(out_id, other_id);
+}
+
 MDB_TEST(wal_flush_compacts_and_persists) {
     uint8_t value = 8u, out = 0u;
     ASSERT_EQ(microdb_kv_set(&g_db, "flush", &value, 1u, 0u), MICRODB_OK);
@@ -489,6 +523,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, wal_multiple_engines_replay_correctly);
     MDB_RUN_TEST(setup_db, teardown_db, wal_kv_delete_replayed);
     MDB_RUN_TEST(setup_db, teardown_db, wal_rel_delete_replayed);
+    MDB_RUN_TEST(setup_db, teardown_db, wal_rel_delete_multirow_replayed_atomically);
     MDB_RUN_TEST(setup_db, teardown_db, wal_flush_compacts_and_persists);
     MDB_RUN_TEST(setup_db, teardown_db, wal_deinit_compacts_before_free);
     MDB_RUN_TEST(setup_db, teardown_db, wal_ram_only_mode_skips_storage);

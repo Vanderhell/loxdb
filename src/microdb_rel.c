@@ -189,6 +189,7 @@ static void rel_apply_insert_row(microdb_table_t *table, uint32_t row_idx, const
         rel_copy_column_to_index(key_bytes, idx_col, row_buf);
         rel_index_insert(table, row_idx, key_bytes);
     }
+    table->mutation_seq++;
 }
 
 static void rel_apply_delete_row(microdb_table_t *table, uint32_t row_idx) {
@@ -198,6 +199,7 @@ static void rel_apply_delete_row(microdb_table_t *table, uint32_t row_idx) {
     if (table->live_count != 0u) {
         table->live_count--;
     }
+    table->mutation_seq++;
 }
 
 static bool rel_wal_mode(const microdb_core_t *core) {
@@ -214,11 +216,23 @@ static bool rel_has_arena_space_for_table(const microdb_core_t *core, const micr
 }
 
 static uint32_t rel_find_free_row(const microdb_table_t *table) {
-    uint32_t i;
+    uint32_t byte_idx;
+    uint32_t alive_bytes = (table->max_rows + 7u) / 8u;
 
-    for (i = 0; i < table->max_rows; ++i) {
-        if (!rel_is_alive(table->alive_bitmap, i)) {
-            return i;
+    for (byte_idx = 0u; byte_idx < alive_bytes; ++byte_idx) {
+        uint8_t byte = table->alive_bitmap[byte_idx];
+        uint32_t bit;
+        if (byte == 0xFFu) {
+            continue;
+        }
+        for (bit = 0u; bit < 8u; ++bit) {
+            uint32_t row_idx = (byte_idx * 8u) + bit;
+            if (row_idx >= table->max_rows) {
+                break;
+            }
+            if (((byte >> bit) & 1u) == 0u) {
+                return row_idx;
+            }
         }
     }
 
@@ -428,6 +442,10 @@ microdb_err_t microdb_table_create(microdb_t *db, microdb_schema_t *schema) {
         rc = MICRODB_ERR_INVALID;
         goto unlock;
     }
+    if (schema->schema_version != impl->schema_version) {
+        rc = MICRODB_ERR_SCHEMA;
+        goto unlock;
+    }
     wal_mode = rel_wal_mode(core);
     existing = rel_find_table(core, impl->name);
     if (existing != NULL) {
@@ -439,6 +457,11 @@ microdb_err_t microdb_table_create(microdb_t *db, microdb_schema_t *schema) {
             rc = MICRODB_ERR_SCHEMA;
             goto unlock;
         }
+        if (core->migration_in_progress) {
+            rc = MICRODB_ERR_SCHEMA;
+            goto unlock;
+        }
+        core->migration_in_progress = true;
         need_migrate_cb = true;
         migrate_old = existing->schema_version;
         migrate_new = impl->schema_version;
@@ -520,14 +543,16 @@ unlock:
     MICRODB_UNLOCK(db);
     if (need_migrate_cb) {
         rc = core->on_migrate(db, migrate_name, migrate_old, migrate_new);
-        if (rc != MICRODB_OK) {
-            return rc;
-        }
         MICRODB_LOCK(db);
         core = microdb_core(db);
         if (core->magic != MICRODB_MAGIC) {
             MICRODB_UNLOCK(db);
             return MICRODB_ERR_INVALID;
+        }
+        core->migration_in_progress = false;
+        if (rc != MICRODB_OK) {
+            MICRODB_UNLOCK(db);
+            return rc;
         }
         existing = rel_find_table(core, migrate_name);
         if (existing == NULL) {
@@ -691,6 +716,7 @@ microdb_err_t microdb_rel_find(microdb_t *db,
                                microdb_rel_iter_cb_t cb,
                                void *ctx) {
     uint32_t idx;
+    uint32_t snapshot_mutation_seq;
     microdb_err_t err;
     microdb_err_t rc = MICRODB_OK;
 
@@ -713,6 +739,7 @@ microdb_err_t microdb_rel_find(microdb_t *db,
     }
 
     idx = rel_index_find_first(table, search_val);
+    snapshot_mutation_seq = table->mutation_seq;
     if (idx == UINT32_MAX) {
         rc = MICRODB_OK;
         goto unlock;
@@ -736,6 +763,10 @@ microdb_err_t microdb_rel_find(microdb_t *db,
         err = rel_validate_table_and_handle(db, table);
         if (err != MICRODB_OK) {
             rc = err;
+            goto unlock;
+        }
+        if (table->mutation_seq != snapshot_mutation_seq) {
+            rc = MICRODB_ERR_INVALID;
             goto unlock;
         }
     }
@@ -961,6 +992,7 @@ microdb_err_t microdb_rel_clear(microdb_t *db, microdb_table_t *table) {
     table->live_count = 0u;
     table->index_count = 0u;
     table->order_count = 0u;
+    table->mutation_seq++;
     if (!rel_wal_mode(microdb_core(db))) {
         rc = microdb_storage_flush(db);
     } else {
