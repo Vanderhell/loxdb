@@ -4,6 +4,7 @@
 #include "../port/posix/microdb_port_posix.h"
 #include "../src/microdb_internal.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 static microdb_t g_db;
@@ -25,6 +26,13 @@ static void cleanup_handles(microdb_t *db, microdb_storage_t *storage) {
         (void)microdb_deinit(db);
     }
     microdb_port_posix_deinit(storage);
+}
+
+static void crash_drop_db_heap(microdb_t *db) {
+    if (microdb_core_const(db)->magic == MICRODB_MAGIC) {
+        free(microdb_core(db)->heap);
+    }
+    memset(db, 0, sizeof(*db));
 }
 
 static void open_db(microdb_t *db, microdb_storage_t *storage) {
@@ -77,6 +85,7 @@ static uint32_t next_entry_offset(microdb_storage_t *storage, uint32_t entry_off
 
 static void reopen_after_power_loss(microdb_t *db, microdb_storage_t *storage) {
     microdb_port_posix_simulate_power_loss(storage);
+    crash_drop_db_heap(db);
     microdb_port_posix_deinit(storage);
     open_db(db, storage);
 }
