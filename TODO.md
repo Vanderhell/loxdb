@@ -134,3 +134,11 @@
    - move from equal byte-slice per stream to weighted/adaptive TS arena distribution
    - target better mixed-type utilization (`F32/I32/U32` alongside `RAW`)
    - keep WAL/page format compatibility and deterministic capacity behavior
+8. [pending] POSIX bench fidelity after TS packed + WAL scatter-write:
+   - validate compact-trigger hypothesis with `compact_count` and WAL fill progression stats (base vs head)
+   - specifically inspect default `wal_compact_threshold_pct` after TS packed snapshot-size change
+   - if confirmed, tune either:
+     - default threshold upward, or
+     - threshold policy relative to post-compact snapshot footprint
+   - reduce POSIX-only syscall artifact from scatter-write path (`writev` or small-buffer coalescing)
+   - document that desktop POSIX benches are trend tools and not direct SPI-flash latency proxies

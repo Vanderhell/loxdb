@@ -106,6 +106,15 @@ microdb-bench>
 - `[PHASE] cold/steady`: separates startup from steady-state behavior
 - `[SLO]`: profile-aware tail checks (`OK` / `WARN`)
 
+## POSIX vs ESP32 Interpretation
+
+- Do not treat desktop POSIX latency numbers as direct predictors of ESP32 SPI-flash latency.
+- Practical reference from recent runs:
+  - ESP32-S3 (COM17, N16R8 profile): `kv_put` ~`70 us/op`
+  - POSIX simulation (desktop): `kv_put` ~`37 us/op`
+- The desktop path can amplify syscall effects (for example WAL scatter-write as multiple `write()` calls), while ESP32 cost is dominated by flash transaction latency.
+- Use POSIX primarily for relative trend detection, and validate release-critical perf conclusions on target hardware.
+
 ## Terminal Commands
 
 - `help`: show command list

@@ -5,3 +5,6 @@ dist/
 .vs/
 *.user
 *.suo
+bench/microdb_esp32_s3_bench_base_70bc35f_v2/
+bench/microdb_esp32_s3_bench_head_3062f08/
+bench/microdb_esp32_s3_bench_head_3062f08_v2/
