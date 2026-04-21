@@ -177,6 +177,10 @@ Configuration is compile-time first, with a small runtime override surface in `m
 - `cfg.ram_kb` overrides the total budget per instance
 - `cfg.kv_pct`, `cfg.ts_pct`, `cfg.rel_pct` override the slice split per instance
 - `MICRODB_ENABLE_WAL` toggles WAL persistence when a storage HAL is present
+- `cfg.wal_sync_mode` selects WAL durability/latency mode:
+  - `MICRODB_WAL_SYNC_ALWAYS` (default): sync on each append, strongest per-op durability
+  - `MICRODB_WAL_SYNC_FLUSH_ONLY`: sync on explicit `microdb_flush()`, lower write latency
+  - see measured ESP32 tradeoffs in `bench/microdb_esp32_s3_bench/README.md` ("WAL Sync Mode Decision Table")
 - `MICRODB_LOG(level, fmt, ...)` enables internal diagnostic logging
 - smallest-size variant is available as CMake target `microdb_tiny` (KV-only, TS/REL/WAL disabled, weaker power-fail durability)
 - strict smallest **durable** profile is available as `MICRODB_PROFILE_FOOTPRINT_MIN` (KV + WAL + reopen/recovery contract)
