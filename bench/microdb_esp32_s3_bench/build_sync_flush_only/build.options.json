@@ -1,0 +1,9 @@
+{
+  "additionalFiles": "..\\..,..\\..,..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..,..\\..\\..",
+  "compiler.optimization_flags": "-Os",
+  "customBuildProperties": "",
+  "fqbn": "esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi",
+  "hardwareFolders": "C:\\Users\\vande\\AppData\\Local\\Arduino15\\packages",
+  "otherLibrariesFolders": "C:\\Users\\vande\\Documents\\Arduino\\libraries",
+  "sketchLocation": "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench"
+}

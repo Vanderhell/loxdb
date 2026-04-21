@@ -1,0 +1,6 @@
+C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_flush_only\sketch\src\microdb_rel.c.o: \
+ C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_flush_only\sketch\src\microdb_rel.c \
+ C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_flush_only\sketch\src\microdb_internal.h \
+ C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench/microdb.h \
+ C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_flush_only\sketch\src\microdb_lock.h \
+ C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_flush_only\sketch\src\microdb_arena.h

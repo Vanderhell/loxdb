@@ -1,0 +1,5 @@
+--flash-mode dio --flash-freq 80m --flash-size 16MB  
+0x0 microdb_esp32_s3_bench.ino.bootloader.bin  
+0x8000 microdb_esp32_s3_bench.ino.partitions.bin  
+0xe000 boot_app0.bin  
+0x10000 microdb_esp32_s3_bench.ino.bin 
