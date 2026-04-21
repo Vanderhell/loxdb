@@ -92,6 +92,19 @@ They do **not** provide:
 
 For production media integration, you still must provide real driver glue in `microdb_storage_t` hooks.
 
+Practical interpretation by medium:
+
+- SD card / eMMC:
+  - supported when you already have a real stack (for example FatFS/LittleFS + SDMMC/SPI block I/O, or vendor managed block API).
+  - unsupported as "plug-and-play" from stubs alone.
+- Raw NAND:
+  - not a direct microdb storage target.
+  - requires a managed layer that provides ECC, bad-block handling, and wear leveling before mapping to `microdb_storage_t`.
+
+Reference glue example:
+
+- `examples/sd_fatfs_port/main.c` (SD + FatFS file-backed storage hook skeleton)
+
 ## 4) Which optional adapter path to use
 
 - Aligned-write media: use aligned adapter path (RMW/byte-write shim).

@@ -223,6 +223,7 @@ microdb supports three storage modes:
 - POSIX file HAL for tests and simulation
 - ESP32 partition HAL via `esp_partition_*`
 - RTOS skeleton templates: `examples/freertos_port/`, `examples/zephyr_port/`
+- SD + FatFS glue skeleton: `examples/sd_fatfs_port/`
 
 ## Supported Platforms
 
@@ -273,6 +274,12 @@ Optional backend adapter modules (modular, not linked into core by default):
 - `microdb_backend_managed_adapter` (managed-media adapter skeleton for eMMC/SD/NAND via managed interface)
 - `microdb_backend_open` (decision + adapter wiring helper for optional backend flow)
 - stub modules for managed media (`nand/emmc/sd`) used for integration/testing flow
+
+Important:
+- `nand/emmc/sd` stubs are capability descriptors, not hardware drivers.
+- SD/eMMC integration still requires a real platform stack (for example FatFS/LittleFS over SDMMC/SPI, or vendor managed block API) mapped into `microdb_storage_t`.
+- Raw NAND is not a direct microdb target: you need a managed layer that handles ECC, bad blocks, and wear leveling, then place microdb above that layer.
+- See `examples/sd_fatfs_port/main.c` for a practical SD+FatFS glue skeleton.
 
 Managed adapter contract (fail-fast):
 - validates storage hooks and non-zero capacity/erase geometry
