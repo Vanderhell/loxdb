@@ -9,6 +9,8 @@
 #define MICRODB_PROFILE_CORE_HIMEM 1
 extern "C" {
 #include "microdb.h"
+#include "microdb_json_wrapper.h"
+#include "microdb_import_export.h"
 }
 
 #if defined(ARDUINO_ARCH_ESP32)
@@ -90,95 +92,95 @@ static size_t g_last_count = 0u;
 static void reset_db_and_open(bool wipe);
 static bool g_paced_mode = false;
 
-#line 92 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
-static const bench_profile_t* P(void);
 #line 94 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+static const bench_profile_t* P(void);
+#line 96 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static uint32_t heap_free_8bit(void);
-#line 102 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
-static microdb_timestamp_t bench_now(void);
 #line 104 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+static microdb_timestamp_t bench_now(void);
+#line 106 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static microdb_err_t st_read(void *ctx, uint32_t off, void *buf, size_t len);
-#line 111 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 113 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static microdb_err_t st_write(void *ctx, uint32_t off, const void *buf, size_t len);
-#line 118 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 120 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static microdb_err_t st_erase(void *ctx, uint32_t off);
-#line 125 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 127 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static microdb_err_t st_sync(void *ctx);
-#line 130 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 132 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool storage_alloc(void);
-#line 144 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 146 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void storage_reset(void);
-#line 157 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 159 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static microdb_err_t on_migrate(microdb_t *db, const char *name, uint16_t old_v, uint16_t new_v);
-#line 166 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 168 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static microdb_err_t db_open(bool wipe, bool with_mig);
-#line 183 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 185 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static int cmp_u32(const void *a, const void *b);
-#line 189 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 191 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static uint32_t pct(const uint32_t *arr, uint32_t n, uint32_t p);
-#line 194 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 196 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static uint32_t sample_stride(uint32_t ops);
-#line 199 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 201 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void clear_metrics(void);
-#line 204 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 206 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void print_effective_capacity(void);
-#line 212 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 214 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void print_phase_split(const char *name, uint32_t cold_ops, uint64_t cold_total, uint32_t steady_ops, uint64_t steady_total);
-#line 219 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 221 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static uint32_t wal_min_steady_ops(void);
-#line 226 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 228 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool is_deterministic_profile(void);
-#line 230 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 232 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void maybe_apply_write_control(uint32_t op_index);
-#line 238 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 240 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void set_paced_mode(bool enabled);
-#line 243 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 245 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void report_slo(const bench_metric_t *m);
-#line 275 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 277 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void emit_metric(const char *name, uint32_t ops, uint64_t total_us, uint64_t bytes, uint32_t *lat, uint32_t n, uint32_t sample_stride_ops, uint32_t heap0, uint32_t heap1);
-#line 334 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 336 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool run_kv_bench(void);
-#line 458 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 460 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool run_ts_bench(void);
-#line 519 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 521 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool rel_find_cb(const void *row_buf, void *ctx);
-#line 528 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 530 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool run_rel_bench(void);
-#line 604 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 606 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool run_wal_compact_bench(void);
-#line 731 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 733 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool run_reopen_check(void);
-#line 744 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 746 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool run_migration_check(void);
-#line 779 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 781 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool run_txn_check(void);
-#line 794 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 796 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void print_stats_snapshot(void);
-#line 810 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 812 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void print_config(void);
-#line 822 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 824 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void print_profiles(void);
-#line 833 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 835 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool set_profile(const char *name);
-#line 845 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 847 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool try_profile_shortcut(const char *cmd);
-#line 854 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 856 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void print_last_metrics(void);
-#line 873 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 875 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static bool run_real_data_suite(void);
-#line 994 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 1015 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void run_full_bench_once(void);
-#line 1044 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 1065 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void print_help(void);
-#line 1068 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 1089 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void prompt(void);
-#line 1082 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 1103 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static void execute_command(char *line);
-#line 1169 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 1190 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 void setup(void);
-#line 1194 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 1215 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 void loop(void);
-#line 92 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
+#line 94 "C:\\Users\\vande\\Desktop\\github\\microdb\\bench\\microdb_esp32_s3_bench\\microdb_esp32_s3_bench.ino"
 static const bench_profile_t *P(void) { return &g_profiles[g_profile_idx]; }
 
 static uint32_t heap_free_8bit(void) {
@@ -979,6 +981,13 @@ static bool run_real_data_suite(void) {
   uint32_t deleted = 0u;
   uint8_t row[64];
   uint8_t out_row[64];
+  char ie_json[1536];
+  size_t ie_used = 0u;
+  uint32_t ie_exported = 0u;
+  uint32_t ie_imported = 0u;
+  uint32_t ie_skipped = 0u;
+  microdb_ie_options_t ie_opts = microdb_ie_default_options();
+  const char *ie_keys[3] = {"wifi.ssid", "sensor.interval_ms", "json.counter"};
   microdb_db_stats_t dbs;
   microdb_kv_stats_t kvs;
   microdb_ts_stats_t tss;
@@ -1016,6 +1025,18 @@ static bool run_real_data_suite(void) {
   RD_EXPECT_REAL("assert/interval", u32 == 5000u && out_len == sizeof(uint32_t));
   RD_CHECK_REAL("kv_del/boot.count", microdb_kv_del(&g_db, "boot.count"));
   RD_CHECK_REAL("admit_kv_set", microdb_admit_kv_set(&g_db, "wifi.ssid", 16u, &adm));
+  RD_CHECK_REAL("json/set_u32", microdb_json_kv_set_u32(&g_db, "json.counter", 9876u, 0u));
+  RD_CHECK_REAL("json/get_u32", microdb_json_kv_get_u32(&g_db, "json.counter", &u32));
+  RD_EXPECT_REAL("assert/json.counter", u32 == 9876u);
+  RD_CHECK_REAL("ie/export_kv", microdb_ie_export_kv_json(&g_db, ie_keys, 3u, ie_json, sizeof(ie_json), &ie_used, &ie_exported));
+  RD_EXPECT_REAL("assert/ie.exported", ie_exported == 3u);
+  RD_CHECK_REAL("kv_del/wifi.ssid", microdb_kv_del(&g_db, "wifi.ssid"));
+  RD_CHECK_REAL("kv_del/sensor.interval", microdb_kv_del(&g_db, "sensor.interval_ms"));
+  RD_CHECK_REAL("kv_del/json.counter", microdb_kv_del(&g_db, "json.counter"));
+  RD_CHECK_REAL("ie/import_kv", microdb_ie_import_kv_json(&g_db, ie_json, &ie_opts, &ie_imported, &ie_skipped));
+  RD_EXPECT_REAL("assert/ie.imported", ie_imported == 3u && ie_skipped == 0u);
+  RD_CHECK_REAL("json/get_u32/reimport", microdb_json_kv_get_u32(&g_db, "json.counter", &u32));
+  RD_EXPECT_REAL("assert/json.reimport", u32 == 9876u);
 
   RD_CHECK_REAL("ts_register/temp", microdb_ts_register(&g_db, "temperature", MICRODB_TS_F32, 0u));
   RD_CHECK_REAL("ts_insert/t1", microdb_ts_insert(&g_db, "temperature", 1700000000u, &tf1));

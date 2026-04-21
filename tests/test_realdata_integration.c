@@ -74,6 +74,11 @@ typedef struct {
     uint32_t sev3_count;
 } rel_iter_ctx_t;
 
+typedef struct {
+    bool found;
+    uint32_t ttl_remaining;
+} ttl_check_ctx_t;
+
 static bool kv_count_cb(const char *key, const void *val, size_t val_len, uint32_t ttl_remaining, void *ctx) {
     kv_iter_ctx_t *c = (kv_iter_ctx_t *)ctx;
     (void)key;
@@ -98,6 +103,18 @@ static bool rel_sev3_iter_cb(const void *row_buf, void *ctx) {
     size_t out_len = 0u;
     if (microdb_row_get(c->table, row_buf, "severity", &sev, &out_len) != MICRODB_OK) return false;
     if (sev == 3u) c->sev3_count++;
+    return true;
+}
+
+static bool txn_ttl_iter_cb(const char *key, const void *val, size_t val_len, uint32_t ttl_remaining, void *ctx) {
+    ttl_check_ctx_t *c = (ttl_check_ctx_t *)ctx;
+    (void)val;
+    (void)val_len;
+    if (strcmp(key, "txn.c") == 0) {
+        c->found = true;
+        c->ttl_remaining = ttl_remaining;
+        return false;
+    }
     return true;
 }
 
@@ -500,6 +517,7 @@ static bool scenario_d_txn_recovery(void) {
     microdb_pressure_t p;
     size_t count = 0u;
     uint32_t rel_count = 0u;
+    ttl_check_ctx_t ttl_ctx;
 
     RD_CHECK("txn/begin", microdb_txn_begin(&g_db));
     RD_CHECK("txn/kv_set/a", microdb_kv_set(&g_db, "txn.a", &a, sizeof(a), 0u));
@@ -513,6 +531,9 @@ static bool scenario_d_txn_recovery(void) {
     RD_EXPECT("assert/txn.b", out == 200u);
     RD_CHECK("kv_get/txn.c", microdb_kv_get(&g_db, "txn.c", &out, sizeof(out), &out_len));
     RD_EXPECT("assert/txn.c", out == 300u);
+    memset(&ttl_ctx, 0, sizeof(ttl_ctx));
+    RD_CHECK("kv_iter/txn.c.ttl", microdb_kv_iter(&g_db, txn_ttl_iter_cb, &ttl_ctx));
+    RD_EXPECT("assert/txn.c.ttl", ttl_ctx.found && ttl_ctx.ttl_remaining > 0u && ttl_ctx.ttl_remaining != UINT32_MAX);
 
     RD_CHECK("txn/begin2", microdb_txn_begin(&g_db));
     out = 999u;

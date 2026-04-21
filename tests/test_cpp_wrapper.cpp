@@ -378,6 +378,46 @@ MDB_TEST(cpp_wrapper_txn_rollback_discards_kv) {
     ASSERT_EQ(g_db.kv_get("txn_r", &out, sizeof(out), nullptr), MICRODB_ERR_NOT_FOUND);
 }
 
+MDB_TEST(cpp_wrapper_realdata_typed_flow) {
+    uint32_t sensor_interval_ms = 5000u;
+    uint32_t sensor_interval_out = 0u;
+    microdb_ts_sample_t last;
+    microdb_schema_t schema;
+    microdb_table_t *table = nullptr;
+    uint8_t row[128] = {0};
+    uint8_t out_row[128] = {0};
+    uint32_t id = 21u;
+    uint32_t id_out = 0u;
+    uint8_t sev = 1u;
+    uint8_t sev_out = 0u;
+
+    ASSERT_EQ(g_db.kv_put_pod<uint32_t>("sensor.interval_ms", sensor_interval_ms), MICRODB_OK);
+    ASSERT_EQ(g_db.kv_get_pod<uint32_t>("sensor.interval_ms", &sensor_interval_out), MICRODB_OK);
+    ASSERT_EQ(sensor_interval_out, sensor_interval_ms);
+
+    ASSERT_EQ(g_db.ts_register_f32("vcc"), MICRODB_OK);
+    ASSERT_EQ(g_db.ts_insert_f32("vcc", 1700000200u, 3.31f), MICRODB_OK);
+    ASSERT_EQ(g_db.ts_insert_f32("vcc", 1700000260u, 3.28f), MICRODB_OK);
+    ASSERT_EQ(g_db.ts_last("vcc", &last), MICRODB_OK);
+    ASSERT_EQ(last.ts, 1700000260u);
+    ASSERT_EQ(last.v.f32 == 3.28f, 1);
+
+    ASSERT_EQ(g_db.rel_schema_init(&schema, "cpp_event_log", 8u), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_schema_add(&schema, "id", MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_schema_add(&schema, "severity", MICRODB_COL_U8, sizeof(uint8_t), false), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_schema_seal(&schema), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_table_create(&schema), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_table_get("cpp_event_log", &table), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_row_set_pod<uint32_t>(table, row, "id", id), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_row_set_pod<uint8_t>(table, row, "severity", sev), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_insert(table, row), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_find_by(table, "id", &id, out_row), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_row_get_pod<uint32_t>(table, out_row, "id", &id_out), MICRODB_OK);
+    ASSERT_EQ(g_db.rel_row_get_pod<uint8_t>(table, out_row, "severity", &sev_out), MICRODB_OK);
+    ASSERT_EQ(id_out, id);
+    ASSERT_EQ(sev_out, sev);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_txn_reports_invalid_before_init);
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_reports_invalid_before_init);
@@ -404,5 +444,6 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_pod_row_helpers_null_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_txn_commit_persists_kv);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_txn_rollback_discards_kv);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_realdata_typed_flow);
     return MDB_RESULT();
 }

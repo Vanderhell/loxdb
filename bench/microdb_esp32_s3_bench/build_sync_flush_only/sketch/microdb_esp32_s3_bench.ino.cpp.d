@@ -169,4 +169,6 @@ C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_fl
  C:\Users\vande\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.3.5\cores\esp32/freertos_stats.h \
  C:\Users\vande\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.3.5\cores\esp32/io_pin_remap.h \
  C:\Users\vande\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.3.5\cores\esp32/Arduino.h \
- C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_flush_only\sketch\microdb.h
+ C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_flush_only\sketch\microdb.h \
+ C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_flush_only\sketch\microdb_json_wrapper.h \
+ C:\Users\vande\Desktop\github\microdb\bench\microdb_esp32_s3_bench\build_sync_flush_only\sketch\microdb_import_export.h

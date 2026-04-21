@@ -8,6 +8,8 @@
 #define MICRODB_PROFILE_CORE_HIMEM 1
 extern "C" {
 #include "microdb.h"
+#include "microdb_json_wrapper.h"
+#include "microdb_import_export.h"
 }
 
 #if defined(ARDUINO_ARCH_ESP32)
@@ -889,6 +891,13 @@ static bool run_real_data_suite(void) {
   uint32_t deleted = 0u;
   uint8_t row[64];
   uint8_t out_row[64];
+  char ie_json[1536];
+  size_t ie_used = 0u;
+  uint32_t ie_exported = 0u;
+  uint32_t ie_imported = 0u;
+  uint32_t ie_skipped = 0u;
+  microdb_ie_options_t ie_opts = microdb_ie_default_options();
+  const char *ie_keys[3] = {"wifi.ssid", "sensor.interval_ms", "json.counter"};
   microdb_db_stats_t dbs;
   microdb_kv_stats_t kvs;
   microdb_ts_stats_t tss;
@@ -926,6 +935,18 @@ static bool run_real_data_suite(void) {
   RD_EXPECT_REAL("assert/interval", u32 == 5000u && out_len == sizeof(uint32_t));
   RD_CHECK_REAL("kv_del/boot.count", microdb_kv_del(&g_db, "boot.count"));
   RD_CHECK_REAL("admit_kv_set", microdb_admit_kv_set(&g_db, "wifi.ssid", 16u, &adm));
+  RD_CHECK_REAL("json/set_u32", microdb_json_kv_set_u32(&g_db, "json.counter", 9876u, 0u));
+  RD_CHECK_REAL("json/get_u32", microdb_json_kv_get_u32(&g_db, "json.counter", &u32));
+  RD_EXPECT_REAL("assert/json.counter", u32 == 9876u);
+  RD_CHECK_REAL("ie/export_kv", microdb_ie_export_kv_json(&g_db, ie_keys, 3u, ie_json, sizeof(ie_json), &ie_used, &ie_exported));
+  RD_EXPECT_REAL("assert/ie.exported", ie_exported == 3u);
+  RD_CHECK_REAL("kv_del/wifi.ssid", microdb_kv_del(&g_db, "wifi.ssid"));
+  RD_CHECK_REAL("kv_del/sensor.interval", microdb_kv_del(&g_db, "sensor.interval_ms"));
+  RD_CHECK_REAL("kv_del/json.counter", microdb_kv_del(&g_db, "json.counter"));
+  RD_CHECK_REAL("ie/import_kv", microdb_ie_import_kv_json(&g_db, ie_json, &ie_opts, &ie_imported, &ie_skipped));
+  RD_EXPECT_REAL("assert/ie.imported", ie_imported == 3u && ie_skipped == 0u);
+  RD_CHECK_REAL("json/get_u32/reimport", microdb_json_kv_get_u32(&g_db, "json.counter", &u32));
+  RD_EXPECT_REAL("assert/json.reimport", u32 == 9876u);
 
   RD_CHECK_REAL("ts_register/temp", microdb_ts_register(&g_db, "temperature", MICRODB_TS_F32, 0u));
   RD_CHECK_REAL("ts_insert/t1", microdb_ts_insert(&g_db, "temperature", 1700000000u, &tf1));
