@@ -224,6 +224,44 @@ microdb supports three storage modes:
 - ESP32 partition HAL via `esp_partition_*`
 - RTOS skeleton templates: `examples/freertos_port/`, `examples/zephyr_port/`
 
+## Supported Platforms
+
+### Verified on hardware
+
+| Platform | Flash | RAM | Status |
+|---|---|---:|---|
+| ESP32-S3 N16R8 | 16MB external NOR | 8MB PSRAM | Verified (`run_real` PASS, benchmarked) |
+
+### Compatible (direct byte-write port)
+
+| Platform | Flash path | Typical `kv_put` (directional) | Practical minimum RAM |
+|---|---|---:|---:|
+| ESP32 / ESP32-C3 / ESP32-S2 | SPI NOR via `esp_partition` | ~70-90us | 16KB |
+| STM32H7 | QSPI NOR | ~30us | 16KB |
+| STM32F4 | External SPI NOR | ~80us | 16KB |
+| RP2040 | QSPI XIP flash | ~50us | 16KB |
+| nRF52840 | Internal flash | ~90us | 16KB |
+| SAMD51 | External SPI NOR | ~100us | 16KB |
+
+### Compatible via aligned adapter (`write_size > 1`)
+
+| Platform | Flash path | Notes |
+|---|---|---|
+| STM32F103 | Internal flash (`write_size=2`) | Requires `microdb_backend_aligned_adapter` |
+| STM32L4 | Internal flash (`write_size=8`) | Requires `microdb_backend_aligned_adapter` |
+| nRF5340 | Internal flash (`write_size=4`) | Requires `microdb_backend_aligned_adapter` |
+
+### Not supported without larger changes
+
+| Platform family | Limitation |
+|---|---|
+| AVR (ATmega class) | No practical malloc model for current core + different EEPROM persistence model |
+| MSP430 (small variants) | Constrained address/model assumptions for current storage offset contract |
+
+Notes:
+- Latency values are board/flash/vendor dependent; treat them as directional and re-measure on target hardware.
+- `kv_get` is RAM-only in normal path; write costs are typically dominated by flash backend latency.
+
 Persistent layout starts with a WAL region and then separate KV, TS, and REL regions aligned to the storage erase size.
 
 Core storage positioning: microdb core today natively supports byte-write durable backends; aligned/block/NAND media require a translation layer.
