@@ -341,6 +341,11 @@ typedef bool (*microdb_ts_query_cb_t)(const microdb_ts_sample_t *sample, void *c
 - `microdb_ts_count(db, name, from, to, out_count)`
 - `microdb_ts_clear(db, name)`
 
+TS lifecycle limitation:
+
+- There is currently no `microdb_ts_unregister` API.
+- Stream slots are expected to be provisioned at boot and reused/cleared (`microdb_ts_clear`) rather than removed at runtime.
+
 ### TS query callback mutation contract
 
 `microdb_ts_query` intentionally unlocks before invoking your callback and re-locks after callback return.
@@ -402,12 +407,14 @@ typedef bool (*microdb_rel_iter_cb_t)(const void *row_buf, void *ctx);
 `microdb_rel_find` also unlocks around callback invocation and validates table mutation sequence on re-lock.
 
 - If rows are inserted/deleted/cleared while `microdb_rel_find` callback is in progress, table `mutation_seq` changes.
-- If `mutation_seq` changed, `microdb_rel_find` returns `MICRODB_ERR_INVALID`.
+- If `mutation_seq` changed, `microdb_rel_find` returns `MICRODB_ERR_MODIFIED`.
 - For caller logic, this means "search result traversal was invalidated", so restart the query under your chosen retry policy.
 
 Practical rule:
 
 - Do not call mutating REL APIs (`rel_insert`, `rel_delete`, `rel_clear`, schema/table create) from inside `rel_find` callback for the same table if you need deterministic traversal.
+
+`microdb_rel_iter` follows the same unlock/re-lock pattern and also returns `MICRODB_ERR_MODIFIED` when concurrent mutation is detected after callback return.
 
 ### REL usage example
 

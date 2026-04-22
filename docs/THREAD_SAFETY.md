@@ -9,6 +9,12 @@ microdb exposes four optional lock hooks in `microdb_cfg_t`:
 
 If hooks are `NULL`, locking is a no-op.
 
+## Callback And Copying Notes
+
+- `microdb_kv_iter`, `microdb_ts_query`, `microdb_rel_find`, and `microdb_rel_iter` invoke callbacks without DB lock held, then re-lock before continuing.
+- `microdb_rel_find` and `microdb_rel_iter` detect concurrent table mutation after re-lock and return `MICRODB_ERR_MODIFIED`.
+- `microdb_rel_find_by` copies row bytes into caller `out_buf` while lock is still held. For larger row sizes this can increase lock hold time and create latency spikes for contending threads.
+
 ## FreeRTOS Example
 
 ```c
