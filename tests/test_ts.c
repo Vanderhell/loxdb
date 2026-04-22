@@ -43,9 +43,12 @@ static void teardown_db(void) {
 
 static bool ts_collect_cb(const microdb_ts_sample_t *sample, void *ctx) {
     ts_collect_ctx_t *out = (ts_collect_ctx_t *)ctx;
+    size_t cap = sizeof(out->ts) / sizeof(out->ts[0]);
 
-    out->ts[out->count] = sample->ts;
-    out->u32[out->count] = sample->v.u32;
+    if (out->count < cap) {
+        out->ts[out->count] = sample->ts;
+        out->u32[out->count] = sample->v.u32;
+    }
     out->count++;
     return true;
 }
