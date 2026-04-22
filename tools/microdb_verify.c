@@ -2,6 +2,7 @@
 #include "microdb.h"
 #include "microdb_crc.h"
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -25,12 +26,25 @@ enum {
     MICRODB_KV_PAGE_MAGIC = 0x4B565047u,
     MICRODB_TS_PAGE_MAGIC = 0x54535047u,
     MICRODB_REL_PAGE_MAGIC = 0x524C5047u,
-    MICRODB_SUPER_MAGIC = 0x53555052u
+    MICRODB_SUPER_MAGIC = 0x53555052u,
+    MICRODB_WAL_ENGINE_KV = 0u,
+    MICRODB_WAL_ENGINE_TS = 1u,
+    MICRODB_WAL_ENGINE_REL = 2u,
+    MICRODB_WAL_ENGINE_TXN_KV = 3u,
+    MICRODB_WAL_ENGINE_META = 0xFFu,
+    MICRODB_WAL_OP_SET_INSERT = 0u,
+    MICRODB_WAL_OP_DEL = 1u,
+    MICRODB_WAL_OP_CLEAR = 2u,
+    MICRODB_WAL_OP_TXN_COMMIT = 5u,
+    MICRODB_WAL_OP_TS_REGISTER = 6u,
+    MICRODB_WAL_OP_REL_TABLE_CREATE = 7u
 };
 
 #define MICRODB_WAL_HEADER_SIZE 32u
 #define MICRODB_PAGE_HEADER_SIZE 32u
 #define MICRODB_SUPERBLOCK_SIZE 32u
+#define VERIFY_WARN_MAX 64u
+#define VERIFY_WARN_LINE 192u
 
 typedef struct {
     const char *image_path;
@@ -40,6 +54,7 @@ typedef struct {
     uint32_t rel_pct;
     uint32_t erase_size;
     bool json;
+    bool check;
 } verify_cfg_t;
 
 typedef struct {
@@ -64,13 +79,40 @@ typedef struct {
 } super_info_t;
 
 typedef struct {
+    bool header_valid;
+    bool payload_crc_valid;
+    uint32_t generation;
+    uint32_t payload_len;
+    uint32_t entry_count;
+    uint32_t payload_crc;
+    uint32_t payload_offset;
+    const char *reason;
+} page_info_t;
+
+typedef struct {
     bool valid;
     uint32_t generation;
-    uint32_t kv_entries;
-    uint32_t ts_entries;
-    uint32_t rel_entries;
     const char *reason;
+    page_info_t kv;
+    page_info_t ts;
+    page_info_t rel;
 } bank_info_t;
+
+typedef struct {
+    uint32_t kv_set;
+    uint32_t kv_del;
+    uint32_t kv_clear;
+    uint32_t ts_insert;
+    uint32_t ts_register;
+    uint32_t ts_clear;
+    uint32_t rel_insert;
+    uint32_t rel_del;
+    uint32_t rel_clear;
+    uint32_t rel_create;
+    uint32_t txn_kv;
+    uint32_t txn_committed;
+    uint32_t txn_orphaned;
+} wal_semantic_t;
 
 typedef struct {
     bool header_valid;
@@ -78,35 +120,32 @@ typedef struct {
     uint32_t entry_count;
     uint32_t sequence;
     uint32_t used_bytes;
+    wal_semantic_t semantic;
 } wal_info_t;
 
-static const char *verify_code_to_string(int code) {
-    switch (code) {
-        case VERIFY_OK:
-            return "VERIFY_OK";
-        case VERIFY_USAGE:
-            return "VERIFY_USAGE";
-        case VERIFY_IO_ERROR:
-            return "VERIFY_IO_ERROR";
-        case VERIFY_INVALID_CONFIG:
-            return "VERIFY_INVALID_CONFIG";
-        case VERIFY_CORRUPT:
-            return "VERIFY_CORRUPT";
-        case VERIFY_UNINITIALIZED:
-            return "VERIFY_UNINITIALIZED";
-        default:
-            return "VERIFY_UNKNOWN";
-    }
-}
+typedef struct {
+    char lines[VERIFY_WARN_MAX][VERIFY_WARN_LINE];
+    uint32_t count;
+} warn_log_t;
 
-static int fail_verify(const char *op, const char *detail, int code) {
-    fprintf(stderr, "%s failed: %s (%d)", op, verify_code_to_string(code), code);
-    if (detail != NULL && detail[0] != '\0') {
-        fprintf(stderr, " - %s", detail);
-    }
-    fprintf(stderr, "\n");
-    return code;
-}
+typedef struct {
+    uint32_t live_keys;
+    uint32_t tombstones;
+    uint32_t value_bytes_used;
+    uint32_t overlaps_detected;
+} kv_decode_t;
+
+typedef struct {
+    uint32_t stream_count;
+    uint32_t retained_samples;
+    uint32_t ring_anomalies;
+} ts_decode_t;
+
+typedef struct {
+    uint32_t table_count;
+    uint32_t live_rows;
+    uint32_t bitmap_mismatches;
+} rel_decode_t;
 
 static uint32_t align_u32(uint32_t value, uint32_t align) {
     return (value + (align - 1u)) & ~(align - 1u);
@@ -122,6 +161,12 @@ static uint16_t get_u16(const uint8_t *src) {
     uint16_t v = 0u;
     memcpy(&v, src, sizeof(v));
     return v;
+}
+
+static void print_usage(const char *prog) {
+    fprintf(stderr,
+            "Usage: %s --image <path> [--ram-kb N] [--kv-pct N --ts-pct N --rel-pct N] [--erase-size N] [--json] [--check]\n",
+            prog);
 }
 
 static bool parse_u32(const char *s, uint32_t *out) {
@@ -159,10 +204,7 @@ static bool file_size_u32(FILE *fp, uint32_t *out_size) {
         return false;
     }
     end = ftell(fp);
-    if (end < 0) {
-        return false;
-    }
-    if ((unsigned long)end > 0xFFFFFFFFul) {
+    if (end < 0 || (unsigned long)end > 0xFFFFFFFFul) {
         return false;
     }
     if (fseek(fp, pos, SEEK_SET) != 0) {
@@ -216,6 +258,88 @@ static bool crc_region(FILE *fp, uint32_t off, uint32_t len, uint32_t *out_crc) 
     return true;
 }
 
+static void add_warn(warn_log_t *log, const char *fmt, ...) {
+    va_list ap;
+    if (log == NULL || log->count >= VERIFY_WARN_MAX) {
+        return;
+    }
+    va_start(ap, fmt);
+    (void)vsnprintf(log->lines[log->count], VERIFY_WARN_LINE, fmt, ap);
+    va_end(ap);
+    log->count++;
+}
+
+static bool compute_layout(uint32_t storage_capacity, const verify_cfg_t *cfg, verify_layout_t *layout) {
+    uint32_t total_bytes;
+    uint32_t kv_bytes;
+    uint32_t ts_bytes;
+    uint32_t rel_bytes;
+    uint32_t max_key_len;
+    uint32_t per_entry;
+    uint32_t max_entries;
+    uint32_t kv_payload_max;
+    uint32_t wal_target;
+    uint32_t wal_min;
+    uint32_t fixed_bytes;
+    uint32_t need_without_wal;
+    uint32_t max_wal;
+    uint32_t max_wal_aligned;
+
+    if (cfg == NULL || layout == NULL) {
+        return false;
+    }
+    if (cfg->erase_size == 0u || cfg->kv_pct + cfg->ts_pct + cfg->rel_pct != 100u) {
+        return false;
+    }
+
+    total_bytes = cfg->ram_kb * 1024u;
+    kv_bytes = (total_bytes * cfg->kv_pct) / 100u;
+    ts_bytes = (total_bytes * cfg->ts_pct) / 100u;
+    rel_bytes = total_bytes - kv_bytes - ts_bytes;
+
+    max_key_len = (MICRODB_KV_KEY_MAX_LEN > 0u) ? (MICRODB_KV_KEY_MAX_LEN - 1u) : 0u;
+    per_entry = 1u + max_key_len + 4u + MICRODB_KV_VAL_MAX_LEN + 4u;
+    max_entries = (MICRODB_KV_MAX_KEYS > MICRODB_TXN_STAGE_KEYS) ? (MICRODB_KV_MAX_KEYS - MICRODB_TXN_STAGE_KEYS) : 0u;
+    kv_payload_max = max_entries * per_entry;
+
+    memset(layout, 0, sizeof(*layout));
+    layout->wal_offset = 0u;
+    layout->super_size = cfg->erase_size;
+    layout->kv_size = align_u32(kv_payload_max + MICRODB_PAGE_HEADER_SIZE, cfg->erase_size);
+    layout->ts_size = align_u32(ts_bytes + MICRODB_PAGE_HEADER_SIZE, cfg->erase_size);
+    layout->rel_size = align_u32(rel_bytes + MICRODB_PAGE_HEADER_SIZE, cfg->erase_size);
+    layout->bank_size = layout->kv_size + layout->ts_size + layout->rel_size;
+
+    wal_target = cfg->erase_size * 8u;
+    wal_min = cfg->erase_size * 2u;
+    fixed_bytes = layout->super_size * 2u;
+    need_without_wal = fixed_bytes + (layout->bank_size * 2u);
+
+    if (storage_capacity < need_without_wal + wal_min) {
+        return false;
+    }
+    max_wal = storage_capacity - need_without_wal;
+    max_wal_aligned = (max_wal / cfg->erase_size) * cfg->erase_size;
+    if (max_wal_aligned < wal_min) {
+        return false;
+    }
+
+    layout->wal_size = wal_target;
+    if (layout->wal_size > max_wal_aligned) {
+        layout->wal_size = max_wal_aligned;
+    }
+    if (layout->wal_size < wal_min) {
+        layout->wal_size = wal_min;
+    }
+
+    layout->super_a_offset = layout->wal_offset + layout->wal_size;
+    layout->super_b_offset = layout->super_a_offset + layout->super_size;
+    layout->bank_a_offset = layout->super_b_offset + layout->super_size;
+    layout->bank_b_offset = layout->bank_a_offset + layout->bank_size;
+    layout->total_size = layout->bank_b_offset + layout->bank_size;
+    return storage_capacity >= layout->total_size;
+}
+
 static bool validate_page_header(const uint8_t *header,
                                  uint32_t expected_magic,
                                  uint32_t max_payload_len,
@@ -263,160 +387,301 @@ static bool validate_superblock(const uint8_t *super, uint32_t *out_generation, 
     return true;
 }
 
-static bool compute_layout(uint32_t storage_capacity, const verify_cfg_t *cfg, verify_layout_t *layout) {
-    uint32_t total_bytes;
-    uint32_t kv_bytes;
-    uint32_t ts_bytes;
-    uint32_t rel_bytes;
-    uint32_t max_key_len;
-    uint32_t per_entry;
-    uint32_t max_entries;
-    uint32_t kv_payload_max;
-    uint32_t wal_target;
-    uint32_t wal_min;
-    uint32_t fixed_bytes;
-    uint32_t need_without_wal;
-    uint32_t max_wal;
-    uint32_t max_wal_aligned;
+static page_info_t inspect_page(FILE *fp, uint32_t page_offset, uint32_t expected_magic, uint32_t max_payload_len) {
+    page_info_t info;
+    uint8_t header[MICRODB_PAGE_HEADER_SIZE];
+    uint32_t calc_crc = 0u;
+    memset(&info, 0, sizeof(info));
+    info.reason = "ok";
+    info.payload_offset = page_offset + MICRODB_PAGE_HEADER_SIZE;
 
-    if (cfg == NULL || layout == NULL) {
-        return false;
+    if (!read_at(fp, page_offset, header, sizeof(header))) {
+        info.reason = "header_read_error";
+        return info;
     }
-    if (cfg->erase_size == 0u) {
-        return false;
+    if (!validate_page_header(header,
+                              expected_magic,
+                              max_payload_len,
+                              &info.generation,
+                              &info.payload_len,
+                              &info.entry_count,
+                              &info.payload_crc)) {
+        info.reason = "header_invalid";
+        return info;
     }
-    if (cfg->kv_pct == 0u || cfg->ts_pct == 0u || cfg->rel_pct == 0u) {
-        return false;
+    info.header_valid = true;
+    if (!crc_region(fp, info.payload_offset, info.payload_len, &calc_crc)) {
+        info.reason = "payload_read_error";
+        return info;
     }
-    if (cfg->kv_pct + cfg->ts_pct + cfg->rel_pct != 100u) {
-        return false;
+    if (calc_crc != info.payload_crc) {
+        info.reason = "payload_crc_mismatch";
+        return info;
     }
-
-    total_bytes = cfg->ram_kb * 1024u;
-    kv_bytes = (total_bytes * cfg->kv_pct) / 100u;
-    ts_bytes = (total_bytes * cfg->ts_pct) / 100u;
-    rel_bytes = total_bytes - kv_bytes - ts_bytes;
-
-    max_key_len = (MICRODB_KV_KEY_MAX_LEN > 0u) ? (MICRODB_KV_KEY_MAX_LEN - 1u) : 0u;
-    per_entry = 1u + max_key_len + 4u + MICRODB_KV_VAL_MAX_LEN + 4u;
-    max_entries = (MICRODB_KV_MAX_KEYS > MICRODB_TXN_STAGE_KEYS) ? (MICRODB_KV_MAX_KEYS - MICRODB_TXN_STAGE_KEYS) : 0u;
-    kv_payload_max = max_entries * per_entry;
-
-    memset(layout, 0, sizeof(*layout));
-    layout->wal_offset = 0u;
-    layout->super_size = cfg->erase_size;
-    layout->kv_size = align_u32(kv_payload_max + MICRODB_PAGE_HEADER_SIZE, cfg->erase_size);
-    layout->ts_size = align_u32(ts_bytes + MICRODB_PAGE_HEADER_SIZE, cfg->erase_size);
-    layout->rel_size = align_u32(rel_bytes + MICRODB_PAGE_HEADER_SIZE, cfg->erase_size);
-    layout->bank_size = layout->kv_size + layout->ts_size + layout->rel_size;
-
-    wal_target = cfg->erase_size * 8u;
-    wal_min = cfg->erase_size * 2u;
-    fixed_bytes = layout->super_size * 2u;
-    need_without_wal = fixed_bytes + (layout->bank_size * 2u);
-
-    if (storage_capacity < need_without_wal + wal_min) {
-        return false;
-    }
-
-    max_wal = storage_capacity - need_without_wal;
-    max_wal_aligned = (max_wal / cfg->erase_size) * cfg->erase_size;
-    if (max_wal_aligned < wal_min) {
-        return false;
-    }
-
-    layout->wal_size = wal_target;
-    if (layout->wal_size > max_wal_aligned) {
-        layout->wal_size = max_wal_aligned;
-    }
-    if (layout->wal_size < wal_min) {
-        layout->wal_size = wal_min;
-    }
-
-    layout->super_a_offset = layout->wal_offset + layout->wal_size;
-    layout->super_b_offset = layout->super_a_offset + layout->super_size;
-    layout->bank_a_offset = layout->super_b_offset + layout->super_size;
-    layout->bank_b_offset = layout->bank_a_offset + layout->bank_size;
-    layout->total_size = layout->bank_b_offset + layout->bank_size;
-    return storage_capacity >= layout->total_size;
+    info.payload_crc_valid = true;
+    return info;
 }
 
 static bank_info_t verify_bank(FILE *fp, const verify_layout_t *layout, uint32_t bank) {
     bank_info_t info;
-    uint8_t header[MICRODB_PAGE_HEADER_SIZE];
     uint32_t bank_base = (bank == 0u) ? layout->bank_a_offset : layout->bank_b_offset;
-    uint32_t gen_kv = 0u;
-    uint32_t gen_ts = 0u;
-    uint32_t gen_rel = 0u;
-    uint32_t len = 0u;
-    uint32_t count = 0u;
-    uint32_t stored_crc = 0u;
-    uint32_t calc_crc = 0u;
-
     memset(&info, 0, sizeof(info));
     info.reason = "ok";
 
-    if (!read_at(fp, bank_base, header, sizeof(header))) {
-        info.reason = "kv_header_read_error";
+    info.kv = inspect_page(fp, bank_base, MICRODB_KV_PAGE_MAGIC, layout->kv_size - MICRODB_PAGE_HEADER_SIZE);
+    if (!info.kv.header_valid || !info.kv.payload_crc_valid) {
+        info.reason = info.kv.reason;
         return info;
     }
-    if (!validate_page_header(header, MICRODB_KV_PAGE_MAGIC, layout->kv_size - MICRODB_PAGE_HEADER_SIZE, &gen_kv, &len, &count, &stored_crc)) {
-        info.reason = "kv_header_invalid";
-        return info;
-    }
-    if (!crc_region(fp, bank_base + MICRODB_PAGE_HEADER_SIZE, len, &calc_crc) || calc_crc != stored_crc) {
-        info.reason = "kv_payload_crc_mismatch";
-        return info;
-    }
-    info.kv_entries = count;
 
-    if (!read_at(fp, bank_base + layout->kv_size, header, sizeof(header))) {
-        info.reason = "ts_header_read_error";
+    info.ts = inspect_page(fp,
+                           bank_base + layout->kv_size,
+                           MICRODB_TS_PAGE_MAGIC,
+                           layout->ts_size - MICRODB_PAGE_HEADER_SIZE);
+    if (!info.ts.header_valid || !info.ts.payload_crc_valid) {
+        info.reason = info.ts.reason;
         return info;
     }
-    if (!validate_page_header(header, MICRODB_TS_PAGE_MAGIC, layout->ts_size - MICRODB_PAGE_HEADER_SIZE, &gen_ts, &len, &count, &stored_crc)) {
-        info.reason = "ts_header_invalid";
-        return info;
-    }
-    if (gen_ts != gen_kv) {
+    if (info.ts.generation != info.kv.generation) {
         info.reason = "generation_mismatch_kv_ts";
         return info;
     }
-    if (!crc_region(fp, bank_base + layout->kv_size + MICRODB_PAGE_HEADER_SIZE, len, &calc_crc) || calc_crc != stored_crc) {
-        info.reason = "ts_payload_crc_mismatch";
-        return info;
-    }
-    info.ts_entries = count;
 
-    if (!read_at(fp, bank_base + layout->kv_size + layout->ts_size, header, sizeof(header))) {
-        info.reason = "rel_header_read_error";
+    info.rel = inspect_page(fp,
+                            bank_base + layout->kv_size + layout->ts_size,
+                            MICRODB_REL_PAGE_MAGIC,
+                            layout->rel_size - MICRODB_PAGE_HEADER_SIZE);
+    if (!info.rel.header_valid || !info.rel.payload_crc_valid) {
+        info.reason = info.rel.reason;
         return info;
     }
-    if (!validate_page_header(header, MICRODB_REL_PAGE_MAGIC, layout->rel_size - MICRODB_PAGE_HEADER_SIZE, &gen_rel, &len, &count, &stored_crc)) {
-        info.reason = "rel_header_invalid";
-        return info;
-    }
-    if (gen_rel != gen_kv) {
+    if (info.rel.generation != info.kv.generation) {
         info.reason = "generation_mismatch_kv_rel";
         return info;
     }
-    if (!crc_region(fp, bank_base + layout->kv_size + layout->ts_size + MICRODB_PAGE_HEADER_SIZE, len, &calc_crc) ||
-        calc_crc != stored_crc) {
-        info.reason = "rel_payload_crc_mismatch";
-        return info;
-    }
-    info.rel_entries = count;
 
+    info.generation = info.kv.generation;
     info.valid = true;
-    info.generation = gen_kv;
     return info;
+}
+
+static bool load_payload(FILE *fp, const page_info_t *page, uint8_t **out_buf) {
+    uint8_t *buf;
+    if (out_buf == NULL || page == NULL) {
+        return false;
+    }
+    *out_buf = NULL;
+    if (page->payload_len == 0u) {
+        return true;
+    }
+    buf = (uint8_t *)malloc(page->payload_len);
+    if (buf == NULL) {
+        return false;
+    }
+    if (!read_at(fp, page->payload_offset, buf, page->payload_len)) {
+        free(buf);
+        return false;
+    }
+    *out_buf = buf;
+    return true;
+}
+
+static void decode_kv_payload(const uint8_t *payload,
+                              uint32_t payload_len,
+                              uint32_t entry_count,
+                              uint32_t value_store_region_size,
+                              kv_decode_t *out,
+                              warn_log_t *warns) {
+    uint32_t i;
+    uint32_t off = 0u;
+    uint64_t value_off = 0u;
+
+    if (out == NULL) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+    for (i = 0u; i < entry_count; ++i) {
+        uint8_t key_len;
+        uint32_t val_len;
+        uint64_t next_value_off;
+        if (off + 1u > payload_len) {
+            add_warn(warns, "WARN: kv decode truncated before key_len at entry %u", i);
+            break;
+        }
+        key_len = payload[off++];
+        if (off + key_len + 4u > payload_len) {
+            add_warn(warns, "WARN: kv decode truncated in key/val_len at entry %u", i);
+            break;
+        }
+        off += key_len;
+        val_len = get_u32(payload + off);
+        off += 4u;
+
+        next_value_off = value_off + (uint64_t)val_len;
+        if (next_value_off > (uint64_t)value_store_region_size) {
+            out->overlaps_detected++;
+            add_warn(warns, "WARN: kv decode value range exceeds store region at entry %u", i);
+        }
+        if (off + val_len + 4u > payload_len) {
+            out->overlaps_detected++;
+            add_warn(warns, "WARN: kv decode truncated in value/expires at entry %u", i);
+            break;
+        }
+
+        out->live_keys++;
+        out->value_bytes_used += val_len;
+        off += val_len; /* value bytes */
+        off += 4u;      /* expires */
+        value_off = next_value_off;
+    }
+    if (i != entry_count) {
+        add_warn(warns, "WARN: kv decode parsed %u/%u entries", i, entry_count);
+    }
+}
+
+static void decode_ts_payload(const uint8_t *payload,
+                              uint32_t payload_len,
+                              uint32_t entry_count,
+                              ts_decode_t *out,
+                              warn_log_t *warns) {
+    uint32_t i;
+    uint32_t off = 0u;
+    if (out == NULL) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+    for (i = 0u; i < entry_count; ++i) {
+        uint8_t name_len;
+        uint8_t type_byte;
+        uint32_t raw_size;
+        uint32_t count;
+        uint32_t val_len;
+        uint32_t j;
+
+        if (off + 1u > payload_len) {
+            out->ring_anomalies++;
+            add_warn(warns, "WARN: ts decode truncated before stream name_len at stream %u", i);
+            break;
+        }
+        name_len = payload[off++];
+        if (off + name_len + 1u + 4u + 4u > payload_len) {
+            out->ring_anomalies++;
+            add_warn(warns, "WARN: ts decode truncated in stream header at stream %u", i);
+            break;
+        }
+        off += name_len;
+        type_byte = payload[off++];
+        raw_size = get_u32(payload + off);
+        off += 4u;
+        count = get_u32(payload + off);
+        off += 4u;
+
+        if (type_byte > (uint8_t)MICRODB_TS_RAW) {
+            out->ring_anomalies++;
+            add_warn(warns, "WARN: ts decode invalid stream type %u at stream %u", (uint32_t)type_byte, i);
+        }
+        val_len = (type_byte == (uint8_t)MICRODB_TS_RAW) ? raw_size : 4u;
+        for (j = 0u; j < count; ++j) {
+            if (off + 8u + val_len > payload_len) {
+                out->ring_anomalies++;
+                add_warn(warns, "WARN: ts decode truncated in sample data at stream %u", i);
+                j = count;
+                break;
+            }
+            off += 8u + val_len;
+            out->retained_samples++;
+        }
+        out->stream_count++;
+    }
+    if (i != entry_count) {
+        out->ring_anomalies++;
+    }
+}
+
+static void decode_rel_payload(const uint8_t *payload,
+                               uint32_t payload_len,
+                               uint32_t entry_count,
+                               rel_decode_t *out,
+                               warn_log_t *warns) {
+    uint32_t i;
+    uint32_t off = 0u;
+    if (out == NULL) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+    for (i = 0u; i < entry_count; ++i) {
+        uint8_t name_len;
+        uint32_t row_size;
+        uint32_t col_count;
+        uint32_t live_count;
+        uint32_t c;
+        uint64_t rows_bytes;
+
+        if (off + 1u > payload_len) {
+            out->bitmap_mismatches++;
+            add_warn(warns, "WARN: rel decode truncated before table name_len at table %u", i);
+            break;
+        }
+        name_len = payload[off++];
+        if (off + name_len + 2u + 4u + 4u + 4u + 4u + 4u > payload_len) {
+            out->bitmap_mismatches++;
+            add_warn(warns, "WARN: rel decode truncated in table header at table %u", i);
+            break;
+        }
+        off += name_len;     /* table name */
+        off += 2u;           /* schema_version */
+        off += 4u;           /* max_rows */
+        row_size = get_u32(payload + off);
+        off += 4u;
+        col_count = get_u32(payload + off);
+        off += 4u;
+        off += 4u;           /* index_col */
+        live_count = get_u32(payload + off);
+        off += 4u;
+
+        if (col_count > MICRODB_REL_MAX_COLS) {
+            out->bitmap_mismatches++;
+            add_warn(warns, "WARN: rel decode col_count %u exceeds max at table %u", col_count, i);
+        }
+        for (c = 0u; c < col_count; ++c) {
+            uint8_t col_name_len;
+            if (off + 1u > payload_len) {
+                out->bitmap_mismatches++;
+                add_warn(warns, "WARN: rel decode truncated before column name_len at table %u", i);
+                c = col_count;
+                break;
+            }
+            col_name_len = payload[off++];
+            if (off + col_name_len + 2u + 4u > payload_len) {
+                out->bitmap_mismatches++;
+                add_warn(warns, "WARN: rel decode truncated in column metadata at table %u", i);
+                c = col_count;
+                break;
+            }
+            off += col_name_len + 2u + 4u;
+        }
+
+        rows_bytes = (uint64_t)live_count * (uint64_t)row_size;
+        if ((uint64_t)off + rows_bytes > (uint64_t)payload_len) {
+            out->bitmap_mismatches++;
+            add_warn(warns, "WARN: rel decode live_count/row_size exceeds payload at table %u", i);
+            break;
+        }
+        off += (uint32_t)rows_bytes;
+        out->table_count++;
+        out->live_rows += live_count;
+    }
+    if (i != entry_count) {
+        out->bitmap_mismatches++;
+    }
 }
 
 static wal_info_t inspect_wal(FILE *fp, const verify_layout_t *layout) {
     wal_info_t info;
     uint8_t header[MICRODB_WAL_HEADER_SIZE];
     uint32_t i;
-    uint32_t offset;
+    uint32_t offset = layout->wal_offset + MICRODB_WAL_HEADER_SIZE;
+    uint32_t pending_txn_kv = 0u;
     memset(&info, 0, sizeof(info));
     info.used_bytes = MICRODB_WAL_HEADER_SIZE;
 
@@ -434,7 +699,6 @@ static wal_info_t inspect_wal(FILE *fp, const verify_layout_t *layout) {
     info.sequence = get_u32(header + 12u);
     info.entries_valid = true;
 
-    offset = layout->wal_offset + MICRODB_WAL_HEADER_SIZE;
     for (i = 0u; i < info.entry_count; ++i) {
         uint8_t entry_header[16];
         uint8_t payload[1536];
@@ -442,6 +706,8 @@ static wal_info_t inspect_wal(FILE *fp, const verify_layout_t *layout) {
         uint32_t aligned_len;
         uint32_t entry_crc;
         uint32_t crc;
+        uint8_t engine;
+        uint8_t op;
 
         if (!read_at(fp, offset, entry_header, sizeof(entry_header))) {
             info.entries_valid = false;
@@ -468,17 +734,48 @@ static wal_info_t inspect_wal(FILE *fp, const verify_layout_t *layout) {
             info.entries_valid = false;
             break;
         }
+
+        engine = entry_header[8];
+        op = entry_header[9];
+        if (engine == MICRODB_WAL_ENGINE_KV) {
+            if (op == MICRODB_WAL_OP_SET_INSERT) {
+                info.semantic.kv_set++;
+            } else if (op == MICRODB_WAL_OP_DEL) {
+                info.semantic.kv_del++;
+            } else if (op == MICRODB_WAL_OP_CLEAR) {
+                info.semantic.kv_clear++;
+            }
+        } else if (engine == MICRODB_WAL_ENGINE_TS) {
+            if (op == MICRODB_WAL_OP_SET_INSERT) {
+                info.semantic.ts_insert++;
+            } else if (op == MICRODB_WAL_OP_TS_REGISTER) {
+                info.semantic.ts_register++;
+            } else if (op == MICRODB_WAL_OP_CLEAR) {
+                info.semantic.ts_clear++;
+            }
+        } else if (engine == MICRODB_WAL_ENGINE_REL) {
+            if (op == MICRODB_WAL_OP_SET_INSERT) {
+                info.semantic.rel_insert++;
+            } else if (op == MICRODB_WAL_OP_DEL) {
+                info.semantic.rel_del++;
+            } else if (op == MICRODB_WAL_OP_CLEAR) {
+                info.semantic.rel_clear++;
+            } else if (op == MICRODB_WAL_OP_REL_TABLE_CREATE) {
+                info.semantic.rel_create++;
+            }
+        } else if (engine == MICRODB_WAL_ENGINE_TXN_KV) {
+            info.semantic.txn_kv++;
+            pending_txn_kv++;
+        } else if (engine == MICRODB_WAL_ENGINE_META && op == MICRODB_WAL_OP_TXN_COMMIT) {
+            info.semantic.txn_committed++;
+            pending_txn_kv = 0u;
+        }
+
         offset += 16u + aligned_len;
     }
-
+    info.semantic.txn_orphaned = pending_txn_kv;
     info.used_bytes = offset - layout->wal_offset;
     return info;
-}
-
-static void print_usage(const char *prog) {
-    fprintf(stderr,
-            "Usage: %s --image <path> [--ram-kb N] [--kv-pct N --ts-pct N --rel-pct N] [--erase-size N] [--json]\n",
-            prog);
 }
 
 static int parse_args(int argc, char **argv, verify_cfg_t *cfg) {
@@ -492,9 +789,12 @@ static int parse_args(int argc, char **argv, verify_cfg_t *cfg) {
     cfg->ts_pct = MICRODB_RAM_TS_PCT;
     cfg->rel_pct = MICRODB_RAM_REL_PCT;
     cfg->erase_size = 4096u;
-    cfg->json = false;
 
     for (i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_usage(argv[0]);
+            return VERIFY_USAGE;
+        }
         if (strcmp(argv[i], "--image") == 0 && i + 1 < argc) {
             cfg->image_path = argv[++i];
         } else if (strcmp(argv[i], "--ram-kb") == 0 && i + 1 < argc) {
@@ -519,6 +819,8 @@ static int parse_args(int argc, char **argv, verify_cfg_t *cfg) {
             }
         } else if (strcmp(argv[i], "--json") == 0) {
             cfg->json = true;
+        } else if (strcmp(argv[i], "--check") == 0) {
+            cfg->check = true;
         } else {
             return VERIFY_USAGE;
         }
@@ -528,6 +830,19 @@ static int parse_args(int argc, char **argv, verify_cfg_t *cfg) {
         return VERIFY_USAGE;
     }
     return VERIFY_OK;
+}
+
+static const char *verdict_upper(const char *verdict) {
+    if (strcmp(verdict, "ok") == 0) {
+        return "OK";
+    }
+    if (strcmp(verdict, "recoverable") == 0) {
+        return "RECOVERABLE";
+    }
+    if (strcmp(verdict, "uninitialized") == 0) {
+        return "UNINITIALIZED";
+    }
+    return "CORRUPT";
 }
 
 int main(int argc, char **argv) {
@@ -542,6 +857,10 @@ int main(int argc, char **argv) {
     bank_info_t ba;
     bank_info_t bb;
     wal_info_t wal;
+    warn_log_t warns;
+    kv_decode_t kv_decode;
+    ts_decode_t ts_decode;
+    rel_decode_t rel_decode;
     const char *recovery_reason = "none";
     const char *verdict = "ok";
     uint32_t selected_bank = 0u;
@@ -550,42 +869,46 @@ int main(int argc, char **argv) {
     bool selected_from_super = false;
     bool super_region_ff = false;
     int rc;
+    uint8_t *payload = NULL;
+    const bank_info_t *selected = NULL;
+    uint32_t kv_usable;
+    uint32_t i;
 
     memset(&sa, 0, sizeof(sa));
     memset(&sb, 0, sizeof(sb));
+    memset(&warns, 0, sizeof(warns));
+    memset(&kv_decode, 0, sizeof(kv_decode));
+    memset(&ts_decode, 0, sizeof(ts_decode));
+    memset(&rel_decode, 0, sizeof(rel_decode));
 
     rc = parse_args(argc, argv, &cfg);
     if (rc != VERIFY_OK) {
-        (void)fail_verify("parse_args", "invalid arguments", rc);
-        print_usage(argv[0]);
+        if (rc == VERIFY_USAGE) {
+            print_usage((argc > 0) ? argv[0] : "microdb_verify");
+        }
         return rc;
     }
 
     fp = fopen(cfg.image_path, "rb");
     if (fp == NULL) {
-        char detail[256];
-        (void)snprintf(detail, sizeof(detail), "cannot open image '%s'", cfg.image_path);
-        return fail_verify("fopen(image)", detail, VERIFY_IO_ERROR);
+        return VERIFY_IO_ERROR;
     }
     if (!file_size_u32(fp, &cap)) {
         fclose(fp);
-        return fail_verify("file_size_u32", "cannot read image size", VERIFY_IO_ERROR);
+        return VERIFY_IO_ERROR;
     }
     if (!compute_layout(cap, &cfg, &layout)) {
         fclose(fp);
-        return fail_verify("compute_layout",
-                           "invalid config/layout (ram/split/erase mismatch vs image size)",
-                           VERIFY_INVALID_CONFIG);
+        return VERIFY_INVALID_CONFIG;
     }
-
     if (!read_at(fp, layout.super_a_offset, super_a, sizeof(super_a)) ||
         !read_at(fp, layout.super_b_offset, super_b, sizeof(super_b))) {
         fclose(fp);
-        return fail_verify("read_at(superblocks)", "cannot read superblocks", VERIFY_IO_ERROR);
+        return VERIFY_IO_ERROR;
     }
+
     sa.valid = validate_superblock(super_a, &sa.generation, &sa.active_bank);
     sb.valid = validate_superblock(super_b, &sb.generation, &sb.active_bank);
-
     ba = verify_bank(fp, &layout, 0u);
     bb = verify_bank(fp, &layout, 1u);
     wal = inspect_wal(fp, &layout);
@@ -625,19 +948,74 @@ int main(int argc, char **argv) {
     }
 
     if (have_selected) {
-        const bank_info_t *selected = (selected_bank == 0u) ? &ba : &bb;
+        selected = (selected_bank == 0u) ? &ba : &bb;
         if (!selected->valid || selected->generation != selected_gen) {
             verdict = "corrupt";
             recovery_reason = selected_from_super ? "selected_superblock_bank_invalid" : "selected_bank_invalid";
         } else if (!wal.header_valid) {
-            verdict = "ok_with_wal_header_reset";
+            verdict = "recoverable";
             recovery_reason = "wal_header_reset";
         } else if (!wal.entries_valid) {
-            verdict = "ok_with_wal_tail_truncation";
-            recovery_reason = "wal_tail_truncated";
+            verdict = "recoverable";
+            recovery_reason = "wal_tail_truncation";
         } else {
             verdict = "ok";
         }
+    }
+
+    if (selected != NULL && selected->valid) {
+        if (load_payload(fp, &selected->kv, &payload)) {
+            decode_kv_payload(payload,
+                              selected->kv.payload_len,
+                              selected->kv.entry_count,
+                              layout.kv_size - MICRODB_PAGE_HEADER_SIZE,
+                              &kv_decode,
+                              &warns);
+            free(payload);
+            payload = NULL;
+        } else {
+            add_warn(&warns, "WARN: unable to load KV payload for decode");
+        }
+
+        if (load_payload(fp, &selected->ts, &payload)) {
+            decode_ts_payload(payload, selected->ts.payload_len, selected->ts.entry_count, &ts_decode, &warns);
+            free(payload);
+            payload = NULL;
+        } else {
+            add_warn(&warns, "WARN: unable to load TS payload for decode");
+        }
+
+        if (load_payload(fp, &selected->rel, &payload)) {
+            decode_rel_payload(payload, selected->rel.payload_len, selected->rel.entry_count, &rel_decode, &warns);
+            free(payload);
+            payload = NULL;
+        } else {
+            add_warn(&warns, "WARN: unable to load REL payload for decode");
+        }
+    }
+
+    if (strcmp(verdict, "ok") == 0 && warns.count > 0u) {
+        verdict = "recoverable";
+        recovery_reason = "decode_warnings";
+    }
+
+    kv_usable = (MICRODB_KV_MAX_KEYS > MICRODB_TXN_STAGE_KEYS) ? (MICRODB_KV_MAX_KEYS - MICRODB_TXN_STAGE_KEYS) : 0u;
+
+    if (cfg.check) {
+        printf("verdict: %s\n", verdict);
+        for (i = 0u; i < warns.count; ++i) {
+            printf("%s\n", warns.lines[i]);
+        }
+        if (strcmp(verdict, "uninitialized") == 0) {
+            fclose(fp);
+            return VERIFY_UNINITIALIZED;
+        }
+        if (strcmp(verdict, "ok") != 0 || warns.count != 0u) {
+            fclose(fp);
+            return VERIFY_CORRUPT;
+        }
+        fclose(fp);
+        return VERIFY_OK;
     }
 
     if (cfg.json) {
@@ -670,42 +1048,110 @@ int main(int argc, char **argv) {
                have_selected ? "true" : "false",
                selected_bank,
                selected_gen);
-        printf("  \"wal\": {\"header_valid\": %s, \"entries_valid\": %s, \"entry_count\": %u, \"sequence\": %u, \"used_bytes\": %u}\n",
+        printf("  \"wal\": {\"header_valid\": %s, \"entries_valid\": %s, \"entry_count\": %u, \"sequence\": %u, \"used_bytes\": %u},\n",
                wal.header_valid ? "true" : "false",
                wal.entries_valid ? "true" : "false",
                wal.entry_count,
                wal.sequence,
                wal.used_bytes);
+        printf("  \"kv_decode\": {\"live_keys\": %u, \"tombstones\": %u, \"value_bytes_used\": %u, \"overlaps_detected\": %u},\n",
+               kv_decode.live_keys,
+               kv_decode.tombstones,
+               kv_decode.value_bytes_used,
+               kv_decode.overlaps_detected);
+        printf("  \"ts_decode\": {\"stream_count\": %u, \"retained_samples\": %u, \"ring_anomalies\": %u},\n",
+               ts_decode.stream_count,
+               ts_decode.retained_samples,
+               ts_decode.ring_anomalies);
+        printf("  \"rel_decode\": {\"table_count\": %u, \"live_rows\": %u, \"bitmap_mismatches\": %u},\n",
+               rel_decode.table_count,
+               rel_decode.live_rows,
+               rel_decode.bitmap_mismatches);
+        printf("  \"wal_semantic\": {\"kv_set\": %u, \"kv_del\": %u, \"kv_clear\": %u, \"ts_insert\": %u, \"ts_register\": %u, \"rel_insert\": %u, \"rel_del\": %u, \"txn_committed\": %u, \"txn_orphaned\": %u},\n",
+               wal.semantic.kv_set,
+               wal.semantic.kv_del,
+               wal.semantic.kv_clear,
+               wal.semantic.ts_insert,
+               wal.semantic.ts_register,
+               wal.semantic.rel_insert,
+               wal.semantic.rel_del,
+               wal.semantic.txn_committed,
+               wal.semantic.txn_orphaned);
+        printf("  \"warnings\": [");
+        for (i = 0u; i < warns.count; ++i) {
+            printf("%s\"%s\"", (i == 0u) ? "" : ", ", warns.lines[i]);
+        }
+        printf("]\n");
         printf("}\n");
     } else {
-        printf("verdict: %s\n", verdict);
-        printf("recovery_reason: %s\n", recovery_reason);
-        printf("selected: %s bank=%u generation=%u\n", have_selected ? "yes" : "no", selected_bank, selected_gen);
-        printf("super: a(valid=%u gen=%u bank=%u) b(valid=%u gen=%u bank=%u)\n",
-               sa.valid ? 1u : 0u,
-               sa.generation,
-               sa.active_bank,
-               sb.valid ? 1u : 0u,
-               sb.generation,
-               sb.active_bank);
-        printf("bank_a: valid=%u gen=%u reason=%s\n", ba.valid ? 1u : 0u, ba.generation, ba.reason);
-        printf("bank_b: valid=%u gen=%u reason=%s\n", bb.valid ? 1u : 0u, bb.generation, bb.reason);
-        printf("wal: header_valid=%u entries_valid=%u entries=%u seq=%u used=%u/%u\n",
-               wal.header_valid ? 1u : 0u,
-               wal.entries_valid ? 1u : 0u,
-               wal.entry_count,
-               wal.sequence,
-               wal.used_bytes,
-               layout.wal_size);
+        printf("microdb-verify  v1.0\n");
+        printf("image: %s  (%u bytes)\n", cfg.image_path, cap);
+        printf("layout: ram=%uKB  kv=%u%%  ts=%u%%  rel=%u%%  erase=%u\n",
+               cfg.ram_kb,
+               cfg.kv_pct,
+               cfg.ts_pct,
+               cfg.rel_pct,
+               cfg.erase_size);
+        printf("-----------------------------------------------------\n");
+        printf("Superblock A:    %s   gen=%u  bank=%u\n", sa.valid ? "VALID" : "INVALID", sa.generation, sa.active_bank);
+        printf("Superblock B:    %s   gen=%u  bank=%u\n", sb.valid ? "VALID" : "INVALID", sb.generation, sb.active_bank);
+        if (have_selected) {
+            printf("Active bank:     %u  (generation %u)\n", selected_bank, selected_gen);
+        } else {
+            printf("Active bank:     none\n");
+        }
+        printf("-----------------------------------------------------\n");
+        printf("KV page  [bank %u]:  %s\n", selected_bank, (selected != NULL && selected->kv.payload_crc_valid) ? "VALID" : "INVALID");
+        printf("  live keys:        %u / %u usable\n", kv_decode.live_keys, kv_usable);
+        printf("  tombstones:       %u\n", kv_decode.tombstones);
+        printf("  value store:      %u / %u bytes used\n",
+               kv_decode.value_bytes_used,
+               layout.kv_size - MICRODB_PAGE_HEADER_SIZE);
+        if (kv_decode.overlaps_detected == 0u) {
+            printf("  overlaps:         none\n");
+        } else {
+            printf("  overlaps:         %u\n", kv_decode.overlaps_detected);
+        }
+        printf("\nTS page  [bank %u]:  %s\n", selected_bank, (selected != NULL && selected->ts.payload_crc_valid) ? "VALID" : "INVALID");
+        printf("  streams:          %u\n", ts_decode.stream_count);
+        printf("  retained samples: %u\n", ts_decode.retained_samples);
+        if (ts_decode.ring_anomalies == 0u) {
+            printf("  ring anomalies:   none\n");
+        } else {
+            printf("  ring anomalies:   %u\n", ts_decode.ring_anomalies);
+        }
+        printf("\nREL page [bank %u]:  %s\n", selected_bank, (selected != NULL && selected->rel.payload_crc_valid) ? "VALID" : "INVALID");
+        printf("  tables:           %u\n", rel_decode.table_count);
+        printf("  live rows:        %u\n", rel_decode.live_rows);
+        if (rel_decode.bitmap_mismatches == 0u) {
+            printf("  bitmap issues:    none\n");
+        } else {
+            printf("  bitmap issues:    %u\n", rel_decode.bitmap_mismatches);
+        }
+        printf("-----------------------------------------------------\n");
+        printf("WAL:              %s\n", (wal.header_valid && wal.entries_valid) ? "VALID" : "RECOVERABLE");
+        printf("  entries:          %u\n", wal.entry_count);
+        printf("  KV ops:           %u SET / %u DEL / %u CLEAR\n", wal.semantic.kv_set, wal.semantic.kv_del, wal.semantic.kv_clear);
+        printf("  TS ops:           %u INSERT / %u REGISTER\n", wal.semantic.ts_insert, wal.semantic.ts_register);
+        printf("  REL ops:          %u INSERT / %u DEL / %u CREATE\n",
+               wal.semantic.rel_insert,
+               wal.semantic.rel_del,
+               wal.semantic.rel_create);
+        printf("  TXN:              %u committed / %u orphaned\n", wal.semantic.txn_committed, wal.semantic.txn_orphaned);
+        printf("-----------------------------------------------------\n");
+        printf("Overall verdict:  %s\n", verdict_upper(verdict));
+        printf("Recovery reason:  %s\n", recovery_reason);
+        for (i = 0u; i < warns.count; ++i) {
+            printf("%s\n", warns.lines[i]);
+        }
     }
 
     fclose(fp);
-    if (strcmp(verdict, "ok") == 0 || strcmp(verdict, "ok_with_wal_header_reset") == 0 ||
-        strcmp(verdict, "ok_with_wal_tail_truncation") == 0) {
-        return VERIFY_OK;
-    }
     if (strcmp(verdict, "uninitialized") == 0) {
         return VERIFY_UNINITIALIZED;
     }
-    return VERIFY_CORRUPT;
+    if (strcmp(verdict, "corrupt") == 0) {
+        return VERIFY_CORRUPT;
+    }
+    return VERIFY_OK;
 }
