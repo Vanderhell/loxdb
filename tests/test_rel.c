@@ -154,6 +154,14 @@ MDB_TEST(rel_schema_seal_idempotent) {
     ASSERT_EQ(schema_impl(&schema)->row_size, row_size_before);
 }
 
+MDB_TEST(rel_schema_seal_rejects_oversized_row) {
+    microdb_schema_t schema;
+    ASSERT_EQ(microdb_schema_init(&schema, "wide", 1u), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&schema, "id", MICRODB_COL_U32, sizeof(uint32_t), true), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_add(&schema, "payload", MICRODB_COL_BLOB, 2048u, false), MICRODB_OK);
+    ASSERT_EQ(microdb_schema_seal(&schema), MICRODB_ERR_OVERFLOW);
+}
+
 MDB_TEST(rel_schema_add_beyond_max_cols_full) {
     microdb_schema_t schema;
     char name[16];
@@ -475,7 +483,7 @@ MDB_TEST(rel_find_no_match_cb_never_called) {
     ASSERT_EQ(ctx.count, 0u);
 }
 
-MDB_TEST(rel_find_mutation_during_callback_returns_invalid) {
+MDB_TEST(rel_find_mutation_during_callback_returns_modified) {
     microdb_schema_t schema;
     microdb_table_t *table = NULL;
     uint8_t row[128] = { 0 };
@@ -495,7 +503,7 @@ MDB_TEST(rel_find_mutation_during_callback_returns_invalid) {
     g_rel_mutate_once = false;
     ctx.table = table;
     ctx.id = id;
-    ASSERT_EQ(microdb_rel_find(&g_db, table, &id, rel_find_mutating_cb, &ctx), MICRODB_ERR_INVALID);
+    ASSERT_EQ(microdb_rel_find(&g_db, table, &id, rel_find_mutating_cb, &ctx), MICRODB_ERR_MODIFIED);
 }
 
 MDB_TEST(rel_find_without_index_invalid) {
@@ -614,6 +622,29 @@ MDB_TEST(rel_iter_callback_false_stops_early) {
     ASSERT_EQ(ctx.count, 2u);
 }
 
+MDB_TEST(rel_iter_detects_concurrent_mutation) {
+    microdb_schema_t schema;
+    microdb_table_t *table = NULL;
+    uint8_t row[128] = { 0 };
+    uint32_t id = 1u;
+    uint8_t age = 1u;
+    rel_find_mutate_ctx_t ctx;
+
+    ASSERT_EQ(make_indexed_schema(&schema, "users", 3u), MICRODB_OK);
+    ASSERT_EQ(make_table(&schema, &table), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(table, row, "id", &id), MICRODB_OK);
+    ASSERT_EQ(microdb_row_set(table, row, "age", &age), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
+    id = 2u;
+    ASSERT_EQ(microdb_row_set(table, row, "id", &id), MICRODB_OK);
+    ASSERT_EQ(microdb_rel_insert(&g_db, table, row), MICRODB_OK);
+
+    g_rel_mutate_once = false;
+    ctx.table = table;
+    ctx.id = id;
+    ASSERT_EQ(microdb_rel_iter(&g_db, table, rel_find_mutating_cb, &ctx), MICRODB_ERR_MODIFIED);
+}
+
 MDB_TEST(rel_count_after_insert_delete) {
     microdb_schema_t schema;
     microdb_table_t *table = NULL;
@@ -679,6 +710,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, rel_schema_seal_empty_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, rel_schema_seal_alignment_correct);
     MDB_RUN_TEST(setup_db, teardown_db, rel_schema_seal_idempotent);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_schema_seal_rejects_oversized_row);
     MDB_RUN_TEST(setup_db, teardown_db, rel_schema_add_beyond_max_cols_full);
     MDB_RUN_TEST(setup_db, teardown_db, rel_schema_scalar_size_mismatch_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, rel_table_create_sealed_ok);
@@ -703,7 +735,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, rel_insert_null_row_buf_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_index_returns_rows);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_no_match_cb_never_called);
-    MDB_RUN_TEST(setup_db, teardown_db, rel_find_mutation_during_callback_returns_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_find_mutation_during_callback_returns_modified);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_without_index_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_non_index_correct);
     MDB_RUN_TEST(setup_db, teardown_db, rel_find_by_no_match);
@@ -711,6 +743,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, rel_delete_no_match_zero);
     MDB_RUN_TEST(setup_db, teardown_db, rel_iter_visits_rows_in_insertion_order);
     MDB_RUN_TEST(setup_db, teardown_db, rel_iter_callback_false_stops_early);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_iter_detects_concurrent_mutation);
     MDB_RUN_TEST(setup_db, teardown_db, rel_count_after_insert_delete);
     MDB_RUN_TEST(setup_db, teardown_db, rel_clear_preserves_table);
     MDB_RUN_TEST(setup_db, teardown_db, rel_delete_updates_bitmap_and_index);

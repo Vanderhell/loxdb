@@ -424,6 +424,9 @@ microdb_err_t microdb_schema_seal(microdb_schema_t *schema) {
     }
 
     impl->row_size = (offset + 3u) & ~3u;
+    if (impl->row_size > MICRODB_REL_ROW_SCRATCH_MAX) {
+        return MICRODB_ERR_OVERFLOW;
+    }
     /* schema_version is captured at seal-time and treated as immutable afterwards.
      * Any post-seal mutation of schema->schema_version is rejected in table_create.
      */
@@ -787,7 +790,7 @@ microdb_err_t microdb_rel_find(microdb_t *db,
             goto unlock;
         }
         if (table->mutation_seq != snapshot_mutation_seq) {
-            rc = MICRODB_ERR_INVALID;
+            rc = MICRODB_ERR_MODIFIED;
             goto unlock;
         }
     }
@@ -926,6 +929,7 @@ unlock:
 
 microdb_err_t microdb_rel_iter(microdb_t *db, microdb_table_t *table, microdb_rel_iter_cb_t cb, void *ctx) {
     uint32_t i;
+    uint32_t snapshot_mutation_seq;
     microdb_err_t err;
     microdb_err_t rc = MICRODB_OK;
 
@@ -942,6 +946,7 @@ microdb_err_t microdb_rel_iter(microdb_t *db, microdb_table_t *table, microdb_re
         rc = MICRODB_ERR_INVALID;
         goto unlock;
     }
+    snapshot_mutation_seq = table->mutation_seq;
 
     for (i = 0; i < table->order_count; ++i) {
         uint32_t row_idx = table->order[i];
@@ -960,6 +965,10 @@ microdb_err_t microdb_rel_iter(microdb_t *db, microdb_table_t *table, microdb_re
             err = rel_validate_table_and_handle(db, table);
             if (err != MICRODB_OK) {
                 rc = err;
+                goto unlock;
+            }
+            if (table->mutation_seq != snapshot_mutation_seq) {
+                rc = MICRODB_ERR_MODIFIED;
                 goto unlock;
             }
         }

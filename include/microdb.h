@@ -483,6 +483,12 @@ microdb_err_t microdb_kv_set(microdb_t *db, const char *key, const void *val, si
 microdb_err_t microdb_kv_get(microdb_t *db, const char *key, void *buf, size_t buf_len, size_t *out_len);
 microdb_err_t microdb_kv_del(microdb_t *db, const char *key);
 microdb_err_t microdb_kv_exists(microdb_t *db, const char *key);
+/* Iteration contract: callback executes without DB lock held.
+ * Concurrent modifications during iteration are weakly-consistent:
+ * keys added/removed during the walk may or may not be observed.
+ * For stronger persistence ordering, use MICRODB_WAL_SYNC_ALWAYS and
+ * call microdb_flush() before iterating.
+ */
 microdb_err_t microdb_kv_iter(microdb_t *db, microdb_kv_iter_cb_t cb, void *ctx);
 microdb_err_t microdb_kv_purge_expired(microdb_t *db);
 microdb_err_t microdb_kv_clear(microdb_t *db);
