@@ -18,7 +18,7 @@ static void setup_basic(void) {
 
     ASSERT_EQ(microdb_port_ram_init(&g_ram_storage, 65536u), MICRODB_OK);
     memset(&cfg, 0, sizeof(cfg));
-    cfg.storage = &g_ram_storage;
+    cfg.storage = NULL;
     cfg.ram_kb = 32u;
     cfg.now = NULL;
     ASSERT_EQ(microdb_init(&g_db, &cfg), MICRODB_OK);
