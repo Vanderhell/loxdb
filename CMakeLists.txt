@@ -828,6 +828,12 @@ if(MICRODB_BUILD_TESTS)
                 PRIVATE
                     "/MAP:${_footprint_map}"
             )
+        elseif(APPLE)
+            target_link_options(
+                test_footprint_min_baseline
+                PRIVATE
+                    "-Wl,-map,${_footprint_map}"
+            )
         else()
             target_link_options(
                 test_footprint_min_baseline
