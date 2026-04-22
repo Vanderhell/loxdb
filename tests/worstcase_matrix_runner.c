@@ -58,6 +58,11 @@ typedef struct {
     uint64_t spikes_gt_1ms;
     uint64_t spikes_gt_5ms;
     uint64_t fail_count;
+    uint32_t wal_fill_before_pct;
+    uint32_t wal_fill_after_pct;
+    uint32_t compact_count_before;
+    uint32_t compact_count_after;
+    uint32_t compactions_during_measure;
     uint32_t slo_pass;
 } row_t;
 
@@ -273,6 +278,8 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
     uint64_t dt;
     uint32_t id_seed = 1000u;
     microdb_err_t rc;
+    microdb_stats_t inspect_stats;
+    microdb_db_stats_t db_stats;
 
     memset(out, 0, sizeof(*out));
     out->phase = phase;
@@ -289,6 +296,12 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
 
     if (!warm_to_fill(fill_target_pct, cfg->warmup_ops, &fill_reached)) return 0;
     out->fill_reached_pct = fill_reached;
+    rc = microdb_inspect(&g_db, &inspect_stats);
+    if (rc != MICRODB_OK) return fail_microdb("microdb_inspect(measure,before)", rc, 0);
+    out->wal_fill_before_pct = inspect_stats.wal_fill_pct;
+    rc = microdb_get_db_stats(&g_db, &db_stats);
+    if (rc != MICRODB_OK) return fail_microdb("microdb_get_db_stats(measure,before)", rc, 0);
+    out->compact_count_before = db_stats.compact_count;
 
     memset(vbuf, 0xA5, sizeof(vbuf));
 
@@ -395,6 +408,16 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
     if (!reopen_db(cfg, &out->max_reopen_us)) return 0;
     if (out->max_reopen_us > 1000u) out->spikes_gt_1ms++;
     if (out->max_reopen_us > 5000u) out->spikes_gt_5ms++;
+    rc = microdb_inspect(&g_db, &inspect_stats);
+    if (rc != MICRODB_OK) return fail_microdb("microdb_inspect(measure,after)", rc, 0);
+    out->wal_fill_after_pct = inspect_stats.wal_fill_pct;
+    rc = microdb_get_db_stats(&g_db, &db_stats);
+    if (rc != MICRODB_OK) return fail_microdb("microdb_get_db_stats(measure,after)", rc, 0);
+    out->compact_count_after = db_stats.compact_count;
+    out->compactions_during_measure =
+        (out->compact_count_after >= out->compact_count_before)
+            ? (out->compact_count_after - out->compact_count_before)
+            : 0u;
 
     out->slo_pass =
         (out->max_kv_put_us <= cfg->slo_max_op_us) &&
@@ -448,7 +471,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    printf("profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,slo_pass\n");
+    printf("profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,wal_fill_before_pct,wal_fill_after_pct,compact_count_before,compact_count_after,compactions_during_measure,slo_pass\n");
 
     for (i = 0u; i < sizeof(fills) / sizeof(fills[0]); ++i) {
         if (!run_measure(&cfg, fills[i], "fresh", &row)) {
@@ -456,7 +479,7 @@ int main(int argc, char **argv) {
             (void)snprintf(detail, sizeof(detail), "matrix failed for fresh fill=%u", (unsigned)fills[i]);
             return fail_status("run_measure", "EXIT_FAILURE", 1, detail);
         }
-        printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u\n",
+        printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u\n",
                row.profile,
                row.phase,
                (unsigned)row.fill_target_pct,
@@ -471,6 +494,11 @@ int main(int argc, char **argv) {
                (unsigned long long)row.spikes_gt_1ms,
                (unsigned long long)row.spikes_gt_5ms,
                (unsigned long long)row.fail_count,
+               (unsigned)row.wal_fill_before_pct,
+               (unsigned)row.wal_fill_after_pct,
+               (unsigned)row.compact_count_before,
+               (unsigned)row.compact_count_after,
+               (unsigned)row.compactions_during_measure,
                (unsigned)row.slo_pass);
 
         if (!run_measure(&cfg, fills[i], "aged", &row)) {
@@ -478,7 +506,7 @@ int main(int argc, char **argv) {
             (void)snprintf(detail, sizeof(detail), "matrix failed for aged fill=%u", (unsigned)fills[i]);
             return fail_status("run_measure", "EXIT_FAILURE", 1, detail);
         }
-        printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u\n",
+        printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u\n",
                row.profile,
                row.phase,
                (unsigned)row.fill_target_pct,
@@ -493,6 +521,11 @@ int main(int argc, char **argv) {
                (unsigned long long)row.spikes_gt_1ms,
                (unsigned long long)row.spikes_gt_5ms,
                (unsigned long long)row.fail_count,
+               (unsigned)row.wal_fill_before_pct,
+               (unsigned)row.wal_fill_after_pct,
+               (unsigned)row.compact_count_before,
+               (unsigned)row.compact_count_after,
+               (unsigned)row.compactions_during_measure,
                (unsigned)row.slo_pass);
     }
 

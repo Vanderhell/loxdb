@@ -586,8 +586,11 @@ Supporting tools built around the core APIs:
 - offline verifier: `tools/microdb_verify.c`
 - full validation runner: `tools/run_full_validation.ps1`
 - benchmark harness: `bench/microdb_esp32_s3_bench/*`
+- POSIX stress/latency trend runners: `tests/soak_runner.c`, `tests/worstcase_matrix_runner.c`
 
 These are operational wrappers for validation/verification, not replacements for the DB API.
+POSIX benchmark numbers are trend signals for regression tracking (`wal_fill_*`, `compact_count_*`, `compactions_during_measure`),
+not direct SPI/NOR flash latency proxies.
 
 ## 11. Ready-to-run examples in the repository
 

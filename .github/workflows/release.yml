@@ -10,8 +10,27 @@ permissions:
   contents: write
 
 jobs:
+  sanitize-release-linux:
+    name: Release sanitizer gate (ASan/UBSan Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Configure (ASan/UBSan)
+        run: cmake --preset ci-asan-ubsan-linux
+      - name: Build (ASan/UBSan)
+        run: cmake --build --preset ci-asan-ubsan-linux
+      - name: Test (ASan/UBSan)
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --preset ci-asan-ubsan-linux --output-on-failure --stop-on-failure -V
+
   build-release:
     name: ${{ matrix.label }}
+    needs: sanitize-release-linux
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -31,6 +50,13 @@ jobs:
             build_preset: release-windows
             test_preset: release-windows
             build_dir: build/release-windows
+          - os: macos-latest
+            label: macos-x64
+            archive_ext: tar.gz
+            configure_preset: release-macos
+            build_preset: release-macos
+            test_preset: release-macos
+            build_dir: build/release-macos
 
     steps:
       - name: Checkout
@@ -99,16 +125,47 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download bundles
         uses: actions/download-artifact@v4
         with:
           path: release-assets
 
+      - name: Import GPG signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "${GPG_PRIVATE_KEY}" ]; then
+            echo "Missing required secret: GPG_PRIVATE_KEY" >&2
+            exit 1
+          fi
+          echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
+
+      - name: Sign SHA256 files
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ -z "${GPG_KEY_ID}" ] || [ -z "${GPG_PASSPHRASE}" ]; then
+            echo "Missing required secrets: GPG_KEY_ID and/or GPG_PASSPHRASE" >&2
+            exit 1
+          fi
+          find release-assets -type f -name '*.sha256' -print0 | while IFS= read -r -d '' f; do
+            gpg --batch --yes --pinentry-mode loopback \
+              --passphrase "${GPG_PASSPHRASE}" \
+              --local-user "${GPG_KEY_ID}" \
+              --armor --detach-sign \
+              --output "${f}.asc" "${f}"
+          done
+
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: CHANGELOG.md
           files: |
             release-assets/**/*.zip
             release-assets/**/*.tar.gz
             release-assets/**/*.sha256
+            release-assets/**/*.sha256.asc

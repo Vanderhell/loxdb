@@ -130,11 +130,11 @@
    - avoid fixed `union raw[16]` cost for scalar streams
    - switched TS ring storage to per-stream byte stride (`sizeof(timestamp)+value_size`)
    - kept public API/sample type unchanged; WAL snapshot/recovery paths updated and passing
-7. [pending] TS adaptive arena partitioning by registered stream type:
+7. [done] TS adaptive arena partitioning by registered stream type:
    - move from equal byte-slice per stream to weighted/adaptive TS arena distribution
    - target better mixed-type utilization (`F32/I32/U32` alongside `RAW`)
    - keep WAL/page format compatibility and deterministic capacity behavior
-8. [pending] POSIX bench fidelity after TS packed + WAL scatter-write:
+8. [done] POSIX bench fidelity after TS packed + WAL scatter-write:
    - validate compact-trigger hypothesis with `compact_count` and WAL fill progression stats (base vs head)
    - specifically inspect default `wal_compact_threshold_pct` after TS packed snapshot-size change
    - if confirmed, tune either:
@@ -142,7 +142,7 @@
      - threshold policy relative to post-compact snapshot footprint
    - reduce POSIX-only syscall artifact from scatter-write path (`writev` or small-buffer coalescing)
    - document that desktop POSIX benches are trend tools and not direct SPI-flash latency proxies
-9. [pending] WAL conditional compilation for KV-only footprint:
+9. [done] WAL conditional compilation for KV-only footprint:
    - gate TS/REL snapshot functions in `src/microdb_wal.c` with engine flags (`MICRODB_ENABLE_TS`, `MICRODB_ENABLE_REL`)
    - focus on `microdb_write_ts_page`, `microdb_load_ts_page`, `microdb_write_rel_page`, `microdb_load_rel_page`
    - gate related callsites in snapshot/bootstrap flows (`microdb_write_snapshot_bank`, `microdb_storage_bootstrap`)

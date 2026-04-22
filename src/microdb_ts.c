@@ -2,6 +2,7 @@
 #include "microdb_internal.h"
 #include "microdb_lock.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 static microdb_err_t microdb_ts_validate_name(const char *name) {
@@ -36,10 +37,6 @@ static uint32_t microdb_ts_stream_val_size(const microdb_ts_stream_t *stream) {
     return (stream->type == MICRODB_TS_RAW) ? (uint32_t)stream->raw_size : 4u;
 }
 
-static uint32_t microdb_ts_stream_stride(const microdb_ts_stream_t *stream) {
-    return (uint32_t)sizeof(microdb_timestamp_t) + microdb_ts_stream_val_size(stream);
-}
-
 static uint8_t *microdb_ts_sample_ptr(microdb_ts_stream_t *stream, uint32_t idx) {
     return stream->buf + (idx * stream->sample_stride);
 }
@@ -71,6 +68,145 @@ static void microdb_ts_copy_sample_slot(const microdb_ts_stream_t *stream, uint3
     memcpy(dst, src, stream->sample_stride);
 }
 
+typedef struct {
+    microdb_ts_stream_t *stream;
+    uint32_t stride;
+    uint32_t min_bytes;
+    uint32_t alloc_bytes;
+    uint32_t capacity;
+    uint32_t rem_num;
+    uint8_t *new_buf;
+    uint8_t *tmp;
+    uint32_t keep_count;
+} microdb_ts_layout_item_t;
+
+static uint32_t microdb_ts_stride_for_type(microdb_ts_type_t type, size_t raw_size) {
+    uint32_t val_size = (type == MICRODB_TS_RAW) ? (uint32_t)raw_size : 4u;
+    return (uint32_t)sizeof(microdb_timestamp_t) + val_size;
+}
+
+static microdb_err_t microdb_ts_repartition(microdb_core_t *core) {
+    microdb_ts_layout_item_t items[MICRODB_TS_MAX_STREAMS];
+    uint32_t count = 0u;
+    uint32_t i;
+    uint32_t j;
+    uint32_t rem_bytes;
+    uint32_t total_weight = 0u;
+    uint32_t sum_min = 0u;
+    uint32_t sum_alloc = 0u;
+    uint8_t *cursor = core->ts_arena.base;
+
+    memset(items, 0, sizeof(items));
+
+    for (i = 0u; i < MICRODB_TS_MAX_STREAMS; ++i) {
+        microdb_ts_stream_t *stream = &core->ts.streams[i];
+        uint32_t stride;
+
+        if (!stream->registered) {
+            continue;
+        }
+        stride = microdb_ts_stride_for_type(stream->type, stream->raw_size);
+        if (stride == 0u) {
+            return MICRODB_ERR_INVALID;
+        }
+        items[count].stream = stream;
+        items[count].stride = stride;
+        items[count].min_bytes = stride * 4u;
+        sum_min += items[count].min_bytes;
+        total_weight += stride;
+        count++;
+    }
+
+    if (count == 0u) {
+        return MICRODB_OK;
+    }
+    if (sum_min > core->ts_arena.capacity || total_weight == 0u) {
+        return MICRODB_ERR_NO_MEM;
+    }
+
+    rem_bytes = (uint32_t)core->ts_arena.capacity - sum_min;
+    for (i = 0u; i < count; ++i) {
+        uint64_t num = (uint64_t)rem_bytes * (uint64_t)items[i].stride;
+        uint32_t extra = (uint32_t)(num / (uint64_t)total_weight);
+        items[i].rem_num = (uint32_t)(num % (uint64_t)total_weight);
+        items[i].alloc_bytes = items[i].min_bytes + extra;
+        sum_alloc += items[i].alloc_bytes;
+    }
+
+    while (sum_alloc < (uint32_t)core->ts_arena.capacity) {
+        uint32_t best = 0u;
+        for (i = 1u; i < count; ++i) {
+            if (items[i].rem_num > items[best].rem_num) {
+                best = i;
+            }
+        }
+        items[best].alloc_bytes++;
+        items[best].rem_num = 0u;
+        sum_alloc++;
+    }
+
+    for (i = 0u; i < count; ++i) {
+        items[i].capacity = items[i].alloc_bytes / items[i].stride;
+        if (items[i].capacity < 4u) {
+            return MICRODB_ERR_NO_MEM;
+        }
+        items[i].new_buf = cursor;
+        cursor += items[i].capacity * items[i].stride;
+    }
+
+    for (i = 0u; i < count; ++i) {
+        microdb_ts_stream_t *stream = items[i].stream;
+        uint32_t keep = stream->count;
+        uint32_t idx;
+
+        if (keep > items[i].capacity) {
+            keep = items[i].capacity;
+            core->ts_dropped_samples += (stream->count - keep);
+        }
+        items[i].keep_count = keep;
+        if (keep == 0u) {
+            continue;
+        }
+
+        items[i].tmp = (uint8_t *)malloc((size_t)keep * items[i].stride);
+        if (items[i].tmp == NULL) {
+            for (j = 0u; j < i; ++j) {
+                free(items[j].tmp);
+                items[j].tmp = NULL;
+            }
+            return MICRODB_ERR_NO_MEM;
+        }
+
+        idx = stream->tail;
+        if (stream->count > keep) {
+            idx = (stream->tail + (stream->count - keep)) % stream->capacity;
+        }
+        for (j = 0u; j < keep; ++j) {
+            memcpy(items[i].tmp + ((size_t)j * items[i].stride),
+                   stream->buf + ((size_t)idx * items[i].stride),
+                   items[i].stride);
+            idx = (idx + 1u) % stream->capacity;
+        }
+    }
+
+    for (i = 0u; i < count; ++i) {
+        microdb_ts_stream_t *stream = items[i].stream;
+        stream->sample_stride = items[i].stride;
+        stream->capacity = items[i].capacity;
+        stream->buf = items[i].new_buf;
+        stream->tail = 0u;
+        stream->count = items[i].keep_count;
+        stream->head = (stream->count == stream->capacity) ? 0u : stream->count;
+        if (items[i].keep_count != 0u) {
+            memcpy(stream->buf, items[i].tmp, (size_t)items[i].keep_count * items[i].stride);
+        }
+        free(items[i].tmp);
+        items[i].tmp = NULL;
+    }
+
+    return MICRODB_OK;
+}
+
 static microdb_err_t microdb_ts_register_apply(microdb_core_t *core,
                                                const char *name,
                                                microdb_ts_type_t type,
@@ -91,18 +227,21 @@ static microdb_err_t microdb_ts_register_apply(microdb_core_t *core,
             memcpy(stream->name, name, strlen(name) + 1u);
             stream->type = type;
             stream->raw_size = (type == MICRODB_TS_RAW) ? raw_size : 0u;
-            stream->sample_stride = microdb_ts_stream_stride(stream);
+            stream->sample_stride = microdb_ts_stride_for_type(stream->type, stream->raw_size);
             if (stream->sample_stride == 0u) {
                 return MICRODB_ERR_INVALID;
-            }
-            stream->capacity = (uint32_t)((core->ts_arena.capacity / MICRODB_TS_MAX_STREAMS) / stream->sample_stride);
-            if (stream->capacity < 4u) {
-                return MICRODB_ERR_NO_MEM;
             }
             stream->head = 0u;
             stream->tail = 0u;
             stream->count = 0u;
             stream->registered = true;
+            {
+                microdb_err_t repartition_rc = microdb_ts_repartition(core);
+                if (repartition_rc != MICRODB_OK) {
+                    memset(stream, 0, sizeof(*stream));
+                    return repartition_rc;
+                }
+            }
             core->ts.registered_streams++;
             core->ts.mutation_seq++;
             return MICRODB_OK;
@@ -110,18 +249,6 @@ static microdb_err_t microdb_ts_register_apply(microdb_core_t *core,
     }
 
     return MICRODB_ERR_FULL;
-}
-
-static microdb_err_t microdb_ts_stream_bytes(const microdb_core_t *core, uint32_t *bytes_out) {
-    size_t bytes_per_stream;
-
-    bytes_per_stream = core->ts_arena.capacity / MICRODB_TS_MAX_STREAMS;
-    if (bytes_per_stream < (sizeof(microdb_timestamp_t) + 4u) * 4u) {
-        return MICRODB_ERR_NO_MEM;
-    }
-
-    *bytes_out = (uint32_t)bytes_per_stream;
-    return MICRODB_OK;
 }
 
 static void microdb_ts_set_value(microdb_ts_stream_t *stream, microdb_ts_sample_t *sample, const void *val) {
@@ -206,24 +333,15 @@ static void microdb_ts_downsample_oldest(microdb_ts_stream_t *stream) {
 
 microdb_err_t microdb_ts_init(microdb_t *db) {
     microdb_core_t *core = microdb_core(db);
-#if MICRODB_ENABLE_TS
-    uint32_t stream_bytes;
     uint32_t i;
-#endif
 
     memset(&core->ts, 0, sizeof(core->ts));
 
-#if MICRODB_ENABLE_TS
-    if (microdb_ts_stream_bytes(core, &stream_bytes) != MICRODB_OK) {
-        return MICRODB_ERR_NO_MEM;
-    }
-
     for (i = 0; i < MICRODB_TS_MAX_STREAMS; ++i) {
-        core->ts.streams[i].buf = core->ts_arena.base + (i * stream_bytes);
+        core->ts.streams[i].buf = core->ts_arena.base;
         core->ts.streams[i].sample_stride = 0u;
         core->ts.streams[i].capacity = 0u;
     }
-#endif
 
     return MICRODB_OK;
 }

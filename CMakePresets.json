@@ -31,6 +31,18 @@
       }
     },
     {
+      "name": "ci-debug-macos",
+      "displayName": "CI Debug macOS",
+      "binaryDir": "${sourceDir}/build/ci-debug-macos",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MICRODB_MANAGED_STRESS_SMOKE_MAX_MS": "3000",
+        "MICRODB_MANAGED_STRESS_LONG_MAX_MS": "12000",
+        "MICRODB_FS_MATRIX_SMOKE_MAX_MS": "3500",
+        "MICRODB_FS_MATRIX_LONG_MAX_MS": "15000"
+      }
+    },
+    {
       "name": "ci-asan-ubsan-linux",
       "displayName": "CI ASan+UBSan Linux",
       "binaryDir": "${sourceDir}/build/ci-asan-ubsan-linux",
@@ -73,6 +85,19 @@
         "MICRODB_FS_MATRIX_SMOKE_MAX_MS": "8000",
         "MICRODB_FS_MATRIX_LONG_MAX_MS": "28000"
       }
+    },
+    {
+      "name": "release-macos",
+      "displayName": "Release macOS",
+      "binaryDir": "${sourceDir}/build/release-macos",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MICRODB_BUILD_TESTS": "ON",
+        "MICRODB_MANAGED_STRESS_SMOKE_MAX_MS": "4000",
+        "MICRODB_MANAGED_STRESS_LONG_MAX_MS": "16000",
+        "MICRODB_FS_MATRIX_SMOKE_MAX_MS": "5000",
+        "MICRODB_FS_MATRIX_LONG_MAX_MS": "18000"
+      }
     }
   ],
   "buildPresets": [
@@ -84,6 +109,11 @@
     {
       "name": "ci-debug-windows",
       "configurePreset": "ci-debug-windows",
+      "configuration": "Debug"
+    },
+    {
+      "name": "ci-debug-macos",
+      "configurePreset": "ci-debug-macos",
       "configuration": "Debug"
     },
     {
@@ -100,6 +130,11 @@
       "name": "release-windows",
       "configurePreset": "release-windows",
       "configuration": "Release"
+    },
+    {
+      "name": "release-macos",
+      "configurePreset": "release-macos",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
@@ -114,6 +149,14 @@
     {
       "name": "ci-debug-windows",
       "configurePreset": "ci-debug-windows",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-debug-macos",
+      "configurePreset": "ci-debug-macos",
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true
@@ -138,6 +181,14 @@
     {
       "name": "release-windows",
       "configurePreset": "release-windows",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-macos",
+      "configurePreset": "release-macos",
       "configuration": "Release",
       "output": {
         "outputOnFailure": true

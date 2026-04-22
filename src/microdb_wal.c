@@ -406,6 +406,7 @@ static microdb_err_t microdb_write_kv_page(microdb_core_t *core, uint32_t bank, 
                                      crc);
 }
 
+#if MICRODB_ENABLE_TS
 static uint32_t microdb_ts_stream_val_size(const microdb_ts_stream_t *stream) {
     return (stream->type == MICRODB_TS_RAW) ? (uint32_t)stream->raw_size : 4u;
 }
@@ -531,7 +532,9 @@ static microdb_err_t microdb_write_ts_page(microdb_core_t *core, uint32_t bank, 
                                      stream_count,
                                      crc);
 }
+#endif
 
+#if MICRODB_ENABLE_REL
 static microdb_err_t microdb_write_rel_page(microdb_core_t *core, uint32_t bank, uint32_t generation) {
     uint32_t table_count = 0u;
     uint32_t page_offset = microdb_bank_rel_offset(core, bank);
@@ -685,6 +688,7 @@ static microdb_err_t microdb_write_rel_page(microdb_core_t *core, uint32_t bank,
                                      table_count,
                                      crc);
 }
+#endif
 
 static microdb_err_t microdb_write_snapshot_bank(microdb_core_t *core, uint32_t bank, uint32_t generation) {
     microdb_err_t err;
@@ -698,11 +702,17 @@ static microdb_err_t microdb_write_snapshot_bank(microdb_core_t *core, uint32_t 
     if (err != MICRODB_OK) {
         return err;
     }
+#if MICRODB_ENABLE_TS
     err = microdb_write_ts_page(core, bank, generation);
     if (err != MICRODB_OK) {
         return err;
     }
+#endif
+#if MICRODB_ENABLE_REL
     return microdb_write_rel_page(core, bank, generation);
+#else
+    return MICRODB_OK;
+#endif
 }
 
 static microdb_err_t microdb_load_kv_page(microdb_t *db, uint32_t bank, uint32_t expected_generation) {
@@ -815,6 +825,7 @@ static microdb_err_t microdb_load_kv_page(microdb_t *db, uint32_t bank, uint32_t
     return MICRODB_OK;
 }
 
+#if MICRODB_ENABLE_TS
 static microdb_err_t microdb_load_ts_page(microdb_t *db, uint32_t bank, uint32_t expected_generation) {
     microdb_core_t *core = microdb_core(db);
     uint8_t header[MICRODB_PAGE_HEADER_SIZE];
@@ -956,7 +967,9 @@ static microdb_err_t microdb_load_ts_page(microdb_t *db, uint32_t bank, uint32_t
 
     return MICRODB_OK;
 }
+#endif
 
+#if MICRODB_ENABLE_REL
 static microdb_err_t microdb_load_rel_page(microdb_t *db, uint32_t bank, uint32_t expected_generation) {
     microdb_core_t *core = microdb_core(db);
     uint8_t header[MICRODB_PAGE_HEADER_SIZE];
@@ -1174,6 +1187,7 @@ static microdb_err_t microdb_load_rel_page(microdb_t *db, uint32_t bank, uint32_
 
     return MICRODB_OK;
 }
+#endif
 
 static microdb_err_t microdb_apply_wal_entry(microdb_t *db,
                                              uint8_t engine,
@@ -1600,6 +1614,7 @@ static microdb_err_t microdb_validate_bank_pages(microdb_core_t *core, uint32_t 
         return MICRODB_ERR_CORRUPT;
     }
 
+#if MICRODB_ENABLE_TS
     err = microdb_storage_read_bytes(core, microdb_bank_ts_offset(core, bank), header, sizeof(header));
     if (err != MICRODB_OK) {
         return err;
@@ -1623,7 +1638,9 @@ static microdb_err_t microdb_validate_bank_pages(microdb_core_t *core, uint32_t 
     if (err != MICRODB_OK || calc_crc != payload_crc) {
         return MICRODB_ERR_CORRUPT;
     }
+#endif
 
+#if MICRODB_ENABLE_REL
     err = microdb_storage_read_bytes(core, microdb_bank_rel_offset(core, bank), header, sizeof(header));
     if (err != MICRODB_OK) {
         return err;
@@ -1647,6 +1664,7 @@ static microdb_err_t microdb_validate_bank_pages(microdb_core_t *core, uint32_t 
     if (err != MICRODB_OK || calc_crc != payload_crc) {
         return MICRODB_ERR_CORRUPT;
     }
+#endif
 
     *out_generation = gen;
     return MICRODB_OK;
@@ -1713,8 +1731,18 @@ microdb_err_t microdb_storage_bootstrap(microdb_t *db) {
         wal_min = erase_size * 2u;
         core->layout.kv_size =
             microdb_align_u32(microdb_kv_snapshot_payload_max(core) + MICRODB_PAGE_HEADER_SIZE, erase_size);
-        core->layout.ts_size = microdb_align_u32((uint32_t)core->ts_arena.capacity + MICRODB_PAGE_HEADER_SIZE, erase_size);
-        core->layout.rel_size = microdb_align_u32((uint32_t)core->rel_arena.capacity + MICRODB_PAGE_HEADER_SIZE, erase_size);
+        core->layout.ts_size =
+#if MICRODB_ENABLE_TS
+            microdb_align_u32((uint32_t)core->ts_arena.capacity + MICRODB_PAGE_HEADER_SIZE, erase_size);
+#else
+            0u;
+#endif
+        core->layout.rel_size =
+#if MICRODB_ENABLE_REL
+            microdb_align_u32((uint32_t)core->rel_arena.capacity + MICRODB_PAGE_HEADER_SIZE, erase_size);
+#else
+            0u;
+#endif
         core->layout.bank_size = core->layout.kv_size + core->layout.ts_size + core->layout.rel_size;
 
         fixed_bytes = core->layout.super_size * 2u;
@@ -1796,12 +1824,16 @@ microdb_err_t microdb_storage_bootstrap(microdb_t *db) {
         core->reopen_count++;
         core->storage_loading = true;
         err = microdb_load_kv_page(db, selected_bank, selected_gen);
+#if MICRODB_ENABLE_TS
         if (err == MICRODB_OK) {
             err = microdb_load_ts_page(db, selected_bank, selected_gen);
         }
+#endif
+#if MICRODB_ENABLE_REL
         if (err == MICRODB_OK) {
             err = microdb_load_rel_page(db, selected_bank, selected_gen);
         }
+#endif
         core->storage_loading = false;
         if (err != MICRODB_OK) {
             return err;
@@ -1899,6 +1931,7 @@ static microdb_err_t microdb_append_wal_entry(microdb_t *db,
     uint32_t pad_len = aligned_len - payload_len;
     uint8_t header[16];
     uint8_t pad[4] = { 0u, 0u, 0u, 0u };
+    uint8_t coalesced[320];
     uint32_t crc;
     microdb_err_t err;
 
@@ -1926,24 +1959,38 @@ static microdb_err_t microdb_append_wal_entry(microdb_t *db,
     microdb_put_u32(header + 12u, crc);
 
     offset = core->layout.wal_offset + core->wal_used;
-    err = microdb_storage_write_bytes(core, offset, header, sizeof(header));
-    if (err != MICRODB_OK) {
-        return err;
-    }
-    offset += (uint32_t)sizeof(header);
-
-    if (payload_len != 0u) {
-        err = microdb_storage_write_bytes(core, offset, payload, payload_len);
+    if (entry_len <= sizeof(coalesced)) {
+        memcpy(coalesced, header, sizeof(header));
+        if (payload_len != 0u) {
+            memcpy(coalesced + sizeof(header), payload, payload_len);
+        }
+        if (pad_len != 0u) {
+            memcpy(coalesced + sizeof(header) + payload_len, pad, pad_len);
+        }
+        err = microdb_storage_write_bytes(core, offset, coalesced, entry_len);
         if (err != MICRODB_OK) {
             return err;
         }
-        offset += payload_len;
-    }
-
-    if (pad_len != 0u) {
-        err = microdb_storage_write_bytes(core, offset, pad, pad_len);
+    } else {
+        err = microdb_storage_write_bytes(core, offset, header, sizeof(header));
         if (err != MICRODB_OK) {
             return err;
+        }
+        offset += (uint32_t)sizeof(header);
+
+        if (payload_len != 0u) {
+            err = microdb_storage_write_bytes(core, offset, payload, payload_len);
+            if (err != MICRODB_OK) {
+                return err;
+            }
+            offset += payload_len;
+        }
+
+        if (pad_len != 0u) {
+            err = microdb_storage_write_bytes(core, offset, pad, pad_len);
+            if (err != MICRODB_OK) {
+                return err;
+            }
         }
     }
 

@@ -25,6 +25,8 @@ jobs:
             preset: ci-debug-linux
           - os: windows-latest
             preset: ci-debug-windows
+          - os: macos-latest
+            preset: ci-debug-macos
     steps:
       - uses: actions/checkout@v4
       - name: Configure

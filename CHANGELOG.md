@@ -20,6 +20,10 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
   - WAL sync mode decision table (`SYNC_ALWAYS` vs `SYNC_FLUSH_ONLY`) with measured ESP32 values.
   - POSIX-vs-ESP32 interpretation guidance and follow-up notes for benchmark fidelity.
 - Bench sources synchronized for ESP32 harness (`microdb`, JSON, and import/export modules) to keep local bench build behavior aligned with core sources.
+- Release hardening:
+  - added macOS CI/release presets (`ci-debug-macos`, `release-macos`) and workflow matrix coverage.
+  - release workflow now includes mandatory Linux ASan/UBSan sanitizer gate before packaging.
+  - release page body now reads from `CHANGELOG.md` (`body_path`) instead of auto-generated commit-only notes.
 
 ### Fixed
 

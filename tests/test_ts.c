@@ -30,7 +30,7 @@ static void setup_basic(void) {
 
     ASSERT_EQ(microdb_port_ram_init(&g_ram_storage, 65536u), MICRODB_OK);
     memset(&cfg, 0, sizeof(cfg));
-    cfg.storage = &g_ram_storage;
+    cfg.storage = NULL;
     cfg.ram_kb = 32u;
     cfg.now = NULL;
     ASSERT_EQ(microdb_init(&g_db, &cfg), MICRODB_OK);
@@ -348,6 +348,40 @@ MDB_TEST(ts_drop_oldest_when_ring_buffer_full) {
     ASSERT_EQ(ctx.ts[0], 1u);
 }
 
+MDB_TEST(ts_adaptive_partition_mixed_types_preserves_data) {
+    uint32_t u = 111u;
+    uint8_t raw[16];
+    uint8_t raw2[16];
+    uint32_t u2 = 222u;
+    microdb_ts_sample_t sample;
+    uint32_t cap_u;
+    uint32_t cap_raw;
+
+    memset(raw, 0xA5, sizeof(raw));
+    memset(raw2, 0x5A, sizeof(raw2));
+
+    ASSERT_EQ(microdb_ts_register(&g_db, "u", MICRODB_TS_U32, 0u), MICRODB_OK);
+    ASSERT_EQ(microdb_ts_register(&g_db, "raw", MICRODB_TS_RAW, 16u), MICRODB_OK);
+    cap_u = test_core()->ts.streams[0].capacity;
+    cap_raw = test_core()->ts.streams[1].capacity;
+    ASSERT_EQ(cap_u >= 4u, 1);
+    ASSERT_EQ(cap_raw >= 4u, 1);
+    ASSERT_EQ((cap_u + 1u >= cap_raw) && (cap_raw + 1u >= cap_u), 1);
+
+    ASSERT_EQ(microdb_ts_insert(&g_db, "u", 1u, &u), MICRODB_OK);
+    ASSERT_EQ(microdb_ts_insert(&g_db, "raw", 2u, raw), MICRODB_OK);
+    ASSERT_EQ(microdb_ts_register(&g_db, "u2", MICRODB_TS_U32, 0u), MICRODB_OK);
+    ASSERT_EQ(microdb_ts_insert(&g_db, "raw", 3u, raw2), MICRODB_OK);
+    ASSERT_EQ(microdb_ts_insert(&g_db, "u2", 4u, &u2), MICRODB_OK);
+
+    ASSERT_EQ(microdb_ts_last(&g_db, "u", &sample), MICRODB_OK);
+    ASSERT_EQ(sample.v.u32, u);
+    ASSERT_EQ(microdb_ts_last(&g_db, "raw", &sample), MICRODB_OK);
+    ASSERT_MEM_EQ(sample.v.raw, raw2, 16u);
+    ASSERT_EQ(microdb_ts_last(&g_db, "u2", &sample), MICRODB_OK);
+    ASSERT_EQ(sample.v.u32, u2);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_basic, teardown_db, ts_register_stream_ok);
     MDB_RUN_TEST(setup_basic, teardown_db, ts_register_same_name_twice_exists);
@@ -375,5 +409,6 @@ int main(void) {
     MDB_RUN_TEST(setup_basic, teardown_db, ts_query_null_callback_invalid);
     MDB_RUN_TEST(setup_basic, teardown_db, ts_query_mutation_during_callback_returns_modified);
     MDB_RUN_TEST(setup_basic, teardown_db, ts_drop_oldest_when_ring_buffer_full);
+    MDB_RUN_TEST(setup_basic, teardown_db, ts_adaptive_partition_mixed_types_preserves_data);
     return MDB_RESULT();
 }
