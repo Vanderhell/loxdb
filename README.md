@@ -333,6 +333,26 @@ Pressure semantics:
 - `compact_pressure_pct` expresses WAL fill relative to compact threshold
 - `near_full_risk_pct` is max pressure signal across engines/WAL
 
+## Migrations vs Snapshots
+
+microdb has three different concepts that are easy to mix up:
+
+1. Schema migrations (public API)
+- REL schema upgrades are driven by `schema_version` + `cfg.on_migrate`.
+- Trigger point is `microdb_table_create(...)` when an existing table version differs.
+- Without `on_migrate`, version mismatch returns `MICRODB_ERR_SCHEMA`.
+- See `docs/SCHEMA_MIGRATION_GUIDE.md`.
+
+2. Durable snapshots (internal durability mechanism)
+- WAL/compact/recovery uses internal snapshot banks (A/B) + superblocks.
+- This is an internal storage safety/recovery mechanism, not a user-facing snapshot API.
+- There is currently no public API to create/list/restore named snapshots.
+
+3. Query-time snapshot semantics (iteration consistency)
+- TS/REL query/iter paths capture mutation state and validate after callback re-lock.
+- If concurrent mutation is detected, APIs return `MICRODB_ERR_MODIFIED`.
+- This protects traversal consistency; it is separate from durable storage snapshots.
+
 Semantics:
 - `last_runtime_error` is sticky last non-`MICRODB_OK` runtime status since `microdb_init`
 - `last_recovery_status` is status of the last open/recovery path step in this process lifetime
