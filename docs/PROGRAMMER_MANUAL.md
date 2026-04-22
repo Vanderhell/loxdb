@@ -649,6 +649,27 @@ Recommended callback behavior:
 - Prefer explicit read/transform/write sequence with clear fail path.
 - Avoid creating additional schema-version transitions inside callback.
 
+## 13.2 Known Risks / Operational Watchpoints
+
+1. KV value-store compaction cost under churn
+   Frequent updates with different value sizes can fragment KV value storage.
+   When compaction is triggered, the implementation may perform a large `memmove` over value-store bytes.
+   On real-time paths with larger values and high update rate, watch tail latency and schedule heavy write bursts outside critical sections.
+
+2. `microdb_core_t` size growth on 64-bit hosts
+   `microdb_t` stores internal state in fixed `_opaque` bytes and `MICRODB_STATIC_ASSERT(core_size_fits, ...)` protects overflow.
+   Because `microdb_core_t` includes multiple pointers/callbacks, 64-bit builds can grow faster than 32-bit MCU builds.
+   Keep at least one 64-bit CI build as an early warning for structural growth.
+
+3. WAL corruption fallback loss window
+   Replay behavior intentionally stops at the last valid entry on partial/corrupt WAL entries.
+   Corruption in superblock/bank metadata can force fallback to an older bank/checkpoint.
+   For critical durability requirements, test explicit fault-injection scenarios around checkpoint rotation and bank selection.
+
+4. REL indexing model (one index per table in v1.x)
+   Current REL design supports one indexed column per table.
+   This is typically fine for small tables but should be accounted for during schema design to avoid query-plan surprises later.
+
 ## 14. Related documents
 
 - `docs/GETTING_STARTED_5_MIN.md`
