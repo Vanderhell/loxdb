@@ -1,4 +1,4 @@
-![loxdb](docs/banner.svg)
+![loxdb]([docs/](https://github.com/Vanderhell/loxdb/banner.svg)
 
 # loxdb
 
