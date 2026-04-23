@@ -17,13 +17,15 @@ jobs:
             label: linux-debug
             configure_preset: ci-debug-linux
             build_preset: ci-debug-linux
-            exe_dir: build/ci-debug-linux/Debug
+            exe_dir: build/ci-debug-linux
+            exe_ext: ""
             ops: 450000
           - os: windows-latest
             label: windows-debug
             configure_preset: ci-debug-windows
             build_preset: ci-debug-windows
             exe_dir: build/ci-debug-windows/Debug
+            exe_ext: ".exe"
             ops: 450000
 
     steps:
@@ -42,8 +44,12 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $profiles = @("deterministic", "balanced", "stress")
+          $runner = Join-Path "${{ matrix.exe_dir }}" ("worstcase_matrix_runner${{ matrix.exe_ext }}")
+          if (-not (Test-Path $runner)) {
+            throw "Runner binary not found: $runner"
+          }
           foreach ($p in $profiles) {
-            & "./${{ matrix.exe_dir }}/worstcase_matrix_runner.exe" --profile $p 2>&1 |
+            & $runner --profile $p 2>&1 |
               Tee-Object -FilePath ("artifacts/worstcase_matrix_{0}.csv" -f $p)
           }
 
@@ -52,8 +58,12 @@ jobs:
         timeout-minutes: 90
         run: |
           $profiles = @("deterministic", "balanced", "stress")
+          $runner = Join-Path "${{ matrix.exe_dir }}" ("soak_runner${{ matrix.exe_ext }}")
+          if (-not (Test-Path $runner)) {
+            throw "Runner binary not found: $runner"
+          }
           foreach ($p in $profiles) {
-            & "./${{ matrix.exe_dir }}/soak_runner.exe" --profile $p --ops ${{ matrix.ops }} 2>&1 |
+            & $runner --profile $p --ops ${{ matrix.ops }} 2>&1 |
               Tee-Object -FilePath ("artifacts/soak_{0}.csv" -f $p)
           }
 

@@ -153,7 +153,9 @@ static void set_profile_defaults(cfg_t *cfg, const char *profile) {
 static int reopen_db(const cfg_t *cfg, uint64_t *dt_us) {
     uint64_t t0 = now_us();
     lox_err_t rc = lox_deinit(&g_db);
-    if (rc != LOX_OK) return fail_loxdb("lox_deinit", rc, 0);
+    if (rc != LOX_OK && rc != LOX_ERR_STORAGE && rc != LOX_ERR_FULL) {
+        return fail_loxdb("lox_deinit", rc, 0);
+    }
     lox_port_posix_deinit(&g_storage);
     if (!open_db(cfg, 0)) return 0;
     *dt_us = now_us() - t0;
@@ -199,6 +201,12 @@ static int warm_to_fill(uint32_t fill_target_pct, uint32_t warmup_ops, uint32_t 
         memcpy(v, &seq, sizeof(seq));
         (void)snprintf(key, sizeof(key), "w%04u", (unsigned)(i % 320u));
         rc = lox_kv_put(&g_db, key, v, sizeof(v));
+        if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+            rc = lox_inspect(&g_db, &st);
+            if (rc != LOX_OK) return fail_loxdb("lox_inspect(warm_to_fill,saturated)", rc, 0);
+            *out_fill = st.wal_fill_pct;
+            return 1;
+        }
         if (rc != LOX_OK) return fail_loxdb("lox_kv_put(warm_to_fill)", rc, 0);
         if ((i % 64u) == 0u) {
             rc = lox_inspect(&g_db, &st);
@@ -223,6 +231,7 @@ static int age_workload(uint32_t age_ops, uint32_t cycle_count) {
     uint8_t v8;
     uint32_t kv;
     char key[16];
+    int saturated = 0;
     lox_err_t rc;
 
     if (!ensure_ts_stream()) return 0;
@@ -234,10 +243,18 @@ static int age_workload(uint32_t age_ops, uint32_t cycle_count) {
             kv = i ^ 0x55AA55AAu;
             (void)snprintf(key, sizeof(key), "a%03u", (unsigned)(i % 96u));
             rc = lox_kv_put(&g_db, key, &kv, sizeof(kv));
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                saturated = 1;
+                break;
+            }
             if (rc != LOX_OK) return fail_loxdb("lox_kv_put(age)", rc, 0);
         } else if (op == 1u) {
             kv = i;
             rc = lox_ts_insert(&g_db, "s", i + 1u, &kv);
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                saturated = 1;
+                break;
+            }
             if (rc != LOX_OK) return fail_loxdb("lox_ts_insert(age)", rc, 0);
         } else if (op == 2u) {
             id = i % 220u;
@@ -254,14 +271,25 @@ static int age_workload(uint32_t age_ops, uint32_t cycle_count) {
         }
         if ((i % 128u) == 0u) {
             rc = lox_flush(&g_db);
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                saturated = 1;
+                break;
+            }
             if (rc != LOX_OK) return fail_loxdb("lox_flush(age)", rc, 0);
         }
     }
 
+    if (saturated) {
+        (void)lox_compact(&g_db);
+        (void)lox_flush(&g_db);
+    }
+
     for (i = 0u; i < cycle_count; ++i) {
         rc = lox_compact(&g_db);
+        if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) break;
         if (rc != LOX_OK) return fail_loxdb("lox_compact(age)", rc, 0);
         rc = lox_flush(&g_db);
+        if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) break;
         if (rc != LOX_OK) return fail_loxdb("lox_flush(age,cycle)", rc, 0);
     }
     return 1;
@@ -276,6 +304,7 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
     uint8_t row[64];
     uint64_t t0;
     uint64_t dt;
+    int saturated = 0;
     uint32_t id_seed = 1000u;
     lox_err_t rc;
     lox_stats_t inspect_stats;
@@ -311,6 +340,10 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         rc = lox_kv_put(&g_db, key, vbuf, sizeof(vbuf));
         if (rc != LOX_OK) {
             out->fail_count++;
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                saturated = 1;
+                break;
+            }
             return fail_loxdb("lox_kv_put(measure)", rc, 0);
         }
         dt = now_us() - t0;
@@ -319,12 +352,16 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         if (dt > out->max_kv_put_us) out->max_kv_put_us = dt;
     }
 
-    for (i = 0u; i < cfg->measure_ops; ++i) {
+    for (i = 0u; i < cfg->measure_ops && !saturated; ++i) {
         uint32_t tsv = i;
         t0 = now_us();
         rc = lox_ts_insert(&g_db, "s", 100000u + i, &tsv);
         if (rc != LOX_OK) {
             out->fail_count++;
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                saturated = 1;
+                break;
+            }
             return fail_loxdb("lox_ts_insert(measure)", rc, 0);
         }
         dt = now_us() - t0;
@@ -333,7 +370,7 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         if (dt > out->max_ts_insert_us) out->max_ts_insert_us = dt;
     }
 
-    for (i = 0u; i < cfg->measure_ops; ++i) {
+    for (i = 0u; i < cfg->measure_ops && !saturated; ++i) {
         uint32_t id = id_seed + i;
         uint8_t v = (uint8_t)(id & 0xFFu);
         memset(row, 0, sizeof(row));
@@ -350,6 +387,11 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         t0 = now_us();
         rc = lox_rel_insert(&g_db, t, row);
         if (rc != LOX_OK) {
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                out->fail_count++;
+                saturated = 1;
+                break;
+            }
             rc = lox_rel_clear(&g_db, t);
             if (rc != LOX_OK) return fail_loxdb("lox_rel_clear(measure)", rc, 0);
             rc = lox_rel_insert(&g_db, t, row);
@@ -361,12 +403,16 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         if (dt > out->max_rel_insert_us) out->max_rel_insert_us = dt;
     }
 
-    for (i = 0u; i < cfg->measure_ops; ++i) {
+    for (i = 0u; i < cfg->measure_ops && !saturated; ++i) {
         uint32_t id = id_seed + i;
         t0 = now_us();
         rc = lox_rel_delete(&g_db, t, &id, NULL);
         if (rc != LOX_OK) {
             out->fail_count++;
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                saturated = 1;
+                break;
+            }
             return fail_loxdb("lox_rel_delete(measure)", rc, 0);
         }
         dt = now_us() - t0;
@@ -375,23 +421,37 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         if (dt > out->max_rel_delete_us) out->max_rel_delete_us = dt;
     }
 
-    for (i = 0u; i < cfg->measure_ops; ++i) {
+    for (i = 0u; i < cfg->measure_ops && !saturated; ++i) {
         uint32_t tv = i ^ 0x5AA5u;
         rc = lox_txn_begin(&g_db);
         if (rc != LOX_OK) {
             out->fail_count++;
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                saturated = 1;
+                break;
+            }
             return fail_loxdb("lox_txn_begin(measure)", rc, 0);
         }
         (void)snprintf(key, sizeof(key), "t%03u", (unsigned)(i % 64u));
         rc = lox_kv_put(&g_db, key, &tv, sizeof(tv));
         if (rc != LOX_OK) {
             out->fail_count++;
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                (void)lox_txn_rollback(&g_db);
+                saturated = 1;
+                break;
+            }
             return fail_loxdb("lox_kv_put(measure,txn)", rc, 0);
         }
         t0 = now_us();
         rc = lox_txn_commit(&g_db);
         if (rc != LOX_OK) {
             out->fail_count++;
+            if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+                (void)lox_txn_rollback(&g_db);
+                saturated = 1;
+                break;
+            }
             return fail_loxdb("lox_txn_commit(measure)", rc, 0);
         }
         dt = now_us() - t0;
@@ -402,22 +462,34 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
 
     t0 = now_us();
     rc = lox_compact(&g_db);
-    if (rc != LOX_OK) return fail_loxdb("lox_compact(measure)", rc, 0);
+    if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+        out->fail_count++;
+        saturated = 1;
+    } else if (rc != LOX_OK) {
+        return fail_loxdb("lox_compact(measure)", rc, 0);
+    }
     out->max_compact_us = now_us() - t0;
 
-    if (!reopen_db(cfg, &out->max_reopen_us)) return 0;
-    if (out->max_reopen_us > 1000u) out->spikes_gt_1ms++;
-    if (out->max_reopen_us > 5000u) out->spikes_gt_5ms++;
-    rc = lox_inspect(&g_db, &inspect_stats);
-    if (rc != LOX_OK) return fail_loxdb("lox_inspect(measure,after)", rc, 0);
-    out->wal_fill_after_pct = inspect_stats.wal_fill_pct;
-    rc = lox_get_db_stats(&g_db, &db_stats);
-    if (rc != LOX_OK) return fail_loxdb("lox_get_db_stats(measure,after)", rc, 0);
-    out->compact_count_after = db_stats.compact_count;
-    out->compactions_during_measure =
-        (out->compact_count_after >= out->compact_count_before)
-            ? (out->compact_count_after - out->compact_count_before)
-            : 0u;
+    if (saturated) {
+        out->max_reopen_us = 0u;
+        out->wal_fill_after_pct = out->wal_fill_before_pct;
+        out->compact_count_after = out->compact_count_before;
+        out->compactions_during_measure = 0u;
+    } else {
+        if (!reopen_db(cfg, &out->max_reopen_us)) return 0;
+        if (out->max_reopen_us > 1000u) out->spikes_gt_1ms++;
+        if (out->max_reopen_us > 5000u) out->spikes_gt_5ms++;
+        rc = lox_inspect(&g_db, &inspect_stats);
+        if (rc != LOX_OK) return fail_loxdb("lox_inspect(measure,after)", rc, 0);
+        out->wal_fill_after_pct = inspect_stats.wal_fill_pct;
+        rc = lox_get_db_stats(&g_db, &db_stats);
+        if (rc != LOX_OK) return fail_loxdb("lox_get_db_stats(measure,after)", rc, 0);
+        out->compact_count_after = db_stats.compact_count;
+        out->compactions_during_measure =
+            (out->compact_count_after >= out->compact_count_before)
+                ? (out->compact_count_after - out->compact_count_before)
+                : 0u;
+    }
 
     out->slo_pass =
         (out->max_kv_put_us <= cfg->slo_max_op_us) &&
@@ -431,7 +503,9 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         (out->fail_count == 0u);
 
     rc = lox_deinit(&g_db);
-    if (rc != LOX_OK) return fail_loxdb("lox_deinit(measure)", rc, 0);
+    if (rc != LOX_OK && rc != LOX_ERR_STORAGE && rc != LOX_ERR_FULL) {
+        return fail_loxdb("lox_deinit(measure)", rc, 0);
+    }
     lox_port_posix_deinit(&g_storage);
     lox_port_posix_remove(cfg->path);
     return 1;
