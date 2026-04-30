@@ -323,6 +323,12 @@ Detailed rationale: [PRODUCT_POSITIONING.md](docs/PRODUCT_POSITIONING.md) and [P
 ## Test coverage
 
 Coverage includes KV/TS/REL behavior, WAL recovery/corruption paths, RAM-profile variants, and footprint/profile contract gates.
+Current CTest inventory (as configured in CI debug presets): **76 registered tests per platform**.
+CI execution volume per `ci.yml` run is higher because the same suite runs on multiple lanes:
+- `build` matrix (`linux`, `windows`, `macOS`): `3 x 76 = 228` test executions
+- `sanitize-linux` lane: additional `76` test executions
+- total in `ci.yml`: **304 test executions** (same test set across environments/instrumentation)
+
 See CI and deep docs for current matrix:
 - [ci.yml](.github/workflows/ci.yml)
 - [PROGRAMMER_MANUAL.md](docs/PROGRAMMER_MANUAL.md)
