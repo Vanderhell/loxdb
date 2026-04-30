@@ -77,10 +77,11 @@ jobs:
           $summaryPath = Join-Path $pwd "managed_stress_baseline_${{ matrix.label }}.json"
           Set-Content -Path $summaryPath -Value $summary -Encoding ascii
 
-          "### Managed stress baseline (${{ matrix.label }})" >> $env:GITHUB_STEP_SUMMARY
-          "- Preset: `${{ matrix.test_preset }}`" >> $env:GITHUB_STEP_SUMMARY
-          "- Smoke runtime: ${smokeMs} ms (budget: ${{ matrix.smoke_budget_ms }} ms)" >> $env:GITHUB_STEP_SUMMARY
-          "- Long runtime: ${longMs} ms (budget: ${{ matrix.long_budget_ms }} ms)" >> $env:GITHUB_STEP_SUMMARY
+          $stepSummaryPath = $env:GITHUB_STEP_SUMMARY
+          Add-Content -Path $stepSummaryPath -Value "### Managed stress baseline (${{ matrix.label }})"
+          Add-Content -Path $stepSummaryPath -Value "- Preset: ${{ matrix.test_preset }}"
+          Add-Content -Path $stepSummaryPath -Value "- Smoke runtime: $smokeMs ms (budget: ${{ matrix.smoke_budget_ms }} ms)"
+          Add-Content -Path $stepSummaryPath -Value "- Long runtime: $longMs ms (budget: ${{ matrix.long_budget_ms }} ms)"
 
       - name: Upload baseline artifact
         uses: actions/upload-artifact@v4
