@@ -28,7 +28,7 @@ It combines three storage models behind one API surface:
 The library allocates exactly once in `lox_init()`, runs without external dependencies,
 and can operate either in RAM-only mode or with a storage HAL for persistence and WAL recovery.
 
-## Free-tier additions (latest)
+## Recent additions (Unreleased)
 
 - Runtime integrity API: `lox_selfcheck(...)`
 - WCET package:
@@ -49,7 +49,8 @@ and can operate either in RAM-only mode or with a storage HAL for persistence an
 - WCET analysis: see [WCET_ANALYSIS.md](docs/WCET_ANALYSIS.md)
 - Safety readiness package: see [SAFETY_READINESS.md](docs/SAFETY_READINESS.md)
 - Footprint-min contract: see [FOOTPRINT_MIN_CONTRACT.md](docs/FOOTPRINT_MIN_CONTRACT.md)
-- Latest hard verdict: see [hard_verdict_20260412.md](docs/results/hard_verdict_20260412.md)
+- Latest hard verdict (currently 2026-04-19): see [hard_verdict_20260419.md](docs/results/hard_verdict_20260419.md)
+- Full validation artifacts and trend dashboard: see [docs/results/](docs/results/) and [trend_dashboard.md](docs/results/trend_dashboard.md)
 - Getting started (5 min): see [GETTING_STARTED_5_MIN.md](docs/GETTING_STARTED_5_MIN.md)
 - Programmer manual: see [PROGRAMMER_MANUAL.md](docs/PROGRAMMER_MANUAL.md)
 - Backend integration guide: see [BACKEND_INTEGRATION_GUIDE.md](docs/BACKEND_INTEGRATION_GUIDE.md)
@@ -192,7 +193,7 @@ Configuration is compile-time first, with a small runtime override surface in `l
 - `cfg.wal_sync_mode` selects WAL durability/latency mode:
   - `LOX_WAL_SYNC_ALWAYS` (default): sync on each append, strongest per-op durability
   - `LOX_WAL_SYNC_FLUSH_ONLY`: sync on explicit `lox_flush()`, lower write latency
-  - see measured ESP32 tradeoffs in `bench/lox_esp32_s3_bench/README.md` ("WAL Sync Mode Decision Table")
+  - see measured ESP32 tradeoffs in `bench/loxdb_esp32_s3_bench_head/README.md` ("WAL Sync Mode Decision Table")
 - `LOX_LOG(level, fmt, ...)` enables internal diagnostic logging
 - smallest-size variant is available as CMake target `lox_tiny` (KV-only, TS/REL/WAL disabled, weaker power-fail durability)
 - strict smallest **durable** profile is available as `LOX_PROFILE_FOOTPRINT_MIN` (KV + WAL + reopen/recovery contract)
@@ -244,81 +245,20 @@ loxdb supports three storage modes:
 
 ## Supported Platforms
 
-### Verified on hardware
+Verified hardware:
+- ESP32-S3 N16R8 (`run_real` PASS, benchmarked)
 
-| Platform | Flash | RAM | Status |
-|---|---|---:|---|
-| ESP32-S3 N16R8 | 16MB external NOR | 8MB PSRAM | Verified (`run_real` PASS, benchmarked) |
+Commonly compatible targets:
+- direct byte-write flash ports (ESP32 family, STM32H7/F4, RP2040, nRF52, SAMD51)
+- aligned-write media via `lox_backend_aligned_adapter` (`write_size > 1`)
 
-### Compatible (direct byte-write port)
-
-| Platform | Flash path | Typical `kv_put` (directional) | Practical minimum RAM |
-|---|---|---:|---:|
-| ESP32 / ESP32-C3 / ESP32-S2 | SPI NOR via `esp_partition` | ~70-90us | 16KB |
-| STM32H7 | QSPI NOR | ~30us | 16KB |
-| STM32F4 | External SPI NOR | ~80us | 16KB |
-| RP2040 | QSPI XIP flash | ~50us | 16KB |
-| nRF52840 | Internal flash | ~90us | 16KB |
-| SAMD51 | External SPI NOR | ~100us | 16KB |
-
-### Compatible via aligned adapter (`write_size > 1`)
-
-| Platform | Flash path | Notes |
-|---|---|---|
-| STM32F103 | Internal flash (`write_size=2`) | Requires `lox_backend_aligned_adapter` |
-| STM32L4 | Internal flash (`write_size=8`) | Requires `lox_backend_aligned_adapter` |
-| nRF5340 | Internal flash (`write_size=4`) | Requires `lox_backend_aligned_adapter` |
-
-### Not supported without larger changes
-
-| Platform family | Limitation |
-|---|---|
-| AVR (ATmega class) | No practical malloc model for current core + different EEPROM persistence model |
-| MSP430 (small variants) | Constrained address/model assumptions for current storage offset contract |
+Current hard limits:
+- core durable path expects byte-write storage (`write_size == 1`)
+- AVR/MSP430-class tiny targets are out of scope for current memory/storage contract
 
 Notes:
-- Latency values are board/flash/vendor dependent; treat them as directional and re-measure on target hardware.
-- `kv_get` is RAM-only in normal path; write costs are typically dominated by flash backend latency.
-
-Persistent layout starts with a WAL region and then separate KV, TS, and REL regions aligned to the storage erase size.
-
-Core storage positioning: loxdb core today natively supports byte-write durable backends; aligned/block/NAND media require a translation layer.
-
-Optional backend adapter modules (modular, not linked into core by default):
-- `lox_backend_registry` (adapter registration layer)
-- `lox_backend_compat` (open-time `direct` / `via_adapter` / `unsupported` classification)
-- `lox_backend_aligned_adapter` (RMW byte-write shim for aligned-write media)
-- `lox_backend_managed_adapter` (managed-media adapter skeleton for eMMC/SD/NAND via managed interface)
-- `lox_backend_open` (decision + adapter wiring helper for optional backend flow)
-- stub modules for managed media (`nand/emmc/sd`) used for integration/testing flow
-
-Important:
-- `nand/emmc/sd` stubs are capability descriptors, not hardware drivers.
-- SD/eMMC integration still requires a real platform stack (for example FatFS/LittleFS over SDMMC/SPI, or vendor managed block API) mapped into `lox_storage_t`.
-- Raw NAND is not a direct loxdb target: you need a managed layer that handles ECC, bad blocks, and wear leveling, then place loxdb above that layer.
-- See `examples/sd_fatfs_port/main.c` for a practical SD+FatFS glue skeleton.
-
-Managed adapter contract (fail-fast):
-- validates storage hooks and non-zero capacity/erase geometry
-- default expectations require byte-write contract and a successful `sync` probe at mount time
-- exposes an explicit expectations override API for controlled integration/testing
-- managed recovery integration tests cover reopen/power-loss behavior through backend-open wiring
-- managed stress test covers mixed KV/TS/REL operations across repeated crash/power-loss reopen cycles
-- managed stress is sliced into `smoke` and `long` CTest lanes for faster default validation and deeper fault runs
-- both lanes now include explicit runtime envelope gates (`--max-ms`) in addition to CTest timeouts
-- lane budgets are calibrated through CMake cache vars: `LOX_MANAGED_STRESS_SMOKE_MAX_MS` and `LOX_MANAGED_STRESS_LONG_MAX_MS` (see `docs/MANAGED_STRESS_BASELINES.md`)
-- CI uses `CMakePresets.json` (`ci-debug-linux`, `ci-debug-windows`) to apply platform-specific stress budgets consistently
-- release workflow now uses `CMakePresets.json` (`release-linux`, `release-windows`) with profile-specific stress budgets
-- scheduled baseline refresh workflow publishes runtime artifacts for ongoing threshold calibration
-- `scripts/recommend-managed-baselines.ps1` computes recommended thresholds from historical baseline artifacts (`p95 + margin`)
-- baseline refresh workflow now also publishes aggregated recommendation artifacts (`json` + `md`)
-- `scripts/apply-managed-thresholds.ps1` can apply recommendation JSON directly to preset budgets (`--dry-run` supported)
-- baseline refresh workflow publishes candidate preset patch artifacts (candidate `CMakePresets.json` + diff)
-
-Storage contract (fail-fast at `lox_init`):
-- `erase_size` must be `> 0`
-- `write_size` must be exactly `1`
-- `write_size == 0` or `write_size > 1` currently returns `LOX_ERR_INVALID`
+- latency numbers are board/flash dependent; treat all values as directional and measure on target hardware
+- for full platform matrix, adapter contracts, and managed media notes, see [BACKEND_INTEGRATION_GUIDE.md](docs/BACKEND_INTEGRATION_GUIDE.md) and [PORT_AUTHORING_GUIDE.md](docs/PORT_AUTHORING_GUIDE.md)
 
 ## Read-only diagnostics API
 
@@ -335,43 +275,19 @@ System stats are exposed through read-only APIs (not user KV keys):
 - `lox_admit_ts_insert(...)`
 - `lox_admit_rel_insert(...)`
 
-Admission preflight semantics:
-- API return value reports API-level validity (`LOX_OK` when request was analyzed)
-- final operation decision is in `lox_admission_t.status`
-- `would_compact` indicates compact pressure for the projected write
-- `would_degrade` indicates policy-driven degradation path (for example overwrite/drop-oldest)
-- `deterministic_budget_ok` indicates whether request fits deterministic budget
-
-Pressure semantics:
-- `lox_get_pressure(...)` exposes `kv/ts/rel/wal` fill percentages
-- `compact_pressure_pct` expresses WAL fill relative to compact threshold
-- `near_full_risk_pct` is max pressure signal across engines/WAL
+Semantics:
+- `lox_admission_t.status` carries operation-level decision
+- `lox_get_pressure(...)` exposes `kv/ts/rel/wal` pressure and near-full risk
+- see [PROGRAMMER_MANUAL.md](docs/PROGRAMMER_MANUAL.md) for detailed field-level behavior
 
 ## Migrations vs Snapshots
 
-loxdb has three different concepts that are easy to mix up:
+Three separate concepts:
+1. schema migration API (`schema_version` + `cfg.on_migrate`) for REL tables
+2. internal durable snapshot banks for WAL/compact/recovery (not public user snapshots)
+3. query-time consistency checks (returns `LOX_ERR_MODIFIED` on concurrent mutation)
 
-1. Schema migrations (public API)
-- REL schema upgrades are driven by `schema_version` + `cfg.on_migrate`.
-- Trigger point is `lox_table_create(...)` when an existing table version differs.
-- Without `on_migrate`, version mismatch returns `LOX_ERR_SCHEMA`.
-- See `docs/SCHEMA_MIGRATION_GUIDE.md`.
-
-2. Durable snapshots (internal durability mechanism)
-- WAL/compact/recovery uses internal snapshot banks (A/B) + superblocks.
-- This is an internal storage safety/recovery mechanism, not a user-facing snapshot API.
-- There is currently no public API to create/list/restore named snapshots.
-
-3. Query-time snapshot semantics (iteration consistency)
-- TS/REL query/iter paths capture mutation state and validate after callback re-lock.
-- If concurrent mutation is detected, APIs return `LOX_ERR_MODIFIED`.
-- This protects traversal consistency; it is separate from durable storage snapshots.
-
-Semantics:
-- `last_runtime_error` is sticky last non-`LOX_OK` runtime status since `lox_init`
-- `last_recovery_status` is status of the last open/recovery path step in this process lifetime
-- `compact_count`, `reopen_count`, `recovery_count` are runtime-only counters (not persistent)
-- REL uses `rows_free` (free slots), not a historical deleted-rows counter
+Detailed behavior: [SCHEMA_MIGRATION_GUIDE.md](docs/SCHEMA_MIGRATION_GUIDE.md) and [PROGRAMMER_MANUAL.md](docs/PROGRAMMER_MANUAL.md)
 
 ## RAM budget guide
 
@@ -395,49 +311,22 @@ Capacity planning helper:
 
 ## Design decisions and known limitations
 
-**Single malloc at init.**
-loxdb allocates exactly once in `lox_init()` and never again.
-This makes memory usage predictable and eliminates heap fragmentation -
-a critical property for long-running embedded systems.
+- single `malloc` in `lox_init()` (predictable memory, no allocator churn)
+- fixed RAM slices per engine (no runtime redistribution)
+- one index per REL table (secondary indexes not planned for v1.x)
+- KV overwrite mode uses O(n) LRU scan
+- thread safety is hook-based (`LOX_THREAD_SAFE=1` + lock callbacks)
+- no built-in compression/encryption (application-layer responsibility)
 
-**Fixed RAM slices per engine.**
-Each engine gets a fixed percentage of the RAM budget at init time.
-There is no automatic redistribution if one engine fills up while another
-has free space. This is intentional - dynamic redistribution would require
-a runtime allocator, breaking the single-malloc guarantee.
-Workaround: tune `kv_pct`, `ts_pct`, `rel_pct` in `lox_cfg_t` for your use case.
-
-**One index per relational table.**
-Each table supports one indexed column for O(log n) lookups.
-All other column lookups are O(n) linear scans.
-For embedded tables with <= 100 rows this is acceptable (microseconds on ESP32).
-Secondary indexes are not planned for v1.x.
-
-**LRU eviction is O(n).**
-When KV store is full and overflow policy is OVERWRITE, finding the LRU entry
-requires scanning all buckets. At `LOX_KV_MAX_KEYS=64` this is 64 comparisons.
-For embedded use cases this is negligible. Not suitable for `LOX_KV_MAX_KEYS > 1000`.
-
-**Optional hook-based thread safety.**
-Enable `LOX_THREAD_SAFE=1` and provide `lock_create/lock/unlock/lock_destroy`
-hooks in `lox_cfg_t` to integrate your RTOS/application mutex.
-
-**No built-in compression or encryption.**
-If your product needs those, apply them in your application layer before calling loxdb APIs.
+Detailed rationale: [PRODUCT_POSITIONING.md](docs/PRODUCT_POSITIONING.md) and [PROGRAMMER_MANUAL.md](docs/PROGRAMMER_MANUAL.md)
 
 ## Test coverage
 
-The repository covers:
-
-- KV engine behavior and overflow variants
-- TS engine behavior and overflow variants
-- REL schema, indexing, and iteration
-- WAL recovery, corruption handling, and disabled-WAL mode
-- integration flows across RAM-only and persistent modes
-- RAM budget variants from 8 KB through 1024 KB
-- compile-fail validation for invalid percentage sums
-- tiny-footprint profile checks (`test_tiny_footprint` + `test_tiny_size_guard`)
-- canonical footprint-min baseline + hard section/linkage gate (`test_footprint_min_baseline` + `test_footprint_min_size_gate_release`, Release contract)
+Coverage includes KV/TS/REL behavior, WAL recovery/corruption paths, RAM-profile variants, and footprint/profile contract gates.
+See CI and deep docs for current matrix:
+- [ci.yml](.github/workflows/ci.yml)
+- [PROGRAMMER_MANUAL.md](docs/PROGRAMMER_MANUAL.md)
+- [docs/results/](docs/results/)
 
 ## Integration note
 

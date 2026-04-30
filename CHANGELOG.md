@@ -93,7 +93,7 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 ### Added
 
 - Real-data integration coverage on host (`tests/test_realdata_integration.c`) including KV/TS/REL flows, JSON wrapper, import/export, TXN, and reopen recovery assertions.
-- ESP32-S3 `run_real` smoke command in `bench/lox_esp32_s3_bench` for on-device validation of realistic end-to-end data paths.
+- ESP32-S3 `run_real` smoke command in `bench/loxdb_esp32_s3_bench_head` for on-device validation of realistic end-to-end data paths.
 - C++ wrapper coverage extension in `tests/test_cpp_wrapper.cpp` for practical KV/TS/REL wrapper usage.
 
 ### Changed
@@ -121,7 +121,7 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ### Repository Hygiene
 
-- Removed tracked ESP32 build artifacts under `bench/lox_esp32_s3_bench/build_sync_flush_only/` and added ignore rule to keep binary outputs out of git history.
+- Removed tracked ESP32 build artifacts under `bench/loxdb_esp32_s3_bench_head/build_sync_flush_only/` and added ignore rule to keep binary outputs out of git history.
 
 ## [1.2.0] - 2026-04-20
 

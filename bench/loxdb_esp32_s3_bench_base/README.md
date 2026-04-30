@@ -45,7 +45,7 @@ This folder already includes local build helpers:
 
 This allows Arduino IDE builds without fragile `../../...` include paths.
 
-If core files under `include/` or `src/` change in the repository, sync local copies in `bench/lox_esp32_s3_bench/`.
+If core files under `include/` or `src/` change in the repository, sync local copies in `bench/loxdb_esp32_s3_bench_base/`.
 
 For PlatformIO/ESP-IDF, you can instead add the repo as a component and move the benchmark to `main.cpp`.
 
@@ -106,42 +106,6 @@ loxdb-bench>
 - `[PHASE] cold/steady`: separates startup from steady-state behavior
 - `[SLO]`: profile-aware tail checks (`OK` / `WARN`)
 
-## POSIX vs ESP32 Interpretation
-
-- Do not treat desktop POSIX latency numbers as direct predictors of ESP32 SPI-flash latency.
-- Practical reference from recent runs:
-  - ESP32-S3 (COM17, N16R8 profile): `kv_put` ~`70 us/op`
-  - POSIX simulation (desktop): `kv_put` ~`37 us/op`
-- The desktop path can amplify syscall effects (for example WAL scatter-write as multiple `write()` calls), while ESP32 cost is dominated by flash transaction latency.
-- Use POSIX primarily for relative trend detection, and validate release-critical perf conclusions on target hardware.
-
-## WAL Sync Mode Decision Table
-
-Reference run (ESP32-S3 N16R8, COM17, deterministic profile, `2026-04-21`) shows:
-
-| Metric | `SYNC_ALWAYS` | `SYNC_FLUSH_ONLY` | Gain |
-|---|---:|---:|---:|
-| `kv_put` avg | ~67.6 us | ~27.6 us | ~2.44x faster |
-| `kv_del` avg | ~101.9 us | ~24.9 us | ~4.09x faster |
-| `wal_kv_put` avg | ~74.2 us | ~32.9 us | ~2.26x faster |
-| `ts_insert` avg | ~20.7 us | ~19.1 us | ~1.08x faster |
-| `kv_get` avg | ~8.65 us | ~8.81 us | neutral |
-| `compact` total | ~10.94 ms | ~10.55 ms | ~1.04x faster |
-| `reopen` total | ~21.43 ms | ~15.30 ms | ~1.40x faster |
-
-Choose mode by requirement:
-
-| If you need... | Use mode | Durability model |
-|---|---|---|
-| Every write durable before API returns | `LOX_WAL_SYNC_ALWAYS` (default) | No acknowledged-write loss on power loss (assuming storage contract holds). |
-| Lowest write latency / high-rate ingest | `LOX_WAL_SYNC_FLUSH_ONLY` | On power loss you may lose last `N` WAL entries since last `lox_flush()`. |
-
-Practical guidance:
-
-- `SYNC_FLUSH_ONLY` is usually the better fit for sensor/log ingestion workloads with frequent writes.
-- Call `lox_flush()` at explicit durability boundaries (for example end of batch, periodic timer, before controlled shutdown/sleep).
-- Treat latency numbers as directional and board-specific; re-run on your exact flash chip and partition layout (in practice, values can vary by about +/-20% across SPI flash vendors).
-
 ## Terminal Commands
 
 - `help`: show command list
@@ -178,6 +142,36 @@ Use this table to log runs:
 | Date | FW commit | Board | CPU MHz | kv_put ms/op | kv_get ms/op | kv_del ms/op | ts_insert ms/op | rel_insert ms/op | compact total ms | Notes |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---|
 | YYYY-MM-DD | `<sha>` | ESP32-S3 N16R8 | 240 |  |  |  |  |  |  |  |
+
+## Latest Base vs Head (COM17)
+
+Measured on `2026-04-21` with:
+
+- board: `esp32:esp32:esp32s3`
+- options: `FlashSize=16M,PSRAM=opi`
+- command flow: `resetdb;run_det;metrics`
+
+| Metric | Base `70bc35f` | Head `3062f08` | Delta (Head vs Base) |
+|---|---:|---:|---:|
+| kv_put avg (us) | 67.573 | 67.542 | -0.05% |
+| kv_get avg (us) | 8.651 | 8.635 | -0.18% |
+| kv_del avg (us) | 101.906 | 101.865 | -0.04% |
+| ts_insert avg (us) | 20.695 | 20.703 | +0.04% |
+| rel_insert avg (us) | 28.875 | 28.888 | +0.05% |
+| wal_kv_put avg (us) | 74.192 | 74.230 | +0.05% |
+| compact total (ms) | 10.936 | 10.935 | -0.01% |
+| reopen total (ms) | 21.431 | 21.434 | +0.01% |
+
+Conclusion: on this ESP32-S3 N16R8 run, Base and Head are effectively equal (noise-level differences only).
+
+## POSIX vs ESP32 Interpretation
+
+- Do not treat desktop POSIX latency numbers as direct predictors of ESP32 SPI-flash latency.
+- Practical reference from recent runs:
+  - ESP32-S3 (COM17, N16R8 profile): `kv_put` ~`70 us/op`
+  - POSIX simulation (desktop): `kv_put` ~`37 us/op`
+- Desktop can amplify syscall overhead (for example WAL scatter-write as multiple `write()` calls), while ESP32 is dominated by flash transaction cost.
+- Use POSIX bench primarily for trend direction, and confirm release decisions on target hardware.
 
 ## Consistency Recommendations
 

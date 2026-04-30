@@ -75,7 +75,7 @@ For detailed code-level change history, see [CHANGELOG.md](CHANGELOG.md).
 
 ### Repository Hygiene
 
-- Removed tracked ESP32 build artifacts under `bench/lox_esp32_s3_bench/build_sync_flush_only/` and added ignore rule.
+- Removed tracked ESP32 build artifacts under `bench/loxdb_esp32_s3_bench_head/build_sync_flush_only/` and added ignore rule.
 
 ## v1.2.0 - 2026-04-20
 

@@ -644,7 +644,7 @@ Supporting tools built around the core APIs:
 
 - offline verifier: `tools/lox_verify.c`
 - full validation runner: `tools/run_full_validation.ps1`
-- benchmark harness: `bench/lox_esp32_s3_bench/*`
+- benchmark harness: `bench/loxdb_esp32_s3_bench_head/*`
 - POSIX stress/latency trend runners: `tests/soak_runner.c`, `tests/worstcase_matrix_runner.c`
 
 These are operational wrappers for validation/verification, not replacements for the DB API.
