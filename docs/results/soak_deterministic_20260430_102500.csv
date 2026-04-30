@@ -1,0 +1,12 @@
+﻿soak_runner.exe : verify kv_probe skipped under sustained pressure: LOX_ERR_STORAGE (-6)
+At line:2 char:346
++ ... LASTEXITCODE}; & $so --profile deterministic --ops 20000 2>&1 | Out-F ...
++                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (verify kv_probe...RR_STORAGE (-6):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+soak_start profile=deterministic ops=20000 reopen_every=0 compact_every=4000 flush_every=200 power_loss_every=0
+progress ops=20000/20000
+soak_done profile=deterministic ops=20000 max_kv_put_us=126645 max_kv_del_us=140598 max_ts_insert_us=126851 max_rel_insert_us=117796 max_rel_del_us=94237 max_compact_us=352007 max_reopen_us=0 spikes_gt_1ms=9039 spikes_gt_5ms=2542 slo_pass=0
+profile,ops,max_kv_put_us,max_kv_del_us,max_ts_insert_us,max_rel_insert_us,max_rel_del_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,slo_pass
+deterministic,20000,126645,140598,126851,117796,94237,352007,0,9039,2542,0,0

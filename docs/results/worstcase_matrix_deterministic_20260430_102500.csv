@@ -1,0 +1,11 @@
+﻿profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,wal_fill_before_pct,wal_fill_after_pct,compact_count_before,compact_count_after,compactions_during_measure,slo_pass,slo_fail_mask
+deterministic,fresh,10,86,18517,29657,36792,0,0,32400,0,480,10,0,86,86,2,2,0,1,0
+deterministic,aged,10,99,0,0,0,0,0,120490,0,0,0,0,99,99,104,104,0,1,0
+deterministic,fresh,50,86,18068,28465,32343,0,0,31804,0,480,11,0,86,86,2,2,0,1,0
+deterministic,aged,50,99,0,0,0,0,0,119435,0,0,0,0,99,99,104,104,0,1,0
+deterministic,fresh,75,86,18055,29017,33842,0,0,32192,0,480,10,0,86,86,2,2,0,1,0
+deterministic,aged,75,99,0,0,0,0,0,123715,0,0,0,0,99,99,104,104,0,1,0
+deterministic,fresh,90,97,18508,28435,33358,0,0,32320,0,480,10,0,97,97,9,9,0,1,0
+deterministic,aged,90,99,0,0,0,0,0,120202,0,0,0,0,99,99,104,104,0,1,0
+deterministic,fresh,95,97,21278,28709,33228,0,0,31962,0,480,10,0,97,97,9,9,0,1,0
+deterministic,aged,95,99,0,0,0,0,0,121341,0,0,0,0,99,99,104,104,0,1,0

@@ -1,0 +1,12 @@
+﻿soak_runner.exe : verify kv_probe skipped under sustained pressure: LOX_ERR_STORAGE (-6)
+At line:2 char:332
++ ... {exit $LASTEXITCODE}; & $so --profile stress --ops 20000 2>&1 | Out-F ...
++                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (verify kv_probe...RR_STORAGE (-6):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+soak_start profile=stress ops=20000 reopen_every=0 compact_every=6000 flush_every=300 power_loss_every=0
+progress ops=10000/20000
+soak_done profile=stress ops=20000 max_kv_put_us=250197 max_kv_del_us=259064 max_ts_insert_us=234233 max_rel_insert_us=240454 max_rel_del_us=244215 max_compact_us=722919 max_reopen_us=0 spikes_gt_1ms=14051 spikes_gt_5ms=855 slo_pass=0
+profile,ops,max_kv_put_us,max_kv_del_us,max_ts_insert_us,max_rel_insert_us,max_rel_del_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,slo_pass
+stress,20000,250197,259064,234233,240454,244215,722919,0,14051,855,0,0

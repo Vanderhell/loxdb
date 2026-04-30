@@ -1,0 +1,11 @@
+﻿profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,wal_fill_before_pct,wal_fill_after_pct,compact_count_before,compact_count_after,compactions_during_measure,slo_pass,slo_fail_mask
+balanced,fresh,10,86,19082,37000,38623,0,0,37765,0,608,12,0,86,86,2,2,0,1,0
+balanced,aged,10,99,0,0,0,0,0,161485,0,0,0,0,99,99,138,138,0,1,0
+balanced,fresh,50,86,19585,36642,38725,0,0,37349,0,608,14,0,86,86,2,2,0,1,0
+balanced,aged,50,99,0,0,0,0,0,163372,0,0,0,0,99,99,138,138,0,1,0
+balanced,fresh,75,86,19217,37484,38281,0,0,35928,0,608,12,0,86,86,2,2,0,1,0
+balanced,aged,75,99,0,0,0,0,0,157429,0,0,0,0,99,99,138,138,0,1,0
+balanced,fresh,90,97,32661,36835,38257,0,0,38525,0,608,23,0,97,97,9,9,0,1,0
+balanced,aged,90,99,0,0,0,0,0,161466,0,0,0,0,99,99,138,138,0,1,0
+balanced,fresh,95,97,19343,36031,37887,0,0,38159,0,608,13,0,97,97,9,9,0,1,0
+balanced,aged,95,99,0,0,0,0,0,162222,0,0,0,0,99,99,138,138,0,1,0

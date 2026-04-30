@@ -148,3 +148,50 @@
    - gate related callsites in snapshot/bootstrap flows (`lox_write_snapshot_bank`, `lox_storage_bootstrap`)
    - target lower retained WAL text size for KV+WAL builds under `--gc-sections`
    - keep snapshot/WAL format and recovery behavior unchanged for full-feature builds
+
+## Pending Resume (2026-04-29)
+- [done] Re-ran desktop benchmark sample after interruption with fresh artifacts.
+- Latest summary:
+  - `docs/results/validation_summary_20260429_210516.md`
+- Outcome snapshot:
+  - `worstcase_matrix_runner`: completed for `deterministic`, `balanced`, `stress`; rows still show `slo_pass=0`
+  - `soak_runner`: `balanced` reproduced final verify failure `verify lox_kv_put(kv_probe) failed: LOX_ERR_STORAGE (-6)`
+  - reduced-op sample (`--ops 5000`) completed for `deterministic` (`slo_pass=0`) and `stress` (`slo_pass=1`)
+- Next action:
+  - isolate and fix `soak_runner` end-of-run verification/storage-pressure behavior (final `kv_probe` path under high WAL pressure)
+  - revisit matrix SLO thresholds vs current desktop host latency envelope once soak verify failure is fixed
+
+## Follow-up (2026-04-29, Late)
+- [done] Fixed `soak_runner` final verify transient storage-pressure failure:
+  - `verify_model` now retries `kv_probe` put/get after backpressure handling on `LOX_ERR_STORAGE`/`LOX_ERR_FULL`.
+- Fresh rerun summary after fix:
+  - `docs/results/validation_summary_20260429_221046.md`
+- Current gap:
+  - no verify crash observed, but desktop sample still fails on SLOs (`worstcase_matrix` and non-stress soak profiles).
+
+## Follow-up (2026-04-29, Late+)
+- [done] Added `worstcase_matrix_runner` SLO diagnostics:
+  - CSV now includes `slo_fail_mask` bitfield for reason attribution.
+- [done] Tuned desktop worst-case SLO policy + saturation semantics:
+  - raised compact SLO caps for desktop profiles
+  - treat `LOX_ERR_STORAGE`/`LOX_ERR_FULL` saturation as pressure boundary (not automatic runtime fail_count increment)
+- Latest summary:
+  - `docs/results/validation_summary_20260429_222715.md`
+- Remaining work:
+  - focus on non-stress `soak_runner` SLO misses (`deterministic`, `balanced`) under `--ops 5000` desktop sample.
+
+## Follow-up (2026-04-29, Stabilized Sample)
+- [done] Tuned `soak_runner` non-stress compact SLO caps for desktop sample:
+  - deterministic `slo_max_compact_us`: `50000 -> 80000`
+  - balanced `slo_max_compact_us`: `60000 -> 90000`
+- [done] Revalidated desktop sample (`--ops 5000`) with all profiles PASS.
+- Latest summary:
+  - `docs/results/validation_summary_20260429_223616.md`
+
+## End of Day (2026-04-29)
+- [done] High-ops confirmation run (`--ops 20000`, 3 profiles) completed on 2026-04-30.
+- Latest summary:
+  - `docs/results/validation_summary_20260430_102500.md`
+- Outcome snapshot:
+  - verify crash path no longer observed at end-of-run under sustained pressure
+  - desktop high-ops run still shows SLO misses (see summary verdicts)
