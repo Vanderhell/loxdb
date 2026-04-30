@@ -4,6 +4,20 @@
 #include <FS.h>
 #include <string.h>
 
+/* Increase core engine limits for large SD stress profile. */
+#ifndef LOX_KV_MAX_KEYS
+#define LOX_KV_MAX_KEYS 4096
+#endif
+#ifndef LOX_TS_MAX_STREAMS
+#define LOX_TS_MAX_STREAMS 12
+#endif
+#ifndef LOX_REL_MAX_TABLES
+#define LOX_REL_MAX_TABLES 12
+#endif
+#ifndef LOX_REL_MAX_COLS
+#define LOX_REL_MAX_COLS 12
+#endif
+
 #if defined(ARDUINO_ARCH_ESP32)
 #include <esp_heap_caps.h>
 #endif
@@ -61,7 +75,7 @@ static const uint32_t kStorageBytes = 128u * 1024u * 1024u;
 static const uint32_t kEraseSize = 4096u;
 static const uint32_t kReportEveryMs = 1000u;
 /* Bench default: start from clean DB image on every boot. */
-static const bool kFreshStartOnBoot = true;
+static const bool kFreshStartOnBoot = false;
 
 static lox_t g_db;
 static lox_storage_t g_storage;
@@ -69,13 +83,21 @@ static File g_store;
 static bool g_sd_ready = false;
 static bool g_db_ready = false;
 static bool g_running = true;
+static bool g_verify_enabled = true;
 
 static uint8_t *g_erase_buf = NULL;
 static uint32_t g_ops = 0u;
-static uint32_t g_ts = 0u;
+static uint32_t g_ts_seq[8] = {0};
 static uint32_t g_rel_next_id = 1u;
-static lox_table_t *g_rel = NULL;
+static lox_table_t *g_rel_tables[6] = {0};
+static uint8_t g_ts_rr = 0u;
+static uint8_t g_rel_rr = 0u;
+static uint8_t g_kv_rr = 0u;
 static uint8_t g_lcd_page = 0u;
+static uint32_t g_verify_ok = 0u;
+static uint32_t g_verify_fail = 0u;
+static uint32_t g_compact_count = 0u;
+static uint32_t g_last_compact_ms = 0u;
 typedef enum {
   MODE_ALL = 0,
   MODE_KV,
@@ -83,6 +105,26 @@ typedef enum {
   MODE_REL
 } stress_mode_t;
 static stress_mode_t g_mode = MODE_ALL;
+typedef enum {
+  PROFILE_SMOKE = 0,
+  PROFILE_SOAK,
+  PROFILE_STRESS
+} bench_profile_t;
+static bench_profile_t g_profile = PROFILE_SOAK;
+static uint16_t g_w_kv = 35u;
+static uint16_t g_w_ts = 35u;
+static uint16_t g_w_rel = 30u;
+static const char *kTsStreams[] = {
+  "stress_ts_0", "stress_ts_1", "stress_ts_2", "stress_ts_3",
+  "stress_ts_4", "stress_ts_5", "stress_ts_6", "stress_ts_7"
+};
+static const char *kRelNames[] = {
+  "stress_rel_0", "stress_rel_1", "stress_rel_2",
+  "stress_rel_3", "stress_rel_4", "stress_rel_5"
+};
+static const uint32_t kTsStreamCount = (uint32_t)(sizeof(kTsStreams) / sizeof(kTsStreams[0]));
+static const uint32_t kRelTableCount = (uint32_t)(sizeof(kRelNames) / sizeof(kRelNames[0]));
+static const uint32_t kKvKeySpace = 20000u;
 
 #if SDSTRESS_LCD_ENABLE
 static Adafruit_ST7735 g_tft(LCD_PIN_CS, LCD_PIN_DC, LCD_PIN_RST);
@@ -143,16 +185,25 @@ static bool open_storage_file() {
   if (!SD_MMC.exists(kStoragePath)) {
     /* Deterministic media image: fill full DB region with erased pattern (0xFF). */
     File f = SD_MMC.open(kStoragePath, FILE_WRITE);
+    uint8_t *fmt_buf = NULL;
+    const uint32_t fmt_chunk = 64u * 1024u;
     uint32_t off = 0u;
     if (!f) return false;
+    fmt_buf = (uint8_t *)malloc(fmt_chunk);
+    if (fmt_buf != NULL) memset(fmt_buf, 0xFF, fmt_chunk);
     while (off < kStorageBytes) {
-      size_t chunk = (size_t)((kStorageBytes - off) > kEraseSize ? kEraseSize : (kStorageBytes - off));
-      if (f.write(g_erase_buf, chunk) != chunk) {
+      size_t chunk = (size_t)((kStorageBytes - off) > fmt_chunk ? fmt_chunk : (kStorageBytes - off));
+      const uint8_t *src = (fmt_buf != NULL) ? fmt_buf : g_erase_buf;
+      size_t src_len = (fmt_buf != NULL) ? chunk : (size_t)kEraseSize;
+      if (fmt_buf == NULL && chunk > src_len) chunk = src_len;
+      if (f.write(src, chunk) != chunk) {
+        if (fmt_buf != NULL) free(fmt_buf);
         f.close();
         return false;
       }
       off += (uint32_t)chunk;
     }
+    if (fmt_buf != NULL) free(fmt_buf);
     f.flush();
     f.close();
   }
@@ -205,25 +256,46 @@ static lox_err_t st_sync(void *ctx) {
   return LOX_OK;
 }
 
-static bool setup_rel() {
+static bool setup_rel_table(uint32_t idx, const char *name) {
   lox_schema_t s;
   lox_err_t rc;
-  rc = lox_table_get(&g_db, "stress_rel", &g_rel);
+  lox_table_t *tmp = NULL;
+  rc = lox_table_get(&g_db, name, &tmp);
   if (rc == LOX_OK) return true;
   if (rc != LOX_ERR_NOT_FOUND) return false;
 
-  rc = lox_schema_init(&s, "stress_rel", 4096u);
+  rc = lox_schema_init(&s, name, 32768u);
   if (rc != LOX_OK) return false;
   rc = lox_schema_add(&s, "id", LOX_COL_U32, sizeof(uint32_t), true);
   if (rc != LOX_OK) return false;
   rc = lox_schema_add(&s, "v", LOX_COL_U32, sizeof(uint32_t), false);
   if (rc != LOX_OK) return false;
+  if (idx % 2u == 0u) {
+    rc = lox_schema_add(&s, "temp", LOX_COL_I32, sizeof(int32_t), false);
+    if (rc != LOX_OK) return false;
+  } else {
+    rc = lox_schema_add(&s, "flags", LOX_COL_U16, sizeof(uint16_t), false);
+    if (rc != LOX_OK) return false;
+  }
+  if (idx % 3u == 0u) {
+    rc = lox_schema_add(&s, "ts", LOX_COL_U64, sizeof(uint64_t), false);
+    if (rc != LOX_OK) return false;
+  }
   rc = lox_schema_seal(&s);
   if (rc != LOX_OK) return false;
   rc = lox_table_create(&g_db, &s);
   if (rc != LOX_OK && rc != LOX_ERR_EXISTS) return false;
-  rc = lox_table_get(&g_db, "stress_rel", &g_rel);
+  rc = lox_table_get(&g_db, name, &tmp);
   return rc == LOX_OK;
+}
+
+static bool setup_rel() {
+  uint32_t i;
+  for (i = 0u; i < kRelTableCount; ++i) {
+    if (!setup_rel_table(i, kRelNames[i])) return false;
+    if (lox_table_get(&g_db, kRelNames[i], &g_rel_tables[i]) != LOX_OK) return false;
+  }
+  return true;
 }
 
 static void lcd_init() {
@@ -312,10 +384,10 @@ static bool init_db() {
   g_storage.ctx = NULL;
 
   cfg.storage = &g_storage;
-  cfg.ram_kb = 2048u;
-  cfg.kv_pct = 34u;
-  cfg.ts_pct = 33u;
-  cfg.rel_pct = 33u;
+  cfg.ram_kb = 4096u;
+  cfg.kv_pct = 45u;
+  cfg.ts_pct = 20u;
+  cfg.rel_pct = 35u;
   cfg.wal_compact_auto = 1u;
   cfg.wal_compact_threshold_pct = 75u;
   cfg.wal_sync_mode = LOX_WAL_SYNC_FLUSH_ONLY;
@@ -345,10 +417,16 @@ static bool init_db() {
                   (unsigned)cfg.wal_compact_threshold_pct);
     return false;
   }
-  rc = lox_ts_register(&g_db, "stress_ts", LOX_TS_U32, 0u);
-  if (!(rc == LOX_OK || rc == LOX_ERR_EXISTS)) {
-    Serial.printf("[ERR] lox_ts_register(stress_ts) rc=%d\n", (int)rc);
-    return false;
+  {
+    uint32_t i;
+    for (i = 0u; i < kTsStreamCount; ++i) {
+      rc = lox_ts_register(&g_db, kTsStreams[i], LOX_TS_U32, 0u);
+      if (!(rc == LOX_OK || rc == LOX_ERR_EXISTS)) {
+        Serial.printf("[ERR] lox_ts_register(%s) rc=%d\n", kTsStreams[i], (int)rc);
+        return false;
+      }
+      g_ts_seq[i] = 0u;
+    }
   }
   if (!setup_rel()) {
     Serial.println("[ERR] setup_rel failed");
@@ -357,41 +435,109 @@ static bool init_db() {
   return true;
 }
 
-static void do_one_op() {
-  uint32_t r = rng_next() % 3u;
-  if (g_mode == MODE_KV) r = 0u;
-  else if (g_mode == MODE_TS) r = 1u;
-  else if (g_mode == MODE_REL) r = 2u;
-  lox_err_t rc;
-  if (r == 0u) {
-    char key[24];
-    uint32_t v = rng_next();
-    snprintf(key, sizeof(key), "bulk_%06lu", (unsigned long)(g_ops % 100000u));
-    rc = lox_kv_put(&g_db, key, &v, sizeof(v));
-    if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
-      (void)lox_compact(&g_db);
-    }
-  } else if (r == 1u) {
-    uint32_t v = rng_next();
-    g_ts++;
-    rc = lox_ts_insert(&g_db, "stress_ts", g_ts, &v);
-    if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
-      (void)lox_compact(&g_db);
-    }
+static const char *profile_name(bench_profile_t p) {
+  switch (p) {
+    case PROFILE_SMOKE: return "smoke";
+    case PROFILE_STRESS: return "stress";
+    default: return "soak";
+  }
+}
+
+static void apply_profile(bench_profile_t p) {
+  g_profile = p;
+  if (p == PROFILE_SMOKE) {
+    g_w_kv = 45u; g_w_ts = 30u; g_w_rel = 25u;
+  } else if (p == PROFILE_STRESS) {
+    g_w_kv = 25u; g_w_ts = 35u; g_w_rel = 40u;
   } else {
-    uint8_t row[64];
-    uint32_t v = rng_next();
-    memset(row, 0, sizeof(row));
-    rc = lox_row_set(g_rel, row, "id", &g_rel_next_id);
-    if (rc != LOX_OK) return;
-    rc = lox_row_set(g_rel, row, "v", &v);
-    if (rc != LOX_OK) return;
-    rc = lox_rel_insert(&g_db, g_rel, row);
+    g_w_kv = 35u; g_w_ts = 35u; g_w_rel = 30u;
+  }
+  Serial.printf("[OK] profile=%s mix=%u/%u/%u\n", profile_name(g_profile),
+                (unsigned)g_w_kv, (unsigned)g_w_ts, (unsigned)g_w_rel);
+}
+
+static void maybe_compact(lox_err_t rc) {
+  if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+    uint32_t t0 = millis();
+    (void)lox_compact(&g_db);
+    g_compact_count++;
+    g_last_compact_ms = millis() - t0;
+  }
+}
+
+static void op_kv(void) {
+  char key[32];
+  uint32_t v = rng_next();
+  uint32_t idx = (uint32_t)((g_kv_rr++) % kKvKeySpace);
+  snprintf(key, sizeof(key), "bulk_%05lu", (unsigned long)idx);
+  maybe_compact(lox_kv_put(&g_db, key, &v, sizeof(v)));
+  if (g_verify_enabled && ((g_ops & 0x3Fu) == 0u)) {
+    uint32_t out = 0u;
+    size_t out_len = sizeof(out);
+    lox_err_t rc = lox_kv_get(&g_db, key, &out, sizeof(out), &out_len);
+    if (rc == LOX_OK && out_len == sizeof(out)) g_verify_ok++;
+    else g_verify_fail++;
+  }
+}
+
+static void op_ts(void) {
+  uint8_t si = g_ts_rr;
+  uint32_t v = rng_next();
+  g_ts_seq[si]++;
+  maybe_compact(lox_ts_insert(&g_db, kTsStreams[si], g_ts_seq[si], &v));
+  if (g_verify_enabled && ((g_ops & 0x7Fu) == 0u)) {
+    lox_ts_sample_t sample;
+    lox_err_t rc = lox_ts_last(&g_db, kTsStreams[si], &sample);
+    if (rc == LOX_OK) g_verify_ok++;
+    else g_verify_fail++;
+  }
+  g_ts_rr = (uint8_t)((g_ts_rr + 1u) % kTsStreamCount);
+}
+
+static void op_rel(void) {
+  uint8_t row[128];
+  uint32_t v = rng_next();
+  uint32_t ti = (uint32_t)g_rel_rr % kRelTableCount;
+  lox_table_t *rel = g_rel_tables[ti];
+  int32_t temp = (int32_t)(rng_next() & 0x7FFFu);
+  uint16_t flags = (uint16_t)(rng_next() & 0x3FFu);
+  uint64_t ts64 = (((uint64_t)rng_next()) << 32u) | (uint64_t)rng_next();
+  memset(row, 0, sizeof(row));
+  if (lox_row_set(rel, row, "id", &g_rel_next_id) != LOX_OK) return;
+  if (lox_row_set(rel, row, "v", &v) != LOX_OK) return;
+  if (ti % 2u == 0u) {
+    if (lox_row_set(rel, row, "temp", &temp) != LOX_OK) return;
+  } else {
+    if (lox_row_set(rel, row, "flags", &flags) != LOX_OK) return;
+  }
+  if (ti % 3u == 0u) {
+    if (lox_row_set(rel, row, "ts", &ts64) != LOX_OK) return;
+  }
+  {
+    lox_err_t rc = lox_rel_insert(&g_db, rel, row);
     if (rc == LOX_OK) {
       g_rel_next_id++;
-    } else if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
-      (void)lox_compact(&g_db);
+      g_rel_rr++;
+      if (g_verify_enabled && ((g_ops & 0x7Fu) == 0u)) {
+        uint32_t cnt = 0u;
+        if (lox_rel_count(rel, &cnt) == LOX_OK) g_verify_ok++;
+        else g_verify_fail++;
+      }
+    } else {
+      maybe_compact(rc);
     }
+  }
+}
+
+static void do_one_op() {
+  if (g_mode == MODE_KV) op_kv();
+  else if (g_mode == MODE_TS) op_ts();
+  else if (g_mode == MODE_REL) op_rel();
+  else {
+    uint16_t roll = (uint16_t)(rng_next() % 100u);
+    if (roll < g_w_kv) op_kv();
+    else if (roll < (uint16_t)(g_w_kv + g_w_ts)) op_ts();
+    else op_rel();
   }
   g_ops++;
 }
@@ -399,9 +545,28 @@ static void do_one_op() {
 static void print_usage() {
   Serial.println("Commands:");
   Serial.println("  run | pause | resume");
+  Serial.println("  profile smoke|soak|stress");
+  Serial.println("  verify on|off");
   Serial.println("  mode all|kv|ts|rel");
   Serial.println("  clear kv|ts|rel|all");
-  Serial.println("  compact | stats | resetdb");
+  Serial.println("  compact | stats | resetdb | formatdb");
+}
+
+static void set_profile_from_text(const String &arg) {
+  if (arg == "smoke") apply_profile(PROFILE_SMOKE);
+  else if (arg == "soak") apply_profile(PROFILE_SOAK);
+  else if (arg == "stress") apply_profile(PROFILE_STRESS);
+  else Serial.println("[ERR] profile must be smoke|soak|stress");
+}
+
+static void set_verify_from_text(const String &arg) {
+  if (arg == "on") g_verify_enabled = true;
+  else if (arg == "off") g_verify_enabled = false;
+  else {
+    Serial.println("[ERR] verify must be on|off");
+    return;
+  }
+  Serial.printf("[OK] verify=%s\n", g_verify_enabled ? "on" : "off");
 }
 
 static void set_mode_from_text(const String &arg) {
@@ -421,18 +586,43 @@ static void clear_engine(const String &arg) {
   if (arg == "kv") {
     rc = lox_kv_clear(&g_db);
   } else if (arg == "ts") {
-    rc = lox_ts_clear(&g_db, "stress_ts");
-    if (rc == LOX_OK) g_ts = 0u;
+    uint32_t i;
+    rc = LOX_OK;
+    for (i = 0u; i < kTsStreamCount; ++i) {
+      lox_err_t s = lox_ts_clear(&g_db, kTsStreams[i]);
+      if (s != LOX_OK) rc = s;
+      g_ts_seq[i] = 0u;
+    }
+    g_ts_rr = 0u;
   } else if (arg == "rel") {
-    rc = (g_rel != NULL) ? lox_rel_clear(&g_db, g_rel) : LOX_ERR_INVALID;
-    if (rc == LOX_OK) g_rel_next_id = 1u;
-  } else if (arg == "all") {
-    lox_err_t a = lox_kv_clear(&g_db);
-    lox_err_t b = lox_ts_clear(&g_db, "stress_ts");
-    lox_err_t c = (g_rel != NULL) ? lox_rel_clear(&g_db, g_rel) : LOX_ERR_INVALID;
-    if (a == LOX_OK && b == LOX_OK && c == LOX_OK) {
-      g_ts = 0u;
+    uint32_t i;
+    rc = LOX_OK;
+    for (i = 0u; i < kRelTableCount; ++i) {
+      lox_err_t t = (g_rel_tables[i] != NULL) ? lox_rel_clear(&g_db, g_rel_tables[i]) : LOX_ERR_INVALID;
+      if (t != LOX_OK) rc = t;
+    }
+    if (rc == LOX_OK) {
       g_rel_next_id = 1u;
+      g_rel_rr = 0u;
+    }
+  } else if (arg == "all") {
+    uint32_t i;
+    lox_err_t a = lox_kv_clear(&g_db);
+    lox_err_t b = LOX_OK;
+    lox_err_t c = LOX_OK;
+    for (i = 0u; i < kTsStreamCount; ++i) {
+      lox_err_t s = lox_ts_clear(&g_db, kTsStreams[i]);
+      if (s != LOX_OK) b = s;
+      g_ts_seq[i] = 0u;
+    }
+    g_ts_rr = 0u;
+    for (i = 0u; i < kRelTableCount; ++i) {
+      lox_err_t t = (g_rel_tables[i] != NULL) ? lox_rel_clear(&g_db, g_rel_tables[i]) : LOX_ERR_INVALID;
+      if (t != LOX_OK) c = t;
+    }
+    if (a == LOX_OK && b == LOX_OK && c == LOX_OK) {
+      g_rel_next_id = 1u;
+      g_rel_rr = 0u;
       Serial.println("[OK] clear all");
       return;
     }
@@ -462,6 +652,11 @@ static void show_stats() {
                 (unsigned long)st.rel_rows_total,
                 (unsigned long)st.wal_bytes_used,
                 (unsigned long)st.wal_bytes_total);
+  Serial.printf("[BENCH] profile=%s mode=%s verify=%s ok=%lu fail=%lu compact=%lu last_compact_ms=%lu streams=%lu tables=%lu\n",
+                profile_name(g_profile), mode_name(g_mode), g_verify_enabled ? "on" : "off",
+                (unsigned long)g_verify_ok, (unsigned long)g_verify_fail,
+                (unsigned long)g_compact_count, (unsigned long)g_last_compact_ms,
+                (unsigned long)st.ts_streams_registered, (unsigned long)st.rel_tables_count);
   lcd_status(p.kv_fill_pct, p.ts_fill_pct, p.rel_fill_pct, p.wal_fill_pct, p.near_full_risk_pct, &st);
   g_lcd_page ^= 1u;
 }
@@ -479,9 +674,21 @@ static void reset_db() {
     return;
   }
   g_ops = 0u;
-  g_ts = 0u;
+  memset(g_ts_seq, 0, sizeof(g_ts_seq));
+  g_ts_rr = 0u;
+  g_kv_rr = 0u;
   g_rel_next_id = 1u;
+  g_rel_rr = 0u;
+  g_verify_ok = 0u;
+  g_verify_fail = 0u;
+  g_compact_count = 0u;
+  g_last_compact_ms = 0u;
   Serial.println("[OK] db reset complete");
+}
+
+static void format_db() {
+  Serial.println("[INFO] formatting 128MiB image, this can take a while...");
+  reset_db();
 }
 
 void setup() {
@@ -517,6 +724,7 @@ void setup() {
     return;
   }
   g_db_ready = true;
+  apply_profile(PROFILE_SOAK);
   Serial.println("[OK] loxdb SD stress bench ready");
   Serial.printf("SD pins CLK=%d CMD=%d D0=%d D3=%d\n", SDMMC_PIN_CLK, SDMMC_PIN_CMD, SDMMC_PIN_D0, SDMMC_PIN_D3);
   Serial.printf("LCD pins SCLK=%d MOSI=%d CS=%d DC=%d RST=%d\n", LCD_PIN_SCLK, LCD_PIN_MOSI, LCD_PIN_CS, LCD_PIN_DC, LCD_PIN_RST);
@@ -533,11 +741,19 @@ void loop() {
     if (c == '\n') {
       if (cmd == "run" || cmd == "resume") g_running = true;
       else if (cmd == "pause") g_running = false;
+      else if (cmd.startsWith("profile ")) set_profile_from_text(cmd.substring(8));
+      else if (cmd.startsWith("verify ")) set_verify_from_text(cmd.substring(7));
       else if (cmd.startsWith("mode ")) set_mode_from_text(cmd.substring(5));
       else if (cmd.startsWith("clear ")) clear_engine(cmd.substring(6));
-      else if (cmd == "compact") (void)lox_compact(&g_db);
+      else if (cmd == "compact") {
+        uint32_t t0 = millis();
+        (void)lox_compact(&g_db);
+        g_compact_count++;
+        g_last_compact_ms = millis() - t0;
+      }
       else if (cmd == "stats") show_stats();
       else if (cmd == "resetdb") reset_db();
+      else if (cmd == "formatdb") format_db();
       else if (cmd.length() > 0) print_usage();
       cmd = "";
     } else {

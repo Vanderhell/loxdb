@@ -7,7 +7,7 @@ on:
 
 jobs:
   soak:
-    name: ${{ matrix.label }}
+    name: ${{ matrix.label }}-${{ matrix.profile }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -20,6 +20,23 @@ jobs:
             exe_dir: build/ci-debug-linux
             exe_ext: ""
             ops: 450000
+            profile: deterministic
+          - os: ubuntu-latest
+            label: linux-debug
+            configure_preset: ci-debug-linux
+            build_preset: ci-debug-linux
+            exe_dir: build/ci-debug-linux
+            exe_ext: ""
+            ops: 450000
+            profile: balanced
+          - os: ubuntu-latest
+            label: linux-debug
+            configure_preset: ci-debug-linux
+            build_preset: ci-debug-linux
+            exe_dir: build/ci-debug-linux
+            exe_ext: ""
+            ops: 450000
+            profile: stress
           - os: windows-latest
             label: windows-debug
             configure_preset: ci-debug-windows
@@ -27,6 +44,23 @@ jobs:
             exe_dir: build/ci-debug-windows/Debug
             exe_ext: ".exe"
             ops: 450000
+            profile: deterministic
+          - os: windows-latest
+            label: windows-debug
+            configure_preset: ci-debug-windows
+            build_preset: ci-debug-windows
+            exe_dir: build/ci-debug-windows/Debug
+            exe_ext: ".exe"
+            ops: 450000
+            profile: balanced
+          - os: windows-latest
+            label: windows-debug
+            configure_preset: ci-debug-windows
+            build_preset: ci-debug-windows
+            exe_dir: build/ci-debug-windows/Debug
+            exe_ext: ".exe"
+            ops: 450000
+            profile: stress
 
     steps:
       - name: Checkout
@@ -43,32 +77,26 @@ jobs:
         timeout-minutes: 30
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $profiles = @("deterministic", "balanced", "stress")
           $runner = Join-Path "${{ matrix.exe_dir }}" ("worstcase_matrix_runner${{ matrix.exe_ext }}")
           if (-not (Test-Path $runner)) {
             throw "Runner binary not found: $runner"
           }
-          foreach ($p in $profiles) {
-            & $runner --profile $p 2>&1 |
-              Tee-Object -FilePath ("artifacts/worstcase_matrix_{0}.csv" -f $p)
-          }
+          & $runner --profile "${{ matrix.profile }}" 2>&1 |
+            Tee-Object -FilePath ("artifacts/worstcase_matrix_{0}.csv" -f "${{ matrix.profile }}")
 
       - name: Run long soak
         shell: pwsh
         timeout-minutes: 90
         run: |
-          $profiles = @("deterministic", "balanced", "stress")
           $runner = Join-Path "${{ matrix.exe_dir }}" ("soak_runner${{ matrix.exe_ext }}")
           if (-not (Test-Path $runner)) {
             throw "Runner binary not found: $runner"
           }
-          foreach ($p in $profiles) {
-            & $runner --profile $p --ops ${{ matrix.ops }} 2>&1 |
-              Tee-Object -FilePath ("artifacts/soak_{0}.csv" -f $p)
-          }
+          & $runner --profile "${{ matrix.profile }}" --ops ${{ matrix.ops }} 2>&1 |
+            Tee-Object -FilePath ("artifacts/soak_{0}.csv" -f "${{ matrix.profile }}")
 
       - name: Upload soak artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-soak-${{ matrix.label }}
+          name: nightly-soak-${{ matrix.label }}-${{ matrix.profile }}
           path: artifacts/*
