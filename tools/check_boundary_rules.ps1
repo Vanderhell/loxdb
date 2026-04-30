@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
