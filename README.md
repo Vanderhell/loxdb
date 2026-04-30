@@ -328,6 +328,10 @@ CI execution volume per `ci.yml` run is higher because the same suite runs on mu
 - `build` matrix (`linux`, `windows`, `macOS`): `3 x 76 = 228` test executions
 - `sanitize-linux` lane: additional `76` test executions
 - total in `ci.yml`: **304 test executions** (same test set across environments/instrumentation)
+Nightly soak (`nightly-soak.yml`) is benchmark-oriented (not CTest-count-oriented):
+- lanes: `linux-debug`, `windows-debug`
+- per lane: `3` worstcase-matrix profile runs + `3` long soak profile runs
+- total per nightly run: **12 benchmark runs** (`2 x (3 + 3)`)
 
 See CI and deep docs for current matrix:
 - [ci.yml](.github/workflows/ci.yml)
