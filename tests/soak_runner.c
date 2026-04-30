@@ -254,6 +254,21 @@ static lox_err_t retry_kv_probe_get(uint32_t *probe_out, size_t *out_len) {
     return rc;
 }
 
+static lox_err_t retry_rel_insert_pressure(lox_table_t *t, uint8_t *row) {
+    uint32_t attempt;
+    lox_err_t rc = LOX_ERR_INVALID;
+    for (attempt = 0u; attempt < 8u; ++attempt) {
+        rc = lox_rel_insert(&g_db, t, row);
+        if (rc == LOX_OK) return LOX_OK;
+        if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
+            if (!handle_backpressure()) return LOX_ERR_STORAGE;
+            continue;
+        }
+        return rc;
+    }
+    return rc;
+}
+
 static int verify_model(const model_t *m) {
     uint32_t i;
     lox_table_t *t = NULL;
@@ -426,21 +441,14 @@ int main(int argc, char **argv) {
             rc = lox_row_set(t, row, "v", &rv);
             if (rc != LOX_OK) return fail_loxdb("lox_row_set(loop,v)", rc, 1);
             if (!model.rel_present[id]) {
-                rc = lox_rel_insert(&g_db, t, row);
+                rc = retry_rel_insert_pressure(t, row);
                 if (rc == LOX_OK) {
                     model.rel_present[id] = 1;
                     model.rel_count++;
+                } else if (rc == LOX_ERR_FULL || rc == LOX_ERR_STORAGE) {
+                    continue;
                 } else {
-                    if (!handle_backpressure()) return 1;
-                    rc = lox_rel_insert(&g_db, t, row);
-                    if (rc == LOX_OK) {
-                        model.rel_present[id] = 1;
-                        model.rel_count++;
-                    } else if (rc == LOX_ERR_FULL || rc == LOX_ERR_STORAGE) {
-                        continue;
-                    } else {
-                        return fail_loxdb("lox_rel_insert(loop)", rc, 1);
-                    }
+                    return fail_loxdb("lox_rel_insert(loop)", rc, 1);
                 }
             }
             dt = now_us() - t0;
