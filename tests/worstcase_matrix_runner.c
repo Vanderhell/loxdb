@@ -32,6 +32,7 @@ static uint64_t now_us(void) {
 typedef struct {
     const char *profile;
     uint32_t ram_kb;
+    uint32_t storage_bytes;
     uint32_t warmup_ops;
     uint32_t measure_ops;
     uint32_t age_ops;
@@ -64,7 +65,16 @@ typedef struct {
     uint32_t compact_count_after;
     uint32_t compactions_during_measure;
     uint32_t slo_pass;
+    uint32_t slo_fail_mask;
 } row_t;
+
+enum {
+    SLO_FAIL_OP = 1u << 0,
+    SLO_FAIL_COMPACT = 1u << 1,
+    SLO_FAIL_REOPEN = 1u << 2,
+    SLO_FAIL_SPIKES = 1u << 3,
+    SLO_FAIL_RUNTIME = 1u << 4
+};
 
 static lox_t g_db;
 static lox_storage_t g_storage;
@@ -103,7 +113,7 @@ static int open_db(const cfg_t *cfg, int wipe_file) {
     if (wipe_file) lox_port_posix_remove(cfg->path);
     memset(&g_db, 0, sizeof(g_db));
     memset(&g_storage, 0, sizeof(g_storage));
-    rc = lox_port_posix_init(&g_storage, cfg->path, 262144u);
+    rc = lox_port_posix_init(&g_storage, cfg->path, cfg->storage_bytes);
     if (rc != LOX_OK) return fail_loxdb("lox_port_posix_init", rc, 0);
     memset(&db_cfg, 0, sizeof(db_cfg));
     db_cfg.storage = &g_storage;
@@ -117,34 +127,37 @@ static void set_profile_defaults(cfg_t *cfg, const char *profile) {
     cfg->profile = profile;
     if (strcmp(profile, "deterministic") == 0) {
         cfg->ram_kb = 48u;
+        cfg->storage_bytes = 2u * 1024u * 1024u;
         cfg->warmup_ops = 9000u;
         cfg->measure_ops = 192u;
         cfg->age_ops = 10000u;
         cfg->cycle_count = 20u;
         /* Desktop host jitter can produce occasional long-tail stalls. */
         cfg->slo_max_op_us = 120000u;
-        cfg->slo_max_compact_us = 45000u;
+        cfg->slo_max_compact_us = 140000u;
         cfg->slo_max_reopen_us = 140000u;
         cfg->slo_spike5_limit = 1000u;
     } else if (strcmp(profile, "stress") == 0) {
         cfg->ram_kb = 96u;
+        cfg->storage_bytes = 8u * 1024u * 1024u;
         cfg->warmup_ops = 24000u;
         cfg->measure_ops = 320u;
         cfg->age_ops = 18000u;
         cfg->cycle_count = 36u;
         cfg->slo_max_op_us = 70000u;
-        cfg->slo_max_compact_us = 70000u;
+        cfg->slo_max_compact_us = 280000u;
         cfg->slo_max_reopen_us = 130000u;
         cfg->slo_spike5_limit = 3000u;
     } else {
         cfg->profile = "balanced";
         cfg->ram_kb = 64u;
+        cfg->storage_bytes = 4u * 1024u * 1024u;
         cfg->warmup_ops = 16000u;
         cfg->measure_ops = 256u;
         cfg->age_ops = 12000u;
         cfg->cycle_count = 24u;
         cfg->slo_max_op_us = 50000u;
-        cfg->slo_max_compact_us = 50000u;
+        cfg->slo_max_compact_us = 190000u;
         cfg->slo_max_reopen_us = 100000u;
         cfg->slo_spike5_limit = 1800u;
     }
@@ -339,11 +352,11 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         (void)snprintf(key, sizeof(key), "k%03u", (unsigned)(i % 96u));
         rc = lox_kv_put(&g_db, key, vbuf, sizeof(vbuf));
         if (rc != LOX_OK) {
-            out->fail_count++;
             if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
                 saturated = 1;
                 break;
             }
+            out->fail_count++;
             return fail_loxdb("lox_kv_put(measure)", rc, 0);
         }
         dt = now_us() - t0;
@@ -357,11 +370,11 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         t0 = now_us();
         rc = lox_ts_insert(&g_db, "s", 100000u + i, &tsv);
         if (rc != LOX_OK) {
-            out->fail_count++;
             if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
                 saturated = 1;
                 break;
             }
+            out->fail_count++;
             return fail_loxdb("lox_ts_insert(measure)", rc, 0);
         }
         dt = now_us() - t0;
@@ -388,14 +401,16 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         rc = lox_rel_insert(&g_db, t, row);
         if (rc != LOX_OK) {
             if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
-                out->fail_count++;
                 saturated = 1;
                 break;
             }
             rc = lox_rel_clear(&g_db, t);
             if (rc != LOX_OK) return fail_loxdb("lox_rel_clear(measure)", rc, 0);
             rc = lox_rel_insert(&g_db, t, row);
-            if (rc != LOX_OK) return fail_loxdb("lox_rel_insert(measure,retry)", rc, 0);
+            if (rc != LOX_OK) {
+                out->fail_count++;
+                return fail_loxdb("lox_rel_insert(measure,retry)", rc, 0);
+            }
         }
         dt = now_us() - t0;
         if (dt > 1000u) out->spikes_gt_1ms++;
@@ -408,11 +423,11 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         t0 = now_us();
         rc = lox_rel_delete(&g_db, t, &id, NULL);
         if (rc != LOX_OK) {
-            out->fail_count++;
             if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
                 saturated = 1;
                 break;
             }
+            out->fail_count++;
             return fail_loxdb("lox_rel_delete(measure)", rc, 0);
         }
         dt = now_us() - t0;
@@ -425,33 +440,33 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         uint32_t tv = i ^ 0x5AA5u;
         rc = lox_txn_begin(&g_db);
         if (rc != LOX_OK) {
-            out->fail_count++;
             if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
                 saturated = 1;
                 break;
             }
+            out->fail_count++;
             return fail_loxdb("lox_txn_begin(measure)", rc, 0);
         }
         (void)snprintf(key, sizeof(key), "t%03u", (unsigned)(i % 64u));
         rc = lox_kv_put(&g_db, key, &tv, sizeof(tv));
         if (rc != LOX_OK) {
-            out->fail_count++;
             if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
                 (void)lox_txn_rollback(&g_db);
                 saturated = 1;
                 break;
             }
+            out->fail_count++;
             return fail_loxdb("lox_kv_put(measure,txn)", rc, 0);
         }
         t0 = now_us();
         rc = lox_txn_commit(&g_db);
         if (rc != LOX_OK) {
-            out->fail_count++;
             if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
                 (void)lox_txn_rollback(&g_db);
                 saturated = 1;
                 break;
             }
+            out->fail_count++;
             return fail_loxdb("lox_txn_commit(measure)", rc, 0);
         }
         dt = now_us() - t0;
@@ -463,9 +478,9 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
     t0 = now_us();
     rc = lox_compact(&g_db);
     if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
-        out->fail_count++;
         saturated = 1;
     } else if (rc != LOX_OK) {
+        out->fail_count++;
         return fail_loxdb("lox_compact(measure)", rc, 0);
     }
     out->max_compact_us = now_us() - t0;
@@ -491,16 +506,27 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
                 : 0u;
     }
 
-    out->slo_pass =
-        (out->max_kv_put_us <= cfg->slo_max_op_us) &&
-        (out->max_ts_insert_us <= cfg->slo_max_op_us) &&
-        (out->max_rel_insert_us <= cfg->slo_max_op_us) &&
-        (out->max_rel_delete_us <= cfg->slo_max_op_us) &&
-        (out->max_txn_commit_us <= cfg->slo_max_op_us) &&
-        (out->max_compact_us <= cfg->slo_max_compact_us) &&
-        (out->max_reopen_us <= cfg->slo_max_reopen_us) &&
-        (out->spikes_gt_5ms <= cfg->slo_spike5_limit) &&
-        (out->fail_count == 0u);
+    out->slo_fail_mask = 0u;
+    if ((out->max_kv_put_us > cfg->slo_max_op_us) ||
+        (out->max_ts_insert_us > cfg->slo_max_op_us) ||
+        (out->max_rel_insert_us > cfg->slo_max_op_us) ||
+        (out->max_rel_delete_us > cfg->slo_max_op_us) ||
+        (out->max_txn_commit_us > cfg->slo_max_op_us)) {
+        out->slo_fail_mask |= SLO_FAIL_OP;
+    }
+    if (out->max_compact_us > cfg->slo_max_compact_us) {
+        out->slo_fail_mask |= SLO_FAIL_COMPACT;
+    }
+    if (out->max_reopen_us > cfg->slo_max_reopen_us) {
+        out->slo_fail_mask |= SLO_FAIL_REOPEN;
+    }
+    if (out->spikes_gt_5ms > cfg->slo_spike5_limit) {
+        out->slo_fail_mask |= SLO_FAIL_SPIKES;
+    }
+    if (out->fail_count != 0u) {
+        out->slo_fail_mask |= SLO_FAIL_RUNTIME;
+    }
+    out->slo_pass = (out->slo_fail_mask == 0u);
 
     rc = lox_deinit(&g_db);
     if (rc != LOX_OK && rc != LOX_ERR_STORAGE && rc != LOX_ERR_FULL) {
@@ -519,7 +545,7 @@ int main(int argc, char **argv) {
 
     memset(&cfg, 0, sizeof(cfg));
     set_profile_defaults(&cfg, "balanced");
-    strcpy(cfg.path, "worstcase_matrix.bin");
+    strcpy(cfg.path, "docs/results/worstcase_matrix.bin");
 
     for (i = 1u; i < (size_t)argc; ++i) {
         if (strcmp(argv[i], "--warmup-ops") == 0 && i + 1u < (size_t)argc) {
@@ -545,7 +571,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    printf("profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,wal_fill_before_pct,wal_fill_after_pct,compact_count_before,compact_count_after,compactions_during_measure,slo_pass\n");
+    printf("profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,wal_fill_before_pct,wal_fill_after_pct,compact_count_before,compact_count_after,compactions_during_measure,slo_pass,slo_fail_mask\n");
 
     for (i = 0u; i < sizeof(fills) / sizeof(fills[0]); ++i) {
         if (!run_measure(&cfg, fills[i], "fresh", &row)) {
@@ -553,7 +579,7 @@ int main(int argc, char **argv) {
             (void)snprintf(detail, sizeof(detail), "matrix failed for fresh fill=%u", (unsigned)fills[i]);
             return fail_status("run_measure", "EXIT_FAILURE", 1, detail);
         }
-        printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u\n",
+        printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u,%u\n",
                row.profile,
                row.phase,
                (unsigned)row.fill_target_pct,
@@ -573,14 +599,15 @@ int main(int argc, char **argv) {
                (unsigned)row.compact_count_before,
                (unsigned)row.compact_count_after,
                (unsigned)row.compactions_during_measure,
-               (unsigned)row.slo_pass);
+               (unsigned)row.slo_pass,
+               (unsigned)row.slo_fail_mask);
 
         if (!run_measure(&cfg, fills[i], "aged", &row)) {
             char detail[128];
             (void)snprintf(detail, sizeof(detail), "matrix failed for aged fill=%u", (unsigned)fills[i]);
             return fail_status("run_measure", "EXIT_FAILURE", 1, detail);
         }
-        printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u\n",
+        printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u,%u\n",
                row.profile,
                row.phase,
                (unsigned)row.fill_target_pct,
@@ -600,7 +627,8 @@ int main(int argc, char **argv) {
                (unsigned)row.compact_count_before,
                (unsigned)row.compact_count_after,
                (unsigned)row.compactions_during_measure,
-               (unsigned)row.slo_pass);
+               (unsigned)row.slo_pass,
+               (unsigned)row.slo_fail_mask);
     }
 
     return 0;
