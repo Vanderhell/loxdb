@@ -72,6 +72,7 @@ static uint32_t g_ops = 0u;
 static uint32_t g_ts = 0u;
 static uint32_t g_rel_next_id = 1u;
 static lox_table_t *g_rel = NULL;
+static uint8_t g_lcd_page = 0u;
 
 #if SDSTRESS_LCD_ENABLE
 static Adafruit_ST7735 g_tft(LCD_PIN_CS, LCD_PIN_DC, LCD_PIN_RST);
@@ -213,7 +214,7 @@ static void lcd_init() {
 #endif
 }
 
-static void lcd_status(uint8_t kv, uint8_t ts, uint8_t rel, uint8_t wal) {
+static void lcd_status_page0(uint8_t kv, uint8_t ts, uint8_t rel, uint8_t wal, uint8_t risk) {
 #if SDSTRESS_LCD_ENABLE
   if (!g_lcd_ready) return;
   g_tft.fillScreen(ST77XX_BLACK);
@@ -231,8 +232,38 @@ static void lcd_status(uint8_t kv, uint8_t ts, uint8_t rel, uint8_t wal) {
   g_tft.setCursor(2, 56);
   g_tft.printf("REL: %3u%%", (unsigned)rel);
   g_tft.setCursor(2, 68);
-  g_tft.printf("WAL: %3u%%", (unsigned)wal);
+  g_tft.printf("WAL: %3u%% R:%3u%%", (unsigned)wal, (unsigned)risk);
 #endif
+}
+
+static void lcd_status_page1(const lox_stats_t *st) {
+#if SDSTRESS_LCD_ENABLE
+  if (!g_lcd_ready || st == NULL) return;
+  g_tft.fillScreen(ST77XX_BLACK);
+  g_tft.setTextSize(1);
+  g_tft.setTextColor(ST77XX_YELLOW);
+  g_tft.setCursor(2, 2);
+  g_tft.println("loxdb SD stress");
+  g_tft.setTextColor(ST77XX_WHITE);
+  g_tft.setCursor(2, 18);
+  g_tft.printf("KV:%lu/%lu", (unsigned long)st->kv_entries_used, (unsigned long)st->kv_entries_max);
+  g_tft.setCursor(2, 30);
+  g_tft.printf("TS:%lu", (unsigned long)st->ts_samples_total);
+  g_tft.setCursor(2, 42);
+  g_tft.printf("REL rows:%lu", (unsigned long)st->rel_rows_total);
+  g_tft.setCursor(2, 54);
+  g_tft.printf("WAL:%lu/%lu", (unsigned long)st->wal_bytes_used, (unsigned long)st->wal_bytes_total);
+  g_tft.setCursor(2, 66);
+  g_tft.printf("str:%lu tbl:%lu", (unsigned long)st->ts_streams_registered, (unsigned long)st->rel_tables_count);
+#endif
+}
+
+static void lcd_status(uint8_t kv, uint8_t ts, uint8_t rel, uint8_t wal, uint8_t risk, const lox_stats_t *st) {
+  if (g_lcd_page == 0u) {
+    lcd_status_page0(kv, ts, rel, wal, risk);
+  } else {
+    lcd_status_page1(st);
+  }
 }
 
 static bool init_db() {
@@ -309,11 +340,21 @@ static void print_usage() {
 
 static void show_stats() {
   lox_pressure_t p;
+  lox_stats_t st;
   if (lox_get_pressure(&g_db, &p) != LOX_OK) return;
+  if (lox_inspect(&g_db, &st) != LOX_OK) return;
   Serial.printf("[PRESSURE] kv=%u ts=%u rel=%u wal=%u risk=%u ops=%lu\n",
                 p.kv_fill_pct, p.ts_fill_pct, p.rel_fill_pct, p.wal_fill_pct,
                 p.near_full_risk_pct, (unsigned long)g_ops);
-  lcd_status(p.kv_fill_pct, p.ts_fill_pct, p.rel_fill_pct, p.wal_fill_pct);
+  Serial.printf("[STATS] kv=%lu/%lu ts_samples=%lu rel_rows=%lu wal=%lu/%lu\n",
+                (unsigned long)st.kv_entries_used,
+                (unsigned long)st.kv_entries_max,
+                (unsigned long)st.ts_samples_total,
+                (unsigned long)st.rel_rows_total,
+                (unsigned long)st.wal_bytes_used,
+                (unsigned long)st.wal_bytes_total);
+  lcd_status(p.kv_fill_pct, p.ts_fill_pct, p.rel_fill_pct, p.wal_fill_pct, p.near_full_risk_pct, &st);
+  g_lcd_page ^= 1u;
 }
 
 static void reset_db() {
