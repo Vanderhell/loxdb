@@ -77,6 +77,16 @@ static const uint32_t kReportEveryMs = 1000u;
 /* Bench default: start from clean DB image on every boot. */
 static const bool kFreshStartOnBoot = false;
 
+enum {
+  LOX_SCAN_WAL_MAGIC = 0x4D44424Cu,
+  LOX_SCAN_WAL_VERSION = 0x00010000u,
+  LOX_SCAN_SNAPSHOT_FORMAT_VERSION = 0x00020000u,
+  LOX_SCAN_KV_PAGE_MAGIC = 0x4B565047u,
+  LOX_SCAN_TS_PAGE_MAGIC = 0x54535047u,
+  LOX_SCAN_REL_PAGE_MAGIC = 0x524C5047u,
+  LOX_SCAN_SUPER_MAGIC = 0x53555052u
+};
+
 static lox_t g_db;
 static lox_storage_t g_storage;
 static File g_store;
@@ -150,6 +160,203 @@ static const char *mode_name(stress_mode_t m) {
 
 static void log_line(const char *msg) {
   Serial.println(msg);
+}
+
+static uint32_t read_u32_le(const uint8_t *p) {
+  uint32_t v = 0u;
+  memcpy(&v, p, sizeof(v));
+  return v;
+}
+
+static bool scan_magic_at(File &f, uint32_t off, uint32_t *out_magic, uint32_t *out_ver) {
+  uint8_t buf[8];
+  if (!f.seek(off)) return false;
+  if (f.read(buf, sizeof(buf)) != (int)sizeof(buf)) return false;
+  *out_magic = read_u32_le(buf + 0u);
+  *out_ver = read_u32_le(buf + 4u);
+  return true;
+}
+
+static bool looks_like_loxdb_image(File &f, uint32_t *out_magic, uint32_t *out_off) {
+  const uint32_t sz = (uint32_t)f.size();
+  const uint32_t offsets[] = {0u, 32u, 4096u, 8192u, 16384u, 65536u};
+  for (uint32_t i = 0u; i < (uint32_t)(sizeof(offsets) / sizeof(offsets[0])); ++i) {
+    uint32_t off = offsets[i];
+    uint32_t magic = 0u;
+    uint32_t ver = 0u;
+    if (off + 8u > sz) continue;
+    if (!scan_magic_at(f, off, &magic, &ver)) continue;
+    if (magic == LOX_SCAN_WAL_MAGIC && ver == LOX_SCAN_WAL_VERSION) {
+      *out_magic = magic;
+      *out_off = off;
+      return true;
+    }
+    if (magic == LOX_SCAN_SUPER_MAGIC && ver == LOX_SCAN_SNAPSHOT_FORMAT_VERSION) {
+      *out_magic = magic;
+      *out_off = off;
+      return true;
+    }
+    if ((magic == LOX_SCAN_KV_PAGE_MAGIC || magic == LOX_SCAN_TS_PAGE_MAGIC || magic == LOX_SCAN_REL_PAGE_MAGIC) &&
+        ver == LOX_SCAN_SNAPSHOT_FORMAT_VERSION) {
+      *out_magic = magic;
+      *out_off = off;
+      return true;
+    }
+  }
+  return false;
+}
+
+static String normalize_sd_path(const char *name) {
+  if (name == NULL) return String("/");
+  String s(name);
+  if (!s.startsWith("/")) s = String("/") + s;
+  return s;
+}
+
+static void cmd_slist() {
+  if (!mount_sd()) return;
+  File root = SD_MMC.open("/");
+  if (!root) {
+    Serial.println("[ERR] open / failed");
+    return;
+  }
+
+  uint32_t scanned = 0u;
+  uint32_t cand_idx = 0u;
+  uint32_t found = 0u;
+  Serial.println("SD loxdb artifacts (heuristic scan):");
+
+  while (true) {
+    File entry = root.openNextFile();
+    if (!entry) break;
+    if (entry.isDirectory()) {
+      entry.close();
+      continue;
+    }
+
+    String path = normalize_sd_path(entry.name());
+    uint32_t magic = 0u;
+    uint32_t off = 0u;
+    bool is_lox = looks_like_loxdb_image(entry, &magic, &off);
+    uint64_t sz = (uint64_t)entry.size();
+    entry.close();
+
+    if (is_lox) {
+      Serial.printf("  [%u] %s size=%llu magic=0x%08X off=%u%s\n",
+                    (unsigned)cand_idx,
+                    path.c_str(),
+                    (unsigned long long)sz,
+                    (unsigned)magic,
+                    (unsigned)off,
+                    (path == String(kStoragePath)) ? " (active)" : "");
+      found++;
+      cand_idx++;
+    }
+    scanned++;
+  }
+
+  root.close();
+  Serial.printf("[OK] scanned=%u, candidates=%u\n", (unsigned)scanned, (unsigned)found);
+  Serial.println("Use: swipe <index> confirm  OR  swipe all confirm");
+}
+
+static bool parse_uint32_strict(const String &s, uint32_t *out) {
+  if (s.length() == 0) return false;
+  uint32_t v = 0u;
+  for (uint32_t i = 0u; i < (uint32_t)s.length(); ++i) {
+    char c = s[(int)i];
+    if (c < '0' || c > '9') return false;
+    uint32_t next = v * 10u + (uint32_t)(c - '0');
+    if (next < v) return false;
+    v = next;
+  }
+  *out = v;
+  return true;
+}
+
+static void cmd_swipe(const String &arg) {
+  if (!mount_sd()) return;
+
+  String a = arg;
+  a.trim();
+  if (a.length() == 0) {
+    Serial.println("[ERR] swipe requires args: <index> confirm | all confirm");
+    return;
+  }
+
+  bool do_all = false;
+  uint32_t target = 0u;
+
+  if (a.startsWith("all")) {
+    do_all = true;
+    if (!a.endsWith("confirm")) {
+      Serial.println("[WARN] destructive: run `swipe all confirm` to delete ALL detected artifacts (except active).");
+      return;
+    }
+  } else {
+    int sp = a.indexOf(' ');
+    if (sp < 0) {
+      Serial.println("[ERR] swipe requires confirmation: `swipe <index> confirm`");
+      return;
+    }
+    String left = a.substring(0, sp);
+    String right = a.substring(sp + 1);
+    right.trim();
+    if (right != "confirm") {
+      Serial.println("[ERR] swipe requires confirmation: `swipe <index> confirm`");
+      return;
+    }
+    if (!parse_uint32_strict(left, &target)) {
+      Serial.println("[ERR] invalid index");
+      return;
+    }
+  }
+
+  File root = SD_MMC.open("/");
+  if (!root) {
+    Serial.println("[ERR] open / failed");
+    return;
+  }
+
+  uint32_t cand_idx = 0u;
+  uint32_t deleted = 0u;
+  uint32_t candidates = 0u;
+
+  while (true) {
+    File entry = root.openNextFile();
+    if (!entry) break;
+    if (entry.isDirectory()) {
+      entry.close();
+      continue;
+    }
+
+    String path = normalize_sd_path(entry.name());
+    uint32_t magic = 0u;
+    uint32_t off = 0u;
+    bool is_lox = looks_like_loxdb_image(entry, &magic, &off);
+    entry.close();
+
+    if (is_lox) {
+      candidates++;
+      bool selected = do_all ? true : (cand_idx == target);
+      if (selected) {
+        if (path == String(kStoragePath)) {
+          Serial.printf("[SKIP] active image: %s\n", path.c_str());
+        } else {
+          if (SD_MMC.remove(path)) {
+            deleted++;
+            Serial.printf("[DEL] %s\n", path.c_str());
+          } else {
+            Serial.printf("[ERR] remove failed: %s\n", path.c_str());
+          }
+        }
+      }
+      cand_idx++;
+    }
+  }
+
+  root.close();
+  Serial.printf("[OK] candidates=%u deleted=%u\n", (unsigned)candidates, (unsigned)deleted);
 }
 
 static bool mount_sd() {
@@ -595,6 +802,8 @@ static void print_usage() {
   Serial.println("  verify on|off");
   Serial.println("  mode all|kv|ts|rel");
   Serial.println("  clear kv|ts|rel|all");
+  Serial.println("  slist");
+  Serial.println("  swipe <index> confirm | swipe all confirm");
   Serial.println("  compact | stats | resetdb | formatdb");
 }
 
@@ -791,6 +1000,8 @@ void loop() {
       else if (cmd.startsWith("verify ")) set_verify_from_text(cmd.substring(7));
       else if (cmd.startsWith("mode ")) set_mode_from_text(cmd.substring(5));
       else if (cmd.startsWith("clear ")) clear_engine(cmd.substring(6));
+      else if (cmd == "slist") cmd_slist();
+      else if (cmd.startsWith("swipe ")) cmd_swipe(cmd.substring(6));
       else if (cmd == "compact") {
         uint32_t t0 = millis();
         (void)lox_compact(&g_db);

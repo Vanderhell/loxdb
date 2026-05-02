@@ -197,68 +197,20 @@
   - desktop high-ops run still shows SLO misses (see summary verdicts)
 
 ## Future Request (SD Bench Ops)
-- [todo] Add filesystem-level DB artifact management for ESP32 SD benches:
+- [done] Add filesystem-level DB artifact management for ESP32 SD benches (2026-05-02):
   - scan mounted medium for existing LOX DB artifacts using magic/header validation (WAL/superblock/page magics)
   - expose listing/count of detected DB artifacts (and basic metadata such as size/path)
   - add optional cleanup helpers to remove selected stale artifacts safely
 
 ## Future Request (DB Image Management on Media)
-- [todo] Add full DB image management API and tooling for media with multiple LOX files:
-  - discovery:
-    - scan selected directory/tree for candidate DB files
-    - classify each file as `valid loxdb`, `corrupt loxdb`, or `non-loxdb`
-    - detect mixed-version artifacts and report format/version fields
-  - identity and fingerprint:
-    - read/validate magic headers (WAL, superblock, page magics)
-    - expose DB fingerprint/id (stable UUID-like identifier or deterministic hash)
-    - detect duplicate/copy images (same fingerprint, different path/name)
-  - metadata:
-    - file path, size, timestamps (created/modified/accessed)
-    - engine occupancy and pressure snapshot (kv/ts/rel/wal usage)
-    - table/stream counts and names (optional extended inspection mode)
-    - recovery state flags (clean, replay-needed, inconsistent)
-  - lifecycle operations:
-    - create new DB image with explicit profile/template (size/split/wal policy)
-    - open by id/path, set active DB, close active DB
-    - rename/move DB image
-    - clone/copy DB image
-    - delete one DB image
-    - bulk delete by filter (age/pattern/state) with dry-run preview
-  - capacity and allocation view:
-    - report medium total/free/used bytes
-    - report cumulative size of all detected LOX images
-    - report per-image allocated vs logically used space
-    - optional compaction recommendation per image based on pressure metrics
-  - index/catalog:
-    - optional media catalog file (manifest) for fast startup listing
-    - lazy reconcile between manifest and real FS scan
-    - auto-heal manifest when drift is detected
-  - filtering and query:
-    - filter images by name, tag, profile, age, size, health state
-    - sort by recent use, largest first, highest pressure, most stale
-    - paging support for large media inventories
-  - bench + UX integration:
-    - serial commands: `db list`, `db use <id>`, `db create`, `db rm`, `db info`
-    - optional LCD page showing active DB id/name + free space + image count
-    - startup policy switch: `fresh`, `reuse-last`, `reuse-by-name`, `auto-pick-healthy`
-  - diagnostics:
-    - structured error codes for scan/open/delete/manage operations
-    - verbose trace mode for field debugging on HW
-    - integrity check command (`db verify`) with summarized findings
-  - API shape proposal:
-    - `lox_media_scan(...)`
-    - `lox_media_list(...)`
-    - `lox_media_info(...)`
-    - `lox_media_create(...)`
-    - `lox_media_select(...)`
-    - `lox_media_delete(...)`
-    - `lox_media_compact(...)`
-    - `lox_media_verify(...)`
+- [moved-to-pro] Full DB image management API/tooling is `loxdb_pro` scope (2026-05-02):
+  - tracked in `docs/LOXDB_PRO_BACKLOG.md`
 
 ## Boundary Rules (loxdb vs loxdb_pro)
-- [todo] Enforce strict separation to avoid collisions between core and pro:
+- [done] Enforce strict separation to avoid collisions between core and pro (2026-05-02):
   - `loxdb` core stays engine/storage-only (`lox_*`), no multi-image filesystem manager in core public API
   - all DB image management (scan/list/select/delete/catalog) lives in `loxdb_pro` modules/tools only
+  - bench-only FS helpers like `slist/swipe` are allowed here as stress-bench tooling (not core API)
   - keep naming split:
     - core: `lox_*`
     - pro: `loxdb_*` / `loxpro_*` (no new overlapping core symbols)

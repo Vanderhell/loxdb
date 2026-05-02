@@ -71,11 +71,16 @@ Updated every second:
 
 - `run` / `resume` -> continue stress loop
 - `pause` -> pause writes
+- `profile smoke|soak|stress` -> switch bench profile weights/limits
+- `verify on|off` -> enable/disable periodic verification probes
 - `mode all|kv|ts|rel` -> switch write mode
 - `clear kv|ts|rel|all` -> clear selected engine data
 - `compact` -> force compact
 - `stats` -> print pressure snapshot
 - `resetdb` -> delete storage file and recreate database
+- `formatdb` -> recreate storage file (full erase)
+- `slist` -> list detected loxdb artifacts on SD (heuristic scan)
+- `swipe <index> confirm` / `swipe all confirm` -> delete detected artifacts (except active)
 
 ## Arduino dependencies
 
