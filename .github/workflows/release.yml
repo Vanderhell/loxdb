@@ -83,30 +83,30 @@ jobs:
         run: ctest --preset ${{ matrix.test_preset }}
 
       - name: Install
-        run: cmake --install ${{ matrix.build_dir }} --config Release --prefix stage/loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }}
+        run: cmake --install ${{ matrix.build_dir }} --config Release --prefix stage/loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}
 
       - name: Package archive (Linux)
         if: runner.os == 'Linux'
         working-directory: stage
-        run: tar -czf loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }} loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }}
+        run: tar -czf loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }} loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}
 
       - name: Package archive (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         working-directory: stage
-        run: Compress-Archive -Path loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }} -DestinationPath loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}
+        run: Compress-Archive -Path loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }} -DestinationPath loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}
 
       - name: Generate checksum (Linux)
         if: runner.os == 'Linux'
         working-directory: stage
-        run: sha256sum loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }} > loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}.sha256
+        run: sha256sum loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }} > loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}.sha256
 
       - name: Generate checksum (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         working-directory: stage
         run: |
-          $name = "loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}"
+          $name = "loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}"
           $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
           "$hash  $name" | Out-File -FilePath "$name.sha256" -Encoding ascii
 
@@ -115,8 +115,8 @@ jobs:
         with:
           name: release-${{ matrix.label }}
           path: |
-            stage/loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}
-            stage/loxdb-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}.sha256
+            stage/loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}
+            stage/loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}.sha256
 
   publish-release:
     name: Publish GitHub Release
@@ -128,10 +128,79 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="dev-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "value=${VERSION}" >> "${GITHUB_OUTPUT}"
+
       - name: Download bundles
         uses: actions/download-artifact@v4
         with:
           path: release-assets
+
+      - name: Build source distribution archive
+        shell: bash
+        run: |
+          set -eu
+          VERSION="${{ steps.version.outputs.value }}"
+          mkdir -p release-assets
+          git archive \
+            --format=zip \
+            --prefix="loxdb-source-${VERSION}/" \
+            --output="release-assets/loxdb-source-${VERSION}.zip" \
+            HEAD
+          sha256sum "release-assets/loxdb-source-${VERSION}.zip" > "release-assets/loxdb-source-${VERSION}.zip.sha256"
+
+      - name: Validate source archive contents and build
+        shell: bash
+        run: |
+          set -eu
+          VERSION="${{ steps.version.outputs.value }}"
+          SRC_ZIP="release-assets/loxdb-source-${VERSION}.zip"
+
+          rm -rf _source_extract _source_build _source_install _source_consumer
+          mkdir -p _source_extract
+          unzip -q "${SRC_ZIP}" -d _source_extract
+
+          SRC_DIR="_source_extract/loxdb-source-${VERSION}"
+          test -f "${SRC_DIR}/CMakeLists.txt"
+          test -f "${SRC_DIR}/include/lox.h"
+          test -f "${SRC_DIR}/src/loxdb.c"
+          test -f "${SRC_DIR}/src/lox_kv.c"
+          test -f "${SRC_DIR}/src/lox_ts.c"
+          test -f "${SRC_DIR}/src/lox_rel.c"
+          test -f "${SRC_DIR}/src/lox_wal.c"
+          test -f "${SRC_DIR}/src/lox_crc.c"
+          test -f "${SRC_DIR}/port/ram/lox_port_ram.c"
+          test -f "${SRC_DIR}/port/posix/lox_port_posix.c"
+          test -f "${SRC_DIR}/README.md"
+          test -f "${SRC_DIR}/LICENSE"
+
+          cmake -S "${SRC_DIR}" -B _source_build -DLOX_BUILD_TESTS=ON
+          cmake --build _source_build
+          ctest --test-dir _source_build --output-on-failure
+
+          cmake --install _source_build --prefix _source_install
+          mkdir -p _source_consumer
+          cat > _source_consumer/CMakeLists.txt << 'EOF'
+          cmake_minimum_required(VERSION 3.16)
+          project(loxdb_consumer LANGUAGES C)
+          find_package(loxdb CONFIG REQUIRED)
+          add_executable(consumer main.c)
+          target_link_libraries(consumer PRIVATE loxdb::loxdb)
+          EOF
+          cat > _source_consumer/main.c << 'EOF'
+          #include "lox.h"
+          int main(void) { (void)sizeof(lox_t); return 0; }
+          EOF
+          cmake -S _source_consumer -B _source_consumer/build -D CMAKE_PREFIX_PATH="$(pwd)/_source_install"
+          cmake --build _source_consumer/build
 
       - name: Import GPG signing key
         env:

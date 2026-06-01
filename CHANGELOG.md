@@ -42,6 +42,19 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
   - registered `test_selfcheck`, `test_wcet_bounds`, and `test_ts_log_retain` in CMake.
   - added dedicated `lox_ts_log_retain` test library target so default TS policy behavior remains unchanged.
 
+## [1.4.1] - YYYY-MM-DD
+
+### Changed
+
+- Release packaging clarity:
+  - release assets renamed to `loxdb-sdk-vX.Y.Z-<platform>` to make SDK/binary intent explicit.
+  - added explicit `loxdb-source-vX.Y.Z.zip` source distribution asset.
+  - source distribution is validated in release workflow (inventory + configure/build/test).
+- Version metadata alignment:
+  - `project(loxdb VERSION ...)`, `library.json`, and `library.properties` aligned to the release version.
+- CMake package install:
+  - SDK bundles include `loxdbConfig.cmake`, `loxdbConfigVersion.cmake`, and `loxdbTargets.cmake` for `find_package(loxdb CONFIG REQUIRED)`.
+
 ## [1.3.6] - 2026-04-22
 
 ### Added

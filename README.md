@@ -11,6 +11,12 @@
 [![Tests](https://img.shields.io/badge/tests-504%20microtests-brightgreen)](docs/TEST_SUITE_SIZE.md)
 [![Release](https://img.shields.io/github/v/release/Vanderhell/loxdb)](https://github.com/Vanderhell/loxdb/releases)
 
+## Release artifacts
+
+- GitHub “Source code (zip/tar.gz)” assets are automatic tag snapshots (source tree).
+- `loxdb-source-vX.Y.Z.zip` is the explicit source distribution asset (source + tests + tooling).
+- `loxdb-sdk-vX.Y.Z-<platform>.(zip|tar.gz)` assets are install-prefix SDK bundles (headers + libraries + CMake package files) and are not expected to include `src/*.c`.
+
 ## What is loxdb?
 
 loxdb is a compact embedded database written in C99 for firmware and small edge runtimes.
