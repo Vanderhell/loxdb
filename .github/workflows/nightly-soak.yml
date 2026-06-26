@@ -1,9 +1,15 @@
 name: Nightly Soak
 
 on:
-  schedule:
-    - cron: "0 1 * * 0"
+  # Temporarily disabled: keep this workflow manual-only until soak duration is reduced.
+  # schedule:
+  #   - cron: "0 1 * * 0"
   workflow_dispatch:
+    inputs:
+      run_soak:
+        description: "Run the long soak step"
+        type: boolean
+        default: false
 
 jobs:
   soak:
@@ -85,6 +91,7 @@ jobs:
             Tee-Object -FilePath ("artifacts/worstcase_matrix_{0}.csv" -f "${{ matrix.profile }}")
 
       - name: Run long soak
+        if: inputs.run_soak
         shell: pwsh
         timeout-minutes: 180
         run: |
