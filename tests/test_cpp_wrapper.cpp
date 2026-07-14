@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 #include "microtest.h"
+#include "lox_config.h"
 #include "lox_cpp.hpp"
 
+#include <cstddef>
 #include <cstring>
 
 static loxdb::cpp::Database g_db;
@@ -56,6 +58,33 @@ static void teardown_db(void) {
     }
 }
 
+struct cpp_handle_holder_t {
+    char pad;
+    lox_t handle;
+};
+
+struct cpp_schema_holder_t {
+    char pad;
+    lox_schema_t schema;
+};
+
+#pragma pack(push, 1)
+struct cpp_packed_handle_holder_t {
+    char pad;
+    lox_t handle;
+};
+
+struct cpp_packed_schema_holder_t {
+    char pad;
+    lox_schema_t schema;
+};
+#pragma pack(pop)
+
+static_assert(offsetof(cpp_handle_holder_t, handle) % sizeof(long double) == 0, "lox_t must remain aligned in C++");
+static_assert(offsetof(cpp_schema_holder_t, schema) % sizeof(long double) == 0, "lox_schema_t must remain aligned in C++");
+static_assert(offsetof(cpp_packed_handle_holder_t, handle) == 1, "packed C++ wrapper must stay packed");
+static_assert(offsetof(cpp_packed_schema_holder_t, schema) == 1, "packed C++ schema wrapper must stay packed");
+
 MDB_TEST(cpp_wrapper_reports_invalid_before_init) {
     loxdb::cpp::Database db;
     lox_stats_t stats;
@@ -64,6 +93,24 @@ MDB_TEST(cpp_wrapper_reports_invalid_before_init) {
     ASSERT_EQ(db.handle() == nullptr, 1);
     ASSERT_EQ(db.flush(), LOX_ERR_INVALID);
     ASSERT_EQ(db.stats(&stats), LOX_ERR_INVALID);
+}
+
+MDB_TEST(cpp_wrapper_public_abi_alignment_identity) {
+    lox_t local_handle;
+    lox_schema_t local_schema;
+    lox_cfg_t cfg;
+
+    std::memset(&local_handle, 0, sizeof(local_handle));
+    std::memset(&local_schema, 0, sizeof(local_schema));
+    std::memset(&cfg, 0, sizeof(cfg));
+    cfg.ram_kb = 32u;
+    ASSERT_EQ(lox_config_fingerprint(), (uint32_t)LOX_CONFIG_FINGERPRINT);
+    ASSERT_EQ(lox_schema_init(&local_schema, "cpp_align", 1u), LOX_OK);
+    ASSERT_EQ(lox_config_fingerprint() != 0u, 1);
+    ASSERT_EQ(sizeof(cpp_packed_handle_holder_t) > sizeof(lox_t), 1);
+    ASSERT_EQ(sizeof(cpp_packed_schema_holder_t) > sizeof(lox_schema_t), 1);
+    ASSERT_EQ(lox_init(&local_handle, &cfg), LOX_OK);
+    ASSERT_EQ(lox_deinit(&local_handle), LOX_OK);
 }
 
 MDB_TEST(cpp_wrapper_preflight_ram_only_ok) {
@@ -447,6 +494,7 @@ int main(void) {
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_preflight_invalid_split);
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_txn_reports_invalid_before_init);
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_reports_invalid_before_init);
+    MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_public_abi_alignment_identity);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_init_and_stats);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_handle_allows_core_api_usage);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_prevents_double_init);

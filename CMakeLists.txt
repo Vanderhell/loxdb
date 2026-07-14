@@ -596,6 +596,7 @@ install(
 install(
     FILES
         include/lox_capacity_profile.h
+        include/lox_config.h
         include/lox_json_wrapper.h
         include/lox_import_export.h
         include/lox_backend_adapter.h
@@ -711,6 +712,16 @@ if(LOX_BUILD_TESTS)
     target_include_directories(test_preflight PRIVATE include tests port/ram src)
     target_link_libraries(test_preflight PRIVATE loxdb)
     add_test(NAME test_preflight COMMAND test_preflight)
+
+    add_executable(test_public_abi_alignment tests/test_public_abi_alignment.c)
+    target_include_directories(test_public_abi_alignment PRIVATE include tests port/ram src)
+    target_link_libraries(test_public_abi_alignment PRIVATE loxdb)
+    add_test(NAME test_public_abi_alignment COMMAND test_public_abi_alignment)
+
+    add_executable(test_public_config_identity tests/test_public_config_identity.c)
+    target_include_directories(test_public_config_identity PRIVATE include tests port/ram src)
+    target_link_libraries(test_public_config_identity PRIVATE loxdb)
+    add_test(NAME test_public_config_identity COMMAND test_public_config_identity)
 
     if(TARGET lox_json_wrapper AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_json_wrapper.c")
         add_executable(test_json_wrapper tests/test_json_wrapper.c)
@@ -854,6 +865,28 @@ if(LOX_BUILD_TESTS)
     else()
         message(STATUS "Skipping test_tiny_size_guard: missing tests/check_tiny_size.cmake")
     endif()
+
+    add_test(
+        NAME test_strict_c99_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/strict_c99_gate.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/strict_c99_gate.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_strict_c99.cmake
+    )
+
+    add_test(
+        NAME test_config_identity_mismatch_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
 
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/footprint_min_baseline.c")
         add_executable(test_footprint_min_baseline tests/footprint_min_baseline.c)

@@ -177,6 +177,19 @@ LOX_STATIC_ASSERT(core_size_fits, sizeof(lox_core_t) <= sizeof(((lox_t *)0)->_op
 LOX_STATIC_ASSERT(schema_size_fits, sizeof(lox_schema_impl_t) <= sizeof(((lox_schema_t *)0)->_opaque));
 LOX_STATIC_ASSERT(table_size_fits, sizeof(struct lox_table_s) >= (LOX_REL_TABLE_NAME_LEN + sizeof(size_t)));
 
+typedef struct {
+    char pad;
+    lox_t value;
+} lox_handle_alignment_probe_t;
+
+typedef struct {
+    char pad;
+    lox_schema_t value;
+} lox_schema_alignment_probe_t;
+
+LOX_STATIC_ASSERT(handle_align_fits, offsetof(lox_handle_alignment_probe_t, value) % sizeof(long double) == 0);
+LOX_STATIC_ASSERT(schema_align_fits, offsetof(lox_schema_alignment_probe_t, value) % sizeof(long double) == 0);
+
 lox_core_t *lox_core(lox_t *db);
 const lox_core_t *lox_core_const(const lox_t *db);
 lox_err_t lox_kv_init(lox_t *db);

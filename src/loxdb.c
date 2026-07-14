@@ -95,6 +95,12 @@ const char *lox_err_to_string(lox_err_t err) {
     }
 }
 
+uint32_t lox_config_fingerprint(void) {
+    return 0x6C6F7864u ^ (uint32_t)LOX_HANDLE_SIZE ^ ((uint32_t)LOX_SCHEMA_SIZE << 1u) ^
+           ((uint32_t)sizeof(LOX_TIMESTAMP_TYPE) << 2u) ^ ((uint32_t)LOX_TS_RAW_MAX << 3u) ^
+           ((uint32_t)LOX_REL_INDEX_KEY_MAX << 4u) ^ 0x20u;
+}
+
 lox_err_t lox_preflight(const lox_cfg_t *cfg, lox_preflight_report_t *out) {
     uint32_t ram_kb;
     uint8_t kv_pct;

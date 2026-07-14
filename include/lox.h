@@ -199,12 +199,18 @@
  * Default is a no-op with zero production overhead.
  *
  * Example (printf):
- *   #define LOX_LOG(level, fmt, ...) \
- *       printf("[loxdb][%s] " fmt "\n", level, ##__VA_ARGS__)
+ *   static inline void lox_log_printf(const char *level, const char *fmt, ...)
+ *   {
+ *       va_list ap;
+ *       va_start(ap, fmt);
+ *       printf("[loxdb][%s] ", level);
+ *       vprintf(fmt, ap);
+ *       printf("\n");
+ *       va_end(ap);
+ *   }
  *
  * Example (ESP-IDF):
- *   #define LOX_LOG(level, fmt, ...) \
- *       ESP_LOGI("loxdb", "[%s] " fmt, level, ##__VA_ARGS__)
+ *   #define LOX_LOG(level, msg) ESP_LOGI("loxdb", "[%s] %s", level, msg)
  */
 #ifndef LOX_LOG
 #define LOX_LOG(level, fmt, ...) ((void)0)
@@ -258,12 +264,13 @@ typedef LOX_TIMESTAMP_TYPE lox_timestamp_t;
 #endif
 
 typedef struct {
+    long double _align;
     uint8_t _opaque[LOX_HANDLE_SIZE];
 } lox_t;
 
 typedef struct {
     uint16_t schema_version;
-    uintptr_t _align;
+    long double _align;
     uint8_t _opaque[LOX_SCHEMA_SIZE];
 } lox_schema_t;
 
@@ -291,6 +298,7 @@ typedef enum {
  * Unknown values return "LOX_ERR_UNKNOWN".
  */
 const char *lox_err_to_string(lox_err_t err);
+uint32_t lox_config_fingerprint(void);
 
 typedef struct {
     /* Legacy aggregate stats (kept for backward compatibility). */
