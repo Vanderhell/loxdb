@@ -116,21 +116,33 @@ enum {
     LOX_WAL_OP_REL_TABLE_CREATE = 7u
 };
 
-#define LOX_WAL_HEADER_SIZE 32u
-#define LOX_PAGE_HEADER_SIZE 32u
-#define LOX_SUPERBLOCK_SIZE 32u
-
 static uint32_t lox_align_u32(uint32_t value, uint32_t align) {
-    return (value + (align - 1u)) & ~(align - 1u);
+    size_t aligned = 0u;
+
+    if (!lox_checked_align_up_size((size_t)value, (size_t)align, &aligned) ||
+        !lox_checked_u32_from_size(aligned, &value)) {
+        return 0u;
+    }
+    return value;
 }
 
 static uint32_t lox_kv_snapshot_payload_max(const lox_core_t *core) {
     uint32_t max_entries;
-    uint32_t max_key_len = (LOX_KV_KEY_MAX_LEN > 0u) ? (LOX_KV_KEY_MAX_LEN - 1u) : 0u;
-    uint32_t per_entry = 1u + max_key_len + 4u + LOX_KV_VAL_MAX_LEN + 4u;
+    size_t per_entry = 0u;
+    size_t max_key_len = (LOX_KV_KEY_MAX_LEN > 0u) ? (size_t)(LOX_KV_KEY_MAX_LEN - 1u) : 0u;
+    size_t tmp = 0u;
     (void)core;
+    if (!lox_checked_add_size(1u, max_key_len, &tmp) ||
+        !lox_checked_add_size(tmp, 4u, &tmp) ||
+        !lox_checked_add_size(tmp, (size_t)LOX_KV_VAL_MAX_LEN, &tmp) ||
+        !lox_checked_add_size(tmp, 4u, &per_entry)) {
+        return 0u;
+    }
     max_entries = (LOX_KV_MAX_KEYS > LOX_TXN_STAGE_KEYS) ? (LOX_KV_MAX_KEYS - LOX_TXN_STAGE_KEYS) : 0u;
-    return max_entries * per_entry;
+    if (!lox_checked_mul_size((size_t)max_entries, per_entry, &tmp)) {
+        return 0u;
+    }
+    return (uint32_t)tmp;
 }
 
 static void lox_put_u32(uint8_t *dst, uint32_t value) {
@@ -192,10 +204,19 @@ static lox_err_t lox_storage_write_bytes(lox_core_t *core, uint32_t offset, cons
 static lox_err_t lox_storage_erase_region(lox_core_t *core, uint32_t offset, uint32_t size) {
     uint32_t pos;
 
+    if (core->storage->erase_size == 0u) {
+        return LOX_ERR_STORAGE;
+    }
     for (pos = 0u; pos < size; pos += core->storage->erase_size) {
-        LOX_IO_BEFORE_ERASE(offset + pos, core->storage->erase_size);
-        lox_err_t err = core->storage->erase(core->storage->ctx, offset + pos);
-        LOX_IO_AFTER_ERASE(offset + pos, core->storage->erase_size, err);
+        uint32_t erase_offset = 0u;
+        lox_err_t err;
+
+        if (!lox_checked_add_u32(offset, pos, &erase_offset)) {
+            return LOX_ERR_STORAGE;
+        }
+        LOX_IO_BEFORE_ERASE(erase_offset, core->storage->erase_size);
+        err = core->storage->erase(core->storage->ctx, erase_offset);
+        LOX_IO_AFTER_ERASE(erase_offset, core->storage->erase_size, err);
         if (err != LOX_OK) {
             return err;
         }
@@ -460,7 +481,7 @@ static lox_err_t lox_write_ts_page(lox_core_t *core, uint32_t bank, uint32_t gen
         }
 
         name_len = (uint8_t)strlen(stream->name);
-        if (offset + 1u + name_len + 1u + 4u + 4u > max_end) {
+        if (offset + 1u + name_len + 1u + 4u + 2u + 4u > max_end) {
             return LOX_ERR_STORAGE;
         }
         one = name_len;
@@ -493,6 +514,22 @@ static lox_err_t lox_write_ts_page(lox_core_t *core, uint32_t bank, uint32_t gen
         }
         crc = lox_crc32(crc, u32buf, 4u);
         offset += 4u;
+
+        one = stream->log_retain_zones;
+        err = lox_storage_write_bytes(core, offset, &one, 1u);
+        if (err != LOX_OK) {
+            return err;
+        }
+        crc = lox_crc32(crc, &one, 1u);
+        offset += 1u;
+
+        one = stream->log_retain_zone_pct;
+        err = lox_storage_write_bytes(core, offset, &one, 1u);
+        if (err != LOX_OK) {
+            return err;
+        }
+        crc = lox_crc32(crc, &one, 1u);
+        offset += 1u;
 
         lox_put_u32(u32buf, stream->count);
         err = lox_storage_write_bytes(core, offset, u32buf, 4u);
@@ -861,6 +898,7 @@ static lox_err_t lox_load_ts_page(lox_t *db, uint32_t bank, uint32_t expected_ge
     uint32_t stream_count;
     uint32_t payload_crc_calc = 0xFFFFFFFFu;
     uint32_t i;
+    lox_ts_log_retain_cfg_t cfg;
     lox_err_t err;
 
     err = lox_storage_read_bytes(core, page_offset, header, sizeof(header));
@@ -901,7 +939,7 @@ static lox_err_t lox_load_ts_page(lox_t *db, uint32_t bank, uint32_t expected_ge
         payload_crc_calc = lox_crc32(payload_crc_calc, &name_len, 1u);
         offset += 1u;
 
-        if (offset + name_len + 1u + 8u > payload_offset + payload_len) {
+        if (offset + name_len + 1u + 4u + 2u + 4u > payload_offset + payload_len) {
             return LOX_ERR_CORRUPT;
         }
         err = lox_storage_read_bytes(core, offset, name, name_len);
@@ -930,6 +968,13 @@ static lox_err_t lox_load_ts_page(lox_t *db, uint32_t bank, uint32_t expected_ge
             return LOX_ERR_CORRUPT;
         }
 
+        err = lox_storage_read_bytes(core, offset, &cfg, 2u);
+        if (err != LOX_OK) {
+            return LOX_ERR_CORRUPT;
+        }
+        payload_crc_calc = lox_crc32(payload_crc_calc, (const uint8_t *)&cfg, 2u);
+        offset += 2u;
+
         err = lox_storage_read_bytes(core, offset, u32buf, 4u);
         if (err != LOX_OK) {
             return LOX_ERR_CORRUPT;
@@ -938,7 +983,11 @@ static lox_err_t lox_load_ts_page(lox_t *db, uint32_t bank, uint32_t expected_ge
         sample_count = lox_get_u32(u32buf);
         offset += 4u;
 
-        err = lox_ts_register(db, name, (lox_ts_type_t)type_byte, raw_size);
+        if (cfg.log_retain_zones != 0u) {
+            err = lox_ts_register_ex(db, name, (lox_ts_type_t)type_byte, raw_size, &cfg);
+        } else {
+            err = lox_ts_register(db, name, (lox_ts_type_t)type_byte, raw_size);
+        }
         if (err != LOX_OK && err != LOX_ERR_EXISTS) {
             return err;
         }
@@ -1298,17 +1347,24 @@ static lox_err_t lox_apply_wal_entry(lox_t *db,
             char name[LOX_TS_STREAM_NAME_LEN];
             uint8_t type_byte;
             uint32_t raw_size;
+            lox_ts_log_retain_cfg_t cfg;
             if (data_len < 1u) {
                 return LOX_ERR_CORRUPT;
             }
             name_len = data[0];
-            if ((uint32_t)name_len >= LOX_TS_STREAM_NAME_LEN || data_len < (uint16_t)(1u + name_len + 5u)) {
+            if ((uint32_t)name_len >= LOX_TS_STREAM_NAME_LEN || data_len < (uint16_t)(1u + name_len + 7u)) {
                 return LOX_ERR_CORRUPT;
             }
             memcpy(name, data + 1u, name_len);
             name[name_len] = '\0';
             type_byte = data[1u + name_len];
             raw_size = lox_get_u32(data + 1u + name_len + 1u);
+            memset(&cfg, 0, sizeof(cfg));
+            cfg.log_retain_zones = data[1u + name_len + 5u];
+            cfg.log_retain_zone_pct = data[1u + name_len + 6u];
+            if (cfg.log_retain_zones != 0u) {
+                return lox_ts_register_ex(db, name, (lox_ts_type_t)type_byte, raw_size, &cfg);
+            }
             return lox_ts_register(db, name, (lox_ts_type_t)type_byte, raw_size);
         }
         if (op == LOX_WAL_OP_CLEAR) {
@@ -2087,30 +2143,39 @@ static lox_err_t lox_append_wal_entry(lox_t *db,
                                               const uint8_t *payload,
                                               uint16_t payload_len) {
     lox_core_t *core = lox_core(db);
-    uint32_t aligned_len = lox_align_u32(payload_len, 4u);
-    uint32_t entry_len = 16u + aligned_len;
+    uint32_t aligned_len = 0u;
+    uint32_t entry_len = 0u;
     uint32_t offset = 0u;
-    uint32_t pad_len = aligned_len - payload_len;
+    uint32_t pad_len = 0u;
     uint8_t header[16];
     uint8_t pad[4] = { 0u, 0u, 0u, 0u };
     uint8_t coalesced[320];
     uint32_t crc;
     lox_err_t err;
 
-    if (core->wal_used + entry_len > core->layout.wal_size) {
+    if (!lox_checked_u32_from_size((size_t)lox_align_u32(payload_len, 4u), &aligned_len) ||
+        !lox_checked_add_u32(16u, aligned_len, &entry_len)) {
+        return LOX_ERR_OVERFLOW;
+    }
+    pad_len = aligned_len - payload_len;
+
+    if (!lox_checked_add_u32(core->wal_used, entry_len, &offset) || offset > core->layout.wal_size) {
         err = lox_storage_flush(db);
         if (err != LOX_OK) {
             return err;
         }
     }
 
-    if (core->wal_used + entry_len > core->layout.wal_size) {
+    if (!lox_checked_add_u32(core->wal_used, entry_len, &offset) || offset > core->layout.wal_size) {
         return LOX_ERR_STORAGE;
     }
 
     memset(header, 0, sizeof(header));
     lox_put_u32(header + 0u, LOX_WAL_ENTRY_MAGIC);
-    lox_put_u32(header + 4u, core->wal_entry_count + 1u);
+    if (!lox_checked_add_u32(core->wal_entry_count, 1u, &offset)) {
+        return LOX_ERR_OVERFLOW;
+    }
+    lox_put_u32(header + 4u, offset);
     header[8] = engine;
     header[9] = op;
     lox_put_u16(header + 10u, payload_len);
@@ -2120,7 +2185,9 @@ static lox_err_t lox_append_wal_entry(lox_t *db,
     }
     lox_put_u32(header + 12u, crc);
 
-    offset = core->layout.wal_offset + core->wal_used;
+    if (!lox_checked_add_u32(core->layout.wal_offset, core->wal_used, &offset)) {
+        return LOX_ERR_OVERFLOW;
+    }
     if (entry_len <= sizeof(coalesced)) {
         memcpy(coalesced, header, sizeof(header));
         if (payload_len != 0u) {
@@ -2275,6 +2342,7 @@ lox_err_t lox_persist_kv_set(lox_t *db, const char *key, const void *val, size_t
     lox_core_t *core = lox_core(db);
     uint8_t payload[256];
     size_t key_len;
+    size_t payload_len = 0u;
 
     if (!lox_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return LOX_OK;
@@ -2284,6 +2352,13 @@ lox_err_t lox_persist_kv_set(lox_t *db, const char *key, const void *val, size_t
     }
 
     key_len = strlen(key);
+    if (!lox_checked_add_size(1u, key_len, &payload_len) ||
+        !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+        !lox_checked_add_size(payload_len, len, &payload_len) ||
+        !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+        payload_len > sizeof(payload)) {
+        return LOX_ERR_INVALID;
+    }
     payload[0] = (uint8_t)key_len;
     memcpy(payload + 1u, key, key_len);
     lox_put_u32(payload + 1u + key_len, (uint32_t)len);
@@ -2300,6 +2375,7 @@ lox_err_t lox_persist_kv_set_txn(lox_t *db, const char *key, const void *val, si
     lox_core_t *core = lox_core(db);
     uint8_t payload[260];
     size_t key_len;
+    size_t payload_len = 0u;
 
     if (!lox_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return LOX_OK;
@@ -2309,6 +2385,14 @@ lox_err_t lox_persist_kv_set_txn(lox_t *db, const char *key, const void *val, si
     }
 
     key_len = strlen(key);
+    if (!lox_checked_add_size(4u, 1u, &payload_len) ||
+        !lox_checked_add_size(payload_len, key_len, &payload_len) ||
+        !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+        !lox_checked_add_size(payload_len, len, &payload_len) ||
+        !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+        payload_len > sizeof(payload)) {
+        return LOX_ERR_INVALID;
+    }
     lox_put_u32(payload + 0u, core->txn_active_id);
     payload[4u] = (uint8_t)key_len;
     memcpy(payload + 5u, key, key_len);
@@ -2326,6 +2410,7 @@ lox_err_t lox_persist_kv_del(lox_t *db, const char *key) {
     lox_core_t *core = lox_core(db);
     uint8_t payload[LOX_KV_KEY_MAX_LEN];
     size_t key_len;
+    size_t payload_len = 0u;
 
     if (!lox_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return LOX_OK;
@@ -2335,6 +2420,9 @@ lox_err_t lox_persist_kv_del(lox_t *db, const char *key) {
     }
 
     key_len = strlen(key);
+    if (!lox_checked_add_size(1u, key_len, &payload_len) || payload_len > sizeof(payload)) {
+        return LOX_ERR_INVALID;
+    }
     payload[0] = (uint8_t)key_len;
     memcpy(payload + 1u, key, key_len);
     return lox_append_wal_entry(db,
@@ -2348,6 +2436,7 @@ lox_err_t lox_persist_kv_del_txn(lox_t *db, const char *key) {
     lox_core_t *core = lox_core(db);
     uint8_t payload[LOX_KV_KEY_MAX_LEN + 4u];
     size_t key_len;
+    size_t payload_len = 0u;
 
     if (!lox_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return LOX_OK;
@@ -2357,6 +2446,11 @@ lox_err_t lox_persist_kv_del_txn(lox_t *db, const char *key) {
     }
 
     key_len = strlen(key);
+    if (!lox_checked_add_size(4u, 1u, &payload_len) ||
+        !lox_checked_add_size(payload_len, key_len, &payload_len) ||
+        payload_len > sizeof(payload)) {
+        return LOX_ERR_INVALID;
+    }
     lox_put_u32(payload + 0u, core->txn_active_id);
     payload[4u] = (uint8_t)key_len;
     memcpy(payload + 5u, key, key_len);
@@ -2401,6 +2495,7 @@ lox_err_t lox_persist_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts,
     uint8_t payload[256];
     size_t idx;
     size_t name_len;
+    size_t payload_len = 0u;
     uint64_t full_ts = (uint64_t)ts;
     lox_ts_stream_t *stream = NULL;
 
@@ -2422,6 +2517,13 @@ lox_err_t lox_persist_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts,
     }
 
     name_len = strlen(name);
+    if (!lox_checked_add_size(1u, name_len, &payload_len) ||
+        !lox_checked_add_size(payload_len, 8u, &payload_len) ||
+        !lox_checked_add_size(payload_len, 1u, &payload_len) ||
+        !lox_checked_add_size(payload_len, val_len, &payload_len) ||
+        payload_len > sizeof(payload)) {
+        return LOX_ERR_INVALID;
+    }
     payload[0] = (uint8_t)name_len;
     memcpy(payload + 1u, name, name_len);
     lox_put_u32(payload + 1u + name_len, (uint32_t)(full_ts & 0xFFFFFFFFu));
@@ -2435,7 +2537,12 @@ lox_err_t lox_persist_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts,
                                     (uint16_t)(1u + name_len + 9u + val_len));
 }
 
-lox_err_t lox_persist_ts_register(lox_t *db, const char *name, lox_ts_type_t type, size_t raw_size) {
+lox_err_t lox_persist_ts_register(lox_t *db,
+                                  const char *name,
+                                  lox_ts_type_t type,
+                                  size_t raw_size,
+                                  uint8_t log_retain_zones,
+                                  uint8_t log_retain_zone_pct) {
     lox_core_t *core = lox_core(db);
     uint8_t payload[64];
     size_t name_len;
@@ -2448,24 +2555,27 @@ lox_err_t lox_persist_ts_register(lox_t *db, const char *name, lox_ts_type_t typ
     }
 
     name_len = strlen(name);
-    if (name_len + 6u > sizeof(payload)) {
+    if (name_len > (sizeof(payload) - 8u)) {
         return LOX_ERR_INVALID;
     }
     payload[0] = (uint8_t)name_len;
     memcpy(payload + 1u, name, name_len);
     payload[1u + name_len] = (uint8_t)type;
     lox_put_u32(payload + 1u + name_len + 1u, (uint32_t)raw_size);
+    payload[1u + name_len + 5u] = log_retain_zones;
+    payload[1u + name_len + 6u] = log_retain_zone_pct;
     return lox_append_wal_entry(db,
                                     LOX_WAL_ENGINE_TS,
                                     LOX_WAL_OP_TS_REGISTER,
                                     payload,
-                                    (uint16_t)(1u + name_len + 1u + 4u));
+                                    (uint16_t)(1u + name_len + 1u + 4u + 2u));
 }
 
 lox_err_t lox_persist_ts_clear(lox_t *db, const char *name) {
     lox_core_t *core = lox_core(db);
     uint8_t payload[LOX_TS_STREAM_NAME_LEN];
     size_t name_len;
+    size_t payload_len = 0u;
 
     if (!lox_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return LOX_OK;
@@ -2475,7 +2585,7 @@ lox_err_t lox_persist_ts_clear(lox_t *db, const char *name) {
     }
 
     name_len = strlen(name);
-    if (name_len + 1u > sizeof(payload)) {
+    if (!lox_checked_add_size(1u, name_len, &payload_len) || payload_len > sizeof(payload)) {
         return LOX_ERR_INVALID;
     }
     payload[0] = (uint8_t)name_len;
@@ -2491,6 +2601,7 @@ lox_err_t lox_persist_rel_insert(lox_t *db, const lox_table_t *table, const void
     lox_core_t *core = lox_core(db);
     uint8_t payload[1536];
     size_t name_len;
+    size_t payload_len = 0u;
 
     if (!lox_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return LOX_OK;
@@ -2498,11 +2609,14 @@ lox_err_t lox_persist_rel_insert(lox_t *db, const lox_table_t *table, const void
     if (!core->wal_enabled) {
         return lox_storage_flush(db);
     }
-    if (table->row_size + LOX_REL_TABLE_NAME_LEN + 5u > sizeof(payload)) {
-        return LOX_ERR_STORAGE;
-    }
 
     name_len = strlen(table->name);
+    if (!lox_checked_add_size(1u, name_len, &payload_len) ||
+        !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+        !lox_checked_add_size(payload_len, table->row_size, &payload_len) ||
+        payload_len > sizeof(payload)) {
+        return LOX_ERR_STORAGE;
+    }
     payload[0] = (uint8_t)name_len;
     memcpy(payload + 1u, table->name, name_len);
     lox_put_u32(payload + 1u + name_len, (uint32_t)table->row_size);
@@ -2518,6 +2632,7 @@ lox_err_t lox_persist_rel_delete(lox_t *db, const lox_table_t *table, const void
     lox_core_t *core = lox_core(db);
     uint8_t payload[64];
     size_t name_len;
+    size_t payload_len = 0u;
 
     if (!lox_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return LOX_OK;
@@ -2527,6 +2642,11 @@ lox_err_t lox_persist_rel_delete(lox_t *db, const lox_table_t *table, const void
     }
 
     name_len = strlen(table->name);
+    if (!lox_checked_add_size(1u, name_len, &payload_len) ||
+        !lox_checked_add_size(payload_len, table->index_key_size, &payload_len) ||
+        payload_len > sizeof(payload)) {
+        return LOX_ERR_INVALID;
+    }
     payload[0] = (uint8_t)name_len;
     memcpy(payload + 1u, table->name, name_len);
     memcpy(payload + 1u + name_len, search_val, table->index_key_size);
@@ -2544,6 +2664,7 @@ lox_err_t lox_persist_rel_table_create(lox_t *db, const lox_schema_t *schema) {
     uint32_t i;
     uint16_t off = 0u;
     size_t name_len;
+    size_t payload_len = 0u;
 
     if (!lox_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return LOX_OK;
@@ -2564,7 +2685,11 @@ lox_err_t lox_persist_rel_table_create(lox_t *db, const lox_schema_t *schema) {
     if (name_len >= LOX_REL_TABLE_NAME_LEN) {
         return LOX_ERR_INVALID;
     }
-    if (1u + name_len + 2u + 4u + 4u > sizeof(payload)) {
+    if (!lox_checked_add_size(1u, name_len, &payload_len) ||
+        !lox_checked_add_size(payload_len, 2u, &payload_len) ||
+        !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+        !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+        payload_len > sizeof(payload)) {
         return LOX_ERR_STORAGE;
     }
 
@@ -2583,7 +2708,12 @@ lox_err_t lox_persist_rel_table_create(lox_t *db, const lox_schema_t *schema) {
         if (col_name_len >= LOX_REL_COL_NAME_LEN) {
             return LOX_ERR_SCHEMA;
         }
-        if ((size_t)off + 1u + col_name_len + 1u + 1u + 4u > sizeof(payload)) {
+        if (!lox_checked_add_size((size_t)off, 1u, &payload_len) ||
+            !lox_checked_add_size(payload_len, col_name_len, &payload_len) ||
+            !lox_checked_add_size(payload_len, 1u, &payload_len) ||
+            !lox_checked_add_size(payload_len, 1u, &payload_len) ||
+            !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+            payload_len > sizeof(payload)) {
             return LOX_ERR_STORAGE;
         }
         payload[off++] = (uint8_t)col_name_len;
@@ -2606,6 +2736,7 @@ lox_err_t lox_persist_rel_clear(lox_t *db, const lox_table_t *table) {
     lox_core_t *core = lox_core(db);
     uint8_t payload[LOX_REL_TABLE_NAME_LEN];
     size_t name_len;
+    size_t payload_len = 0u;
 
     if (!lox_storage_ready(core) || core->storage_loading || core->wal_replaying) {
         return LOX_OK;
@@ -2618,7 +2749,7 @@ lox_err_t lox_persist_rel_clear(lox_t *db, const lox_table_t *table) {
     }
 
     name_len = strlen(table->name);
-    if (name_len + 1u > sizeof(payload)) {
+    if (!lox_checked_add_size(1u, name_len, &payload_len) || payload_len > sizeof(payload)) {
         return LOX_ERR_INVALID;
     }
     payload[0] = (uint8_t)name_len;

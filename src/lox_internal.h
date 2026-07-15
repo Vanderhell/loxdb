@@ -5,12 +5,74 @@
 #include "lox.h"
 
 #define LOX_MAGIC 0x4D444230u
+#define LOX_WAL_HEADER_SIZE 32u
+#define LOX_PAGE_HEADER_SIZE 32u
+#define LOX_SUPERBLOCK_SIZE 32u
 
 typedef struct {
     uint8_t *base;
     size_t used;
     size_t capacity;
 } lox_arena_t;
+
+static inline bool lox_is_power_of_two_size(size_t value) {
+    return value != 0u && (value & (value - 1u)) == 0u;
+}
+
+static inline bool lox_checked_add_size(size_t a, size_t b, size_t *out) {
+    if (out == NULL || SIZE_MAX - a < b) {
+        return false;
+    }
+    *out = a + b;
+    return true;
+}
+
+static inline bool lox_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (out == NULL) {
+        return false;
+    }
+    if (a != 0u && b > SIZE_MAX / a) {
+        return false;
+    }
+    *out = a * b;
+    return true;
+}
+
+static inline bool lox_checked_add_u32(uint32_t a, uint32_t b, uint32_t *out) {
+    uint32_t sum;
+
+    if (out == NULL) {
+        return false;
+    }
+    sum = a + b;
+    if (sum < a) {
+        return false;
+    }
+    *out = sum;
+    return true;
+}
+
+static inline bool lox_checked_align_up_size(size_t value, size_t align, size_t *out) {
+    size_t mask;
+
+    if (out == NULL || !lox_is_power_of_two_size(align)) {
+        return false;
+    }
+    mask = align - 1u;
+    if (value > SIZE_MAX - mask) {
+        return false;
+    }
+    *out = (value + mask) & ~mask;
+    return true;
+}
+
+static inline bool lox_checked_u32_from_size(size_t value, uint32_t *out) {
+    if (out == NULL || value > (size_t)UINT32_MAX) {
+        return false;
+    }
+    *out = (uint32_t)value;
+    return true;
+}
 
 typedef struct {
     uint8_t state;
@@ -78,7 +140,10 @@ typedef struct {
     uint32_t row_idx;
 } lox_index_entry_t;
 
+typedef struct lox_core_s lox_core_t;
+
 struct lox_table_s {
+    lox_core_t *owner;
     char name[LOX_REL_TABLE_NAME_LEN];
     uint16_t schema_version;
     lox_col_desc_t cols[LOX_REL_MAX_COLS];
@@ -120,7 +185,7 @@ typedef struct {
     uint32_t active_generation;
 } lox_storage_layout_t;
 
-typedef struct {
+struct lox_core_s {
     uint32_t magic;
     uint8_t *heap;
     size_t heap_size;
@@ -163,7 +228,7 @@ typedef struct {
     bool wal_replaying;
     uint32_t ts_dropped_samples;
     bool migration_in_progress;
-} lox_core_t;
+};
 
 typedef struct {
     char name[LOX_REL_TABLE_NAME_LEN];
@@ -208,7 +273,12 @@ lox_err_t lox_persist_kv_set_txn(lox_t *db, const char *key, const void *val, si
 lox_err_t lox_persist_kv_del_txn(lox_t *db, const char *key);
 lox_err_t lox_persist_txn_commit(lox_t *db);
 lox_err_t lox_persist_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const void *val, size_t val_len);
-lox_err_t lox_persist_ts_register(lox_t *db, const char *name, lox_ts_type_t type, size_t raw_size);
+lox_err_t lox_persist_ts_register(lox_t *db,
+                                  const char *name,
+                                  lox_ts_type_t type,
+                                  size_t raw_size,
+                                  uint8_t log_retain_zones,
+                                  uint8_t log_retain_zone_pct);
 lox_err_t lox_persist_ts_clear(lox_t *db, const char *name);
 lox_err_t lox_persist_rel_insert(lox_t *db, const lox_table_t *table, const void *row_buf);
 lox_err_t lox_persist_rel_delete(lox_t *db, const lox_table_t *table, const void *search_val);
@@ -216,6 +286,7 @@ lox_err_t lox_persist_rel_table_create(lox_t *db, const lox_schema_t *schema);
 lox_err_t lox_persist_rel_clear(lox_t *db, const lox_table_t *table);
 
 static inline uint32_t lox_wal_header_bytes(const lox_core_t *core);
+static inline void lox_record_error(lox_core_t *core, lox_err_t err);
 
 static inline void lox__maybe_compact(lox_t *db) {
     lox_core_t *core = lox_core(db);
@@ -235,7 +306,7 @@ static inline void lox__maybe_compact(lox_t *db) {
     wal_fill_pct = (wal_total == 0u) ? 0u : ((wal_used * 100u) / wal_total);
     threshold = (core->wal_compact_threshold_pct != 0u) ? core->wal_compact_threshold_pct : 75u;
     if (wal_fill_pct >= threshold) {
-        (void)lox_storage_flush(db);
+        lox_record_error(core, lox_storage_flush(db));
     }
 }
 

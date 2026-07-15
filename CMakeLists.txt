@@ -1472,6 +1472,12 @@ if(LOX_BUILD_TESTS)
         target_link_libraries(test_phase02_nor_recovery PRIVATE loxdb)
         add_test(NAME test_phase02_nor_recovery COMMAND test_phase02_nor_recovery)
 
+        add_executable(test_phase03_checked_arith tests/test_phase03_checked_arith.c)
+        target_include_directories(test_phase03_checked_arith PRIVATE include tests port/ram src)
+        target_sources(test_phase03_checked_arith PRIVATE port/ram/lox_port_ram.c)
+        target_link_libraries(test_phase03_checked_arith PRIVATE loxdb)
+        add_test(NAME test_phase03_checked_arith COMMAND test_phase03_checked_arith)
+
         add_executable(test_backend_fs_matrix tests/test_backend_fs_matrix.c)
         target_include_directories(test_backend_fs_matrix PRIVATE include tests src)
         if(TARGET lox_backend_fs_stub AND TARGET lox_backend_block_stub)

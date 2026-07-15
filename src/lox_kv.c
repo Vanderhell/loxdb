@@ -35,10 +35,19 @@ static uint32_t lox_kv_hash(const char *key) {
 
 static uint32_t lox_kv_bucket_count(void) {
     uint32_t key_limit = lox_kv_entry_limit();
-    uint32_t required = (key_limit * 4u + 2u) / 3u;
+    size_t required_sz = 0u;
+    uint32_t required = 0u;
     uint32_t buckets = 1u;
 
+    if (!lox_checked_mul_size((size_t)key_limit, 4u, &required_sz)) {
+        return 0u;
+    }
+    required = (uint32_t)((required_sz + 2u) / 3u);
+
     while (buckets < required) {
+        if (buckets > UINT32_MAX / 2u) {
+            return 0u;
+        }
         buckets <<= 1u;
     }
 
@@ -83,7 +92,12 @@ static uint32_t lox_kv_live_value_bytes(const lox_core_t *core) {
 }
 
 static uint32_t lox_kv_fragmented_bytes(const lox_core_t *core) {
-    return core->kv.value_used - lox_kv_live_value_bytes(core);
+    uint32_t live_bytes = lox_kv_live_value_bytes(core);
+
+    if (core->kv.value_used <= live_bytes) {
+        return 0u;
+    }
+    return core->kv.value_used - live_bytes;
 }
 
 static bool lox_kv_should_compact(const lox_core_t *core) {
@@ -91,7 +105,7 @@ static bool lox_kv_should_compact(const lox_core_t *core) {
         return false;
     }
 
-    return lox_kv_fragmented_bytes(core) * 2u > core->kv.value_used;
+    return lox_kv_fragmented_bytes(core) > (core->kv.value_used / 2u);
 }
 
 static void lox_kv_compact(lox_core_t *core) {
@@ -287,11 +301,17 @@ static lox_err_t lox_kv_append_value(lox_core_t *core,
                                              lox_kv_bucket_t *bucket,
                                              const void *val,
                                              size_t len) {
-    if (core->kv.value_used + len > core->kv.value_capacity) {
+    size_t next_used = 0u;
+
+    if (!lox_checked_add_size((size_t)core->kv.value_used, len, &next_used)) {
+        return LOX_ERR_NO_MEM;
+    }
+    if (next_used > core->kv.value_capacity) {
         lox_kv_compact(core);
     }
 
-    if (core->kv.value_used + len > core->kv.value_capacity) {
+    if (!lox_checked_add_size((size_t)core->kv.value_used, len, &next_used) ||
+        next_used > core->kv.value_capacity) {
         return LOX_ERR_NO_MEM;
     }
 
@@ -355,6 +375,9 @@ lox_err_t lox_kv_init(lox_t *db) {
         return LOX_ERR_NO_MEM;
     }
     core->kv.bucket_count = lox_kv_bucket_count();
+    if (core->kv.bucket_count == 0u) {
+        return LOX_ERR_NO_MEM;
+    }
     bucket_bytes = (size_t)core->kv.bucket_count * sizeof(lox_kv_bucket_t);
     stage_bytes = (size_t)LOX_TXN_STAGE_KEYS * sizeof(lox_txn_stage_entry_t);
 

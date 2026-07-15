@@ -227,11 +227,27 @@ static bool rel_wal_mode(const lox_core_t *core) {
 }
 
 static bool rel_has_arena_space_for_table(const lox_core_t *core, const lox_schema_impl_t *impl) {
-    size_t need_rows = (size_t)impl->max_rows * impl->row_size;
-    size_t need_alive = (size_t)(impl->max_rows + 7u) / 8u;
-    size_t need_order = (size_t)impl->max_rows * sizeof(uint32_t);
-    size_t need_index = (impl->index_col != UINT32_MAX) ? ((size_t)impl->max_rows * sizeof(lox_index_entry_t)) : 0u;
-    size_t need_total = need_rows + need_alive + need_order + need_index + 32u;
+    size_t need_rows = 0u;
+    size_t need_alive = 0u;
+    size_t need_order = 0u;
+    size_t need_index = 0u;
+    size_t need_total = 0u;
+    size_t tmp = 0u;
+
+    if (!lox_checked_mul_size((size_t)impl->max_rows, impl->row_size, &need_rows) ||
+        !lox_checked_add_size((size_t)impl->max_rows, 7u, &tmp)) {
+        return false;
+    }
+    need_alive = tmp / 8u;
+    if (!lox_checked_mul_size((size_t)impl->max_rows, sizeof(uint32_t), &need_order) ||
+        (impl->index_col != UINT32_MAX &&
+         !lox_checked_mul_size((size_t)impl->max_rows, sizeof(lox_index_entry_t), &need_index)) ||
+        !lox_checked_add_size(need_rows, need_alive, &need_total) ||
+        !lox_checked_add_size(need_total, need_order, &need_total) ||
+        !lox_checked_add_size(need_total, need_index, &need_total) ||
+        !lox_checked_add_size(need_total, 32u, &need_total)) {
+        return false;
+    }
     return lox_arena_remaining((lox_arena_t *)&core->rel_arena) >= need_total;
 }
 
@@ -305,7 +321,7 @@ static lox_err_t rel_validate_table_and_handle(lox_t *db, lox_table_t *table) {
     if (db == NULL || table == NULL) {
         return LOX_ERR_INVALID;
     }
-    if (lox_core(db)->magic != LOX_MAGIC) {
+    if (lox_core(db)->magic != LOX_MAGIC || table->owner != lox_core(db)) {
         return LOX_ERR_INVALID;
     }
     if (!table->registered) {
@@ -448,6 +464,7 @@ lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema) {
     uint16_t migrate_new = 0u;
     char migrate_name[LOX_REL_TABLE_NAME_LEN];
     bool wal_mode;
+    size_t arena_used_before = 0u;
 
     if (db == NULL || schema == NULL) {
         return LOX_ERR_INVALID;
@@ -501,17 +518,13 @@ lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema) {
         rc = LOX_ERR_NO_MEM;
         goto unlock;
     }
-    if (wal_mode) {
-        rc = lox_persist_rel_table_create(db, schema);
-        if (rc != LOX_OK) {
-            goto unlock;
-        }
-    }
 
     for (i = 0; i < LOX_REL_MAX_TABLES; ++i) {
         table = &core->rel.tables[i];
         if (!table->registered) {
+            arena_used_before = core->rel_arena.used;
             memset(table, 0, sizeof(*table));
+            table->owner = core;
             memcpy(table->name, impl->name, sizeof(table->name));
             memcpy(table->cols, impl->cols, sizeof(impl->cols));
             table->col_count = impl->col_count;
@@ -539,6 +552,7 @@ lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema) {
 
             if (table->rows == NULL || table->alive_bitmap == NULL || table->order == NULL ||
                 (table->index_key_size != 0u && table->index == NULL)) {
+                lox_arena_rewind(&core->rel_arena, arena_used_before);
                 memset(table, 0, sizeof(*table));
                 rc = LOX_ERR_NO_MEM;
                 goto unlock;
@@ -550,10 +564,23 @@ lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema) {
                 memset(table->index, 0, (size_t)table->max_rows * sizeof(lox_index_entry_t));
             }
             memset(table->order, 0, (size_t)table->max_rows * sizeof(uint32_t));
+            if (wal_mode) {
+                rc = lox_persist_rel_table_create(db, schema);
+                if (rc != LOX_OK) {
+                    lox_arena_rewind(&core->rel_arena, arena_used_before);
+                    memset(table, 0, sizeof(*table));
+                    goto unlock;
+                }
+            }
             table->registered = true;
             core->rel.registered_tables++;
             if (!wal_mode) {
                 rc = lox_storage_flush(db);
+                if (rc != LOX_OK) {
+                    core->rel.registered_tables--;
+                    lox_arena_rewind(&core->rel_arena, arena_used_before);
+                    memset(table, 0, sizeof(*table));
+                }
             } else {
                 rc = LOX_OK;
             }
