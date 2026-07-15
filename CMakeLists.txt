@@ -775,6 +775,14 @@ if(LOX_BUILD_TESTS)
     target_link_libraries(test_thread_safety PRIVATE lox_thread_safe)
     add_test(NAME test_thread_safety COMMAND test_thread_safety)
 
+    add_executable(test_phase04_posix_port tests/test_phase04_posix_port.c)
+    target_include_directories(test_phase04_posix_port PRIVATE include tests port/posix src)
+    add_test(NAME test_phase04_posix_port COMMAND test_phase04_posix_port)
+
+    add_executable(test_phase04_esp32_port tests/test_phase04_esp32_port.c)
+    target_include_directories(test_phase04_esp32_port PRIVATE include tests port/esp32 src)
+    add_test(NAME test_phase04_esp32_port COMMAND test_phase04_esp32_port)
+
     add_executable(test_compact tests/test_compact.c)
     target_include_directories(test_compact PRIVATE include tests port/ram port/posix src)
     target_link_libraries(test_compact PRIVATE loxdb)

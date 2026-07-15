@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "microtest.h"
 #include "lox.h"
+#include "strict_nor_emulator.h"
 
 #include <string.h>
 
@@ -56,6 +57,12 @@ static void teardown_db(void) {
     (void)lox_deinit(&g_db);
 }
 
+static void setup_empty(void) {
+}
+
+static void teardown_empty(void) {
+}
+
 MDB_TEST(test_lock_called_on_kv_put) {
     uint8_t value = 1u;
 
@@ -103,13 +110,66 @@ MDB_TEST(test_null_hooks_are_safe) {
     memset(&db, 0, sizeof(db));
     memset(&cfg, 0, sizeof(cfg));
     cfg.ram_kb = 32u;
-    cfg.lock_create = mock_lock_create;
+    cfg.lock_create = NULL;
     cfg.lock = NULL;
     cfg.unlock = NULL;
-    cfg.lock_destroy = mock_lock_destroy;
+    cfg.lock_destroy = NULL;
     ASSERT_EQ(lox_init(&db, &cfg), LOX_OK);
     ASSERT_EQ(lox_kv_put(&db, "n", &value, 1u), LOX_OK);
     ASSERT_EQ(lox_deinit(&db), LOX_OK);
+}
+
+MDB_TEST(test_init_rejects_partial_thread_safe_hooks) {
+    lox_t db;
+    lox_cfg_t cfg;
+
+    memset(&db, 0, sizeof(db));
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.ram_kb = 32u;
+    cfg.lock_create = mock_lock_create;
+    cfg.lock = mock_lock;
+    ASSERT_EQ(lox_init(&db, &cfg), LOX_ERR_INVALID);
+}
+
+static void *mock_lock_create_fail(void) {
+    return NULL;
+}
+
+MDB_TEST(test_init_propagates_lock_create_failure) {
+    lox_t db;
+    lox_cfg_t cfg;
+
+    memset(&db, 0, sizeof(db));
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.ram_kb = 32u;
+    cfg.lock_create = mock_lock_create_fail;
+    cfg.lock = mock_lock;
+    cfg.unlock = mock_unlock;
+    cfg.lock_destroy = mock_lock_destroy;
+    ASSERT_EQ(lox_init(&db, &cfg), LOX_ERR_NO_MEM);
+}
+
+MDB_TEST(test_deinit_failure_invalidates_handle) {
+    lox_t db;
+    lox_cfg_t cfg;
+    lox_storage_t storage;
+    nor_flash_ctx_t media;
+    uint8_t value = 7u;
+    uint8_t out = 0u;
+
+    memset(&db, 0, sizeof(db));
+    memset(&cfg, 0, sizeof(cfg));
+    memset(&storage, 0, sizeof(storage));
+    memset(&media, 0, sizeof(media));
+    nor_flash_reset(&media);
+    nor_flash_bind_storage(&storage, &media, 4096u, 1u);
+    cfg.storage = &storage;
+    cfg.ram_kb = 32u;
+    ASSERT_EQ(lox_init(&db, &cfg), LOX_OK);
+    ASSERT_EQ(lox_kv_put(&db, "d", &value, 1u), LOX_OK);
+    media.fail_next_sync = 1u;
+    ASSERT_EQ(lox_deinit(&db), LOX_ERR_STORAGE);
+    ASSERT_EQ(lox_kv_get(&db, "d", &out, 1u, NULL), LOX_ERR_INVALID);
 }
 
 MDB_TEST(test_lock_called_on_compact) {
@@ -194,6 +254,9 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, test_lock_called_on_kv_get);
     MDB_RUN_TEST(setup_db, teardown_db, test_counts_balanced_after_sequence);
     MDB_RUN_TEST(setup_db, teardown_db, test_null_hooks_are_safe);
+    MDB_RUN_TEST(setup_empty, teardown_empty, test_init_rejects_partial_thread_safe_hooks);
+    MDB_RUN_TEST(setup_empty, teardown_empty, test_init_propagates_lock_create_failure);
+    MDB_RUN_TEST(setup_empty, teardown_empty, test_deinit_failure_invalidates_handle);
     MDB_RUN_TEST(setup_db, teardown_db, test_lock_called_on_compact);
     MDB_RUN_TEST(setup_db, teardown_db, test_kv_iter_callback_reentry_no_recursive_lock);
     MDB_RUN_TEST(setup_db, teardown_db, test_ts_query_callback_reentry_no_recursive_lock);

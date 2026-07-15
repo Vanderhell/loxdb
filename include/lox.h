@@ -521,6 +521,9 @@ typedef struct {
 
 lox_err_t lox_init(lox_t *db, const lox_cfg_t *cfg);
 lox_err_t lox_preflight(const lox_cfg_t *cfg, lox_preflight_report_t *out);
+/* Deinit is a best-effort close: it will invalidate the handle even if the
+ * final storage flush fails, and the caller must not reuse the object.
+ */
 lox_err_t lox_deinit(lox_t *db);
 lox_err_t lox_flush(lox_t *db);
 lox_err_t lox_stats(const lox_t *db, lox_stats_t *out);

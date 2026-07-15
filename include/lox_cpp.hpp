@@ -56,10 +56,8 @@ public:
             return LOX_ERR_INVALID;
         }
         rc = lox_deinit(&db_);
-        if (rc == LOX_OK) {
-            initialized_ = false;
-            std::memset(&db_, 0, sizeof(db_));
-        }
+        initialized_ = false;
+        std::memset(&db_, 0, sizeof(db_));
         return rc;
     }
 

@@ -2,6 +2,7 @@
 #include "microtest.h"
 #include "lox_config.h"
 #include "lox_cpp.hpp"
+#include "strict_nor_emulator.h"
 
 #include <cstddef>
 #include <cstring>
@@ -41,9 +42,6 @@ static bool rel_iter_count_cb(const void *row_buf, void *ctx) {
     return true;
 }
 
-static void setup_noop(void) {
-}
-
 static void setup_db(void) {
     lox_cfg_t cfg;
 
@@ -56,6 +54,12 @@ static void teardown_db(void) {
     if (g_db.initialized()) {
         ASSERT_EQ(g_db.deinit(), LOX_OK);
     }
+}
+
+static void setup_noop(void) {
+}
+
+static void teardown_noop(void) {
 }
 
 struct cpp_handle_holder_t {
@@ -111,6 +115,28 @@ MDB_TEST(cpp_wrapper_public_abi_alignment_identity) {
     ASSERT_EQ(sizeof(cpp_packed_schema_holder_t) > sizeof(lox_schema_t), 1);
     ASSERT_EQ(lox_init(&local_handle, &cfg), LOX_OK);
     ASSERT_EQ(lox_deinit(&local_handle), LOX_OK);
+}
+
+MDB_TEST(cpp_wrapper_deinit_failure_invalidates_wrapper) {
+    loxdb::cpp::Database db;
+    lox_cfg_t cfg;
+    lox_storage_t storage;
+    nor_flash_ctx_t media;
+    uint8_t value = 9u;
+
+    std::memset(&cfg, 0, sizeof(cfg));
+    std::memset(&storage, 0, sizeof(storage));
+    std::memset(&media, 0, sizeof(media));
+    nor_flash_reset(&media);
+    nor_flash_bind_storage(&storage, &media, 4096u, 1u);
+    cfg.storage = &storage;
+    cfg.ram_kb = 32u;
+    ASSERT_EQ(db.init(cfg), LOX_OK);
+    ASSERT_EQ(db.kv_put("cpp_fail", &value, sizeof(value)), LOX_OK);
+    media.fail_next_sync = 1u;
+    ASSERT_EQ(db.deinit(), LOX_ERR_STORAGE);
+    ASSERT_EQ(db.initialized(), 0);
+    ASSERT_EQ(db.handle() == nullptr, 1);
 }
 
 MDB_TEST(cpp_wrapper_preflight_ram_only_ok) {
@@ -495,6 +521,7 @@ int main(void) {
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_txn_reports_invalid_before_init);
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_reports_invalid_before_init);
     MDB_RUN_TEST(setup_noop, teardown_db, cpp_wrapper_public_abi_alignment_identity);
+    MDB_RUN_TEST(setup_noop, teardown_noop, cpp_wrapper_deinit_failure_invalidates_wrapper);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_init_and_stats);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_handle_allows_core_api_usage);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_prevents_double_init);

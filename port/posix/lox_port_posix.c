@@ -3,25 +3,53 @@
 
 #if defined(_WIN32)
 #include <fcntl.h>
+#include <errno.h>
 #include <io.h>
 #include <share.h>
 #include <sys/stat.h>
+#ifndef LOX_POSIX_SOPEN
+#define LOX_POSIX_SOPEN _sopen_s
+#endif
+#ifndef LOX_POSIX_CLOSE
 #define LOX_POSIX_CLOSE _close
+#endif
+#ifndef LOX_POSIX_READ
 #define LOX_POSIX_READ _read
+#endif
+#ifndef LOX_POSIX_WRITE
 #define LOX_POSIX_WRITE _write
-#define LOX_POSIX_LSEEK _lseek
+#endif
+#ifndef LOX_POSIX_LSEEK
+#define LOX_POSIX_LSEEK _lseeki64
+#endif
+#ifndef LOX_POSIX_SYNC
 #define LOX_POSIX_SYNC _commit
+#endif
 #define LOX_POSIX_FLAGS (_O_BINARY | _O_RDWR | _O_CREAT)
 #else
 #include <fcntl.h>
+#include <errno.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifndef LOX_POSIX_CLOSE
 #define LOX_POSIX_CLOSE close
+#endif
+#ifndef LOX_POSIX_OPEN
 #define LOX_POSIX_OPEN open
+#endif
+#ifndef LOX_POSIX_READ
 #define LOX_POSIX_READ read
+#endif
+#ifndef LOX_POSIX_WRITE
 #define LOX_POSIX_WRITE write
+#endif
+#ifndef LOX_POSIX_LSEEK
 #define LOX_POSIX_LSEEK lseek
+#endif
+#ifndef LOX_POSIX_SYNC
 #define LOX_POSIX_SYNC fsync
+#endif
 #define LOX_POSIX_FLAGS (O_RDWR | O_CREAT)
 #endif
 
@@ -34,6 +62,86 @@ static int posix_fd(void *ctx) {
     return (int)(intptr_t)((lox_port_posix_ctx_t *)ctx)->file;
 }
 
+static lox_err_t lox_port_posix_seek_fd(int fd, uint32_t offset) {
+#if defined(_WIN32)
+    return (LOX_POSIX_LSEEK(fd, (long long)offset, SEEK_SET) >= 0) ? LOX_OK : LOX_ERR_STORAGE;
+#else
+    return (LOX_POSIX_LSEEK(fd, (off_t)offset, SEEK_SET) >= 0) ? LOX_OK : LOX_ERR_STORAGE;
+#endif
+}
+
+static lox_err_t lox_port_posix_full_read(int fd, void *buf, size_t len) {
+    size_t done = 0u;
+
+    while (done < len) {
+        size_t want = len - done;
+        long long rc;
+
+        if (want > (size_t)INT_MAX) {
+            want = (size_t)INT_MAX;
+        }
+        rc = (long long)LOX_POSIX_READ(fd, (uint8_t *)buf + done, (unsigned int)want);
+        if (rc < 0) {
+#if defined(EINTR)
+            if (errno == EINTR) {
+                continue;
+            }
+#endif
+            return LOX_ERR_STORAGE;
+        }
+        if (rc == 0) {
+            return LOX_ERR_STORAGE;
+        }
+        done += (size_t)rc;
+    }
+
+    return LOX_OK;
+}
+
+static lox_err_t lox_port_posix_full_write(int fd, const void *buf, size_t len) {
+    size_t done = 0u;
+
+    while (done < len) {
+        size_t want = len - done;
+        long long rc;
+
+        if (want > (size_t)INT_MAX) {
+            want = (size_t)INT_MAX;
+        }
+        rc = (long long)LOX_POSIX_WRITE(fd, (const uint8_t *)buf + done, (unsigned int)want);
+        if (rc < 0) {
+#if defined(EINTR)
+            if (errno == EINTR) {
+                continue;
+            }
+#endif
+            return LOX_ERR_STORAGE;
+        }
+        if (rc == 0) {
+            return LOX_ERR_STORAGE;
+        }
+        done += (size_t)rc;
+    }
+
+    return LOX_OK;
+}
+
+static lox_err_t lox_port_posix_sync_fd(int fd) {
+    int rc;
+
+    do {
+        rc = LOX_POSIX_SYNC(fd);
+    } while (rc != 0 &&
+#if defined(EINTR)
+             errno == EINTR
+#else
+             0
+#endif
+    );
+
+    return (rc == 0) ? LOX_OK : LOX_ERR_STORAGE;
+}
+
 static lox_err_t lox_port_posix_read(void *ctx, uint32_t offset, void *buf, size_t len) {
     lox_port_posix_ctx_t *posix = (lox_port_posix_ctx_t *)ctx;
     int fd;
@@ -43,10 +151,10 @@ static lox_err_t lox_port_posix_read(void *ctx, uint32_t offset, void *buf, size
     }
 
     fd = posix_fd(ctx);
-    if (fd < 0 || LOX_POSIX_LSEEK(fd, (long)offset, SEEK_SET) < 0) {
+    if (fd < 0 || lox_port_posix_seek_fd(fd, offset) != LOX_OK) {
         return LOX_ERR_STORAGE;
     }
-    if ((size_t)LOX_POSIX_READ(fd, buf, (unsigned int)len) != len) {
+    if (lox_port_posix_full_read(fd, buf, len) != LOX_OK) {
         return LOX_ERR_STORAGE;
     }
     return LOX_OK;
@@ -61,10 +169,10 @@ static lox_err_t lox_port_posix_write(void *ctx, uint32_t offset, const void *bu
     }
 
     fd = posix_fd(ctx);
-    if (fd < 0 || LOX_POSIX_LSEEK(fd, (long)offset, SEEK_SET) < 0) {
+    if (fd < 0 || lox_port_posix_seek_fd(fd, offset) != LOX_OK) {
         return LOX_ERR_STORAGE;
     }
-    if ((size_t)LOX_POSIX_WRITE(fd, buf, (unsigned int)len) != len) {
+    if (lox_port_posix_full_write(fd, buf, len) != LOX_OK) {
         return LOX_ERR_STORAGE;
     }
     return LOX_OK;
@@ -87,8 +195,8 @@ static lox_err_t lox_port_posix_erase(void *ctx, uint32_t offset) {
     memset(ff, 0xFF, posix->erase_size);
     block_start = (offset / posix->erase_size) * posix->erase_size;
     fd = posix_fd(ctx);
-    if (fd < 0 || LOX_POSIX_LSEEK(fd, (long)block_start, SEEK_SET) < 0 ||
-        (size_t)LOX_POSIX_WRITE(fd, ff, posix->erase_size) != posix->erase_size) {
+    if (fd < 0 || lox_port_posix_seek_fd(fd, block_start) != LOX_OK ||
+        lox_port_posix_full_write(fd, ff, posix->erase_size) != LOX_OK) {
         free(ff);
         return LOX_ERR_STORAGE;
     }
@@ -101,14 +209,14 @@ static lox_err_t lox_port_posix_sync(void *ctx) {
     if (posix == NULL) {
         return LOX_ERR_STORAGE;
     }
-    return LOX_POSIX_SYNC(posix_fd(ctx)) == 0 ? LOX_OK : LOX_ERR_STORAGE;
+    return lox_port_posix_sync_fd(posix_fd(ctx));
 }
 
 lox_err_t lox_port_posix_init(lox_storage_t *storage, const char *path, uint32_t capacity) {
     lox_port_posix_ctx_t *ctx;
     int fd;
     uint8_t ff_block[4096];
-    long current_size = 0;
+    long long current_size = 0;
     uint32_t remaining = 0u;
     uint32_t chunk = 0u;
 
@@ -132,7 +240,7 @@ lox_err_t lox_port_posix_init(lox_storage_t *storage, const char *path, uint32_t
 
 #if defined(_WIN32)
     {
-        errno_t open_err = _sopen_s(&fd, path, LOX_POSIX_FLAGS, _SH_DENYNO, _S_IREAD | _S_IWRITE);
+        errno_t open_err = LOX_POSIX_SOPEN(&fd, path, LOX_POSIX_FLAGS, _SH_DENYNO, _S_IREAD | _S_IWRITE);
         if (open_err != 0) {
             free(ctx);
             return LOX_ERR_STORAGE;
@@ -146,14 +254,14 @@ lox_err_t lox_port_posix_init(lox_storage_t *storage, const char *path, uint32_t
     }
 #endif
 
-    current_size = LOX_POSIX_LSEEK(fd, 0L, SEEK_END);
+    current_size = LOX_POSIX_LSEEK(fd, 0LL, SEEK_END);
     if (current_size < 0) {
         LOX_POSIX_CLOSE(fd);
         free(ctx);
         return LOX_ERR_STORAGE;
     }
 
-    if ((uint32_t)current_size < capacity) {
+    if ((uint64_t)current_size < (uint64_t)capacity) {
         memset(ff_block, 0xFF, sizeof(ff_block));
         if (LOX_POSIX_LSEEK(fd, current_size, SEEK_SET) < 0) {
             LOX_POSIX_CLOSE(fd);
@@ -163,7 +271,7 @@ lox_err_t lox_port_posix_init(lox_storage_t *storage, const char *path, uint32_t
         remaining = capacity - (uint32_t)current_size;
         while (remaining > 0u) {
             chunk = (remaining > sizeof(ff_block)) ? (uint32_t)sizeof(ff_block) : remaining;
-            if ((size_t)LOX_POSIX_WRITE(fd, ff_block, chunk) != chunk) {
+            if (lox_port_posix_full_write(fd, ff_block, chunk) != LOX_OK) {
                 LOX_POSIX_CLOSE(fd);
                 free(ctx);
                 return LOX_ERR_STORAGE;
@@ -171,7 +279,11 @@ lox_err_t lox_port_posix_init(lox_storage_t *storage, const char *path, uint32_t
             remaining -= chunk;
         }
     }
-    (void)LOX_POSIX_SYNC(fd);
+    if (lox_port_posix_sync_fd(fd) != LOX_OK) {
+        LOX_POSIX_CLOSE(fd);
+        free(ctx);
+        return LOX_ERR_STORAGE;
+    }
 
     ctx->file = (void *)(intptr_t)fd;
     storage->read = lox_port_posix_read;

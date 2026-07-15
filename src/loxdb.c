@@ -34,6 +34,18 @@ static bool lox_slice_bytes(size_t total, uint32_t pct, size_t *out) {
     return true;
 }
 
+static bool lox_lock_hooks_valid(const lox_cfg_t *cfg) {
+    bool any;
+    bool all;
+
+    if (cfg == NULL) {
+        return false;
+    }
+    any = cfg->lock_create != NULL || cfg->lock != NULL || cfg->unlock != NULL || cfg->lock_destroy != NULL;
+    all = cfg->lock_create != NULL && cfg->lock != NULL && cfg->unlock != NULL && cfg->lock_destroy != NULL;
+    return !any || all;
+}
+
 static uint8_t *lox_align_ptr(uint8_t *ptr, size_t align) {
     size_t aligned = 0u;
 
@@ -519,6 +531,9 @@ lox_err_t lox_init(lox_t *db, const lox_cfg_t *cfg) {
     if (cfg->wal_sync_mode > LOX_WAL_SYNC_FLUSH_ONLY) {
         return LOX_ERR_INVALID;
     }
+    if (!lox_lock_hooks_valid(cfg)) {
+        return LOX_ERR_INVALID;
+    }
     if (!lox_bytes_from_kb(ram_kb, &total_bytes)) {
         return LOX_ERR_NO_MEM;
     }
@@ -620,6 +635,15 @@ lox_err_t lox_init(lox_t *db, const lox_cfg_t *cfg) {
         free(core->heap);
         memset(db, 0, sizeof(*db));
         return err;
+    }
+
+    if (cfg->lock_create != NULL) {
+        core->lock_handle = cfg->lock_create();
+        if (core->lock_handle == NULL) {
+            free(core->heap);
+            memset(db, 0, sizeof(*db));
+            return LOX_ERR_NO_MEM;
+        }
     }
 
     core->live_bytes = lox_kv_live_bytes(db);
