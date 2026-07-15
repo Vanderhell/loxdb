@@ -346,6 +346,8 @@ lox_err_t lox_kv_init(lox_t *db) {
     core->txn_stage = NULL;
     core->txn_active = 0u;
     core->txn_stage_count = 0u;
+    core->txn_next_id = 0u;
+    core->txn_active_id = 0u;
 
 #if LOX_ENABLE_KV
     entry_limit = lox_kv_entry_limit();
@@ -872,8 +874,13 @@ lox_err_t lox_txn_begin(lox_t *db) {
         rc = LOX_ERR_TXN_ACTIVE;
         goto unlock;
     }
+    core->txn_next_id++;
+    if (core->txn_next_id == 0u) {
+        core->txn_next_id = 1u;
+    }
     core->txn_active = 1u;
     core->txn_stage_count = 0u;
+    core->txn_active_id = core->txn_next_id;
 
 unlock:
     LOX_UNLOCK(db);
@@ -958,6 +965,7 @@ lox_err_t lox_txn_commit(lox_t *db) {
 
     core->txn_active = 0u;
     core->txn_stage_count = 0u;
+    core->txn_active_id = 0u;
     rc = LOX_OK;
 
 unlock:
@@ -981,6 +989,7 @@ lox_err_t lox_txn_rollback(lox_t *db) {
     }
     core->txn_active = 0u;
     core->txn_stage_count = 0u;
+    core->txn_active_id = 0u;
 
 unlock:
     LOX_UNLOCK(db);

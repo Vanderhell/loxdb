@@ -47,6 +47,7 @@ static void crash_drop_db_heap(lox_t *db) {
 
 static void open_db_with_sync_mode(lox_t *db, lox_storage_t *storage, uint8_t wal_sync_mode) {
     lox_cfg_t cfg;
+    lox_err_t rc;
 
     memset(db, 0, sizeof(*db));
     memset(storage, 0, sizeof(*storage));
@@ -57,7 +58,8 @@ static void open_db_with_sync_mode(lox_t *db, lox_storage_t *storage, uint8_t wa
     cfg.ram_kb = 32u;
     cfg.now = mock_now;
     cfg.wal_sync_mode = wal_sync_mode;
-    ASSERT_EQ(lox_init(db, &cfg), LOX_OK);
+    rc = lox_init(db, &cfg);
+    ASSERT_EQ(rc, LOX_OK);
 }
 
 static void open_db(lox_t *db, lox_storage_t *storage) {
@@ -88,6 +90,10 @@ static uint8_t read_u8(lox_storage_t *storage, uint32_t offset) {
         return 0u;
     }
     return value;
+}
+
+static uint32_t wal_data_offset(void) {
+    return g_storage.erase_size;
 }
 
 static uint32_t next_entry_offset(lox_storage_t *storage, uint32_t entry_offset) {
@@ -134,7 +140,7 @@ MDB_TEST(wal_entry_written_after_kv_set) {
     uint8_t value = 7u;
     ASSERT_EQ(lox_kv_set(&g_db, "a", &value, 1u, 0u), LOX_OK);
     ASSERT_EQ(read_u32(&g_storage, 8u), 1u);
-    ASSERT_EQ(read_u32(&g_storage, 32u), 0x454E5452u);
+    ASSERT_EQ(read_u32(&g_storage, wal_data_offset()), 0x454E5452u);
     ASSERT_EQ(read_u8(&g_storage, 40u), 0u);
 }
 
@@ -170,7 +176,7 @@ MDB_TEST(wal_entry_written_after_ts_insert) {
     ASSERT_EQ(lox_ts_register(&g_db, "temp", LOX_TS_F32, 0u), LOX_OK);
     ASSERT_EQ(lox_ts_insert(&g_db, "temp", 10u, &value), LOX_OK);
     ASSERT_EQ(read_u32(&g_storage, 8u), 2u);
-    second = next_entry_offset(&g_storage, 32u);
+    second = next_entry_offset(&g_storage, wal_data_offset());
     ASSERT_EQ(read_u8(&g_storage, second + 8u), 1u);
     ASSERT_EQ(read_u8(&g_storage, second + 9u), 0u);
 }
@@ -187,7 +193,7 @@ MDB_TEST(wal_entry_written_after_rel_insert) {
     ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     ASSERT_EQ(read_u32(&g_storage, 8u), 2u);
-    second = next_entry_offset(&g_storage, 32u);
+    second = next_entry_offset(&g_storage, wal_data_offset());
     ASSERT_EQ(read_u8(&g_storage, second + 8u), 2u);
     ASSERT_EQ(read_u8(&g_storage, second + 9u), 0u);
 }
@@ -237,7 +243,7 @@ MDB_TEST(wal_crc_corruption_discards_tail) {
 
     ASSERT_EQ(lox_kv_set(&g_db, "k1", &v1, 1u, 0u), LOX_OK);
     ASSERT_EQ(lox_kv_set(&g_db, "k2", &v2, 1u, 0u), LOX_OK);
-    second = next_entry_offset(&g_storage, 32u);
+    second = next_entry_offset(&g_storage, wal_data_offset());
     ASSERT_EQ(g_storage.write(g_storage.ctx, second + 12u, &bad, sizeof(bad)), LOX_OK);
     ASSERT_EQ(g_storage.sync(g_storage.ctx), LOX_OK);
     reopen_after_power_loss(&g_db, &g_storage);
@@ -270,7 +276,7 @@ MDB_TEST(wal_partial_entry_discarded) {
 
     ASSERT_EQ(lox_kv_set(&g_db, "a1", &v1, 1u, 0u), LOX_OK);
     ASSERT_EQ(lox_kv_set(&g_db, "a2", &v2, 1u, 0u), LOX_OK);
-    second = next_entry_offset(&g_storage, 32u);
+    second = next_entry_offset(&g_storage, wal_data_offset());
     ASSERT_EQ(g_storage.write(g_storage.ctx, second + 10u, &bad_len, sizeof(bad_len)), LOX_OK);
     ASSERT_EQ(g_storage.sync(g_storage.ctx), LOX_OK);
     reopen_after_power_loss(&g_db, &g_storage);

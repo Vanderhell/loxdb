@@ -723,6 +723,16 @@ if(LOX_BUILD_TESTS)
     target_link_libraries(test_public_config_identity PRIVATE loxdb)
     add_test(NAME test_public_config_identity COMMAND test_public_config_identity)
 
+    add_executable(
+        test_public_config_identity_multi_tu
+        tests/test_public_config_identity_multi_tu.c
+        tests/test_public_config_identity_tu_a.c
+        tests/test_public_config_identity_tu_b.c
+    )
+    target_include_directories(test_public_config_identity_multi_tu PRIVATE include tests port/ram src)
+    target_link_libraries(test_public_config_identity_multi_tu PRIVATE loxdb)
+    add_test(NAME test_public_config_identity_multi_tu COMMAND test_public_config_identity_multi_tu)
+
     if(TARGET lox_json_wrapper AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_json_wrapper.c")
         add_executable(test_json_wrapper tests/test_json_wrapper.c)
         target_include_directories(test_json_wrapper PRIVATE include tests port/ram src)
@@ -887,6 +897,110 @@ if(LOX_BUILD_TESTS)
             -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch.obj
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
     )
+
+    add_test(
+        NAME test_config_identity_mismatch_handle_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_handle.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch_handle.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
+
+    add_test(
+        NAME test_config_identity_mismatch_schema_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_schema.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch_schema.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
+
+    add_test(
+        NAME test_config_identity_mismatch_timestamp_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_timestamp.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch_timestamp.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
+
+    add_test(
+        NAME test_config_identity_mismatch_ts_raw_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_ts_raw.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch_ts_raw.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
+
+    add_test(
+        NAME test_config_identity_mismatch_rel_index_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_rel_index.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch_rel_index.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
+
+    add_test(
+        NAME test_config_identity_mismatch_profiles_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_profiles.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch_profiles.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
+
+    add_test(
+        NAME test_config_identity_mismatch_limits_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_limits.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch_limits.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
+
+    add_test(
+        NAME test_config_identity_mismatch_thread_wal_gate
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_thread_wal.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/config_identity_mismatch_thread_wal.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
+
+    find_program(LOX_UBSAN_CC NAMES clang clang.exe PATHS "C:/Program Files/LLVM/bin")
+    if(LOX_UBSAN_CC AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_ubsan_alignment.cmake")
+        add_test(
+            NAME test_ubsan_alignment_gate
+            COMMAND ${CMAKE_COMMAND}
+                -DCC=${LOX_UBSAN_CC}
+                -DINCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+                -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/ubsan_alignment_probe.c
+                -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/ubsan_alignment_probe.obj
+                -DEXE=${CMAKE_CURRENT_BINARY_DIR}/ubsan_alignment_probe.exe
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_ubsan_alignment.cmake
+        )
+    else()
+        message(STATUS "Skipping test_ubsan_alignment_gate: clang not available or missing tests/check_ubsan_alignment.cmake")
+    endif()
 
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/footprint_min_baseline.c")
         add_executable(test_footprint_min_baseline tests/footprint_min_baseline.c)
@@ -1352,6 +1466,11 @@ if(LOX_BUILD_TESTS)
         else()
             message(STATUS "Skipping test_backend_fs_recovery: requires fs/block stub targets")
         endif()
+
+        add_executable(test_phase02_nor_recovery tests/test_phase02_nor_recovery.c)
+        target_include_directories(test_phase02_nor_recovery PRIVATE include tests src)
+        target_link_libraries(test_phase02_nor_recovery PRIVATE loxdb)
+        add_test(NAME test_phase02_nor_recovery COMMAND test_phase02_nor_recovery)
 
         add_executable(test_backend_fs_matrix tests/test_backend_fs_matrix.c)
         target_include_directories(test_backend_fs_matrix PRIVATE include tests src)

@@ -3,6 +3,7 @@
 #include "lox.h"
 #include "lox_backend_adapter.h"
 #include "lox_backend_open.h"
+#include "strict_nor_emulator.h"
 #include "../src/lox_internal.h"
 
 #include <stdlib.h>
@@ -15,14 +16,7 @@ enum {
     MANAGED_ERASE_SIZE = 4096u
 };
 
-typedef struct {
-    uint8_t durable[MANAGED_CAPACITY];
-    uint8_t working[MANAGED_CAPACITY];
-    uint32_t sync_calls;
-    uint8_t fail_next_sync;
-} managed_mem_ctx_t;
-
-static managed_mem_ctx_t g_media;
+static nor_flash_ctx_t g_media;
 static lox_storage_t g_raw_storage;
 static lox_storage_t *g_effective_storage = NULL;
 static lox_backend_open_session_t g_open_session;
@@ -33,51 +27,8 @@ static lox_timestamp_t mock_now(void) {
     return g_now++;
 }
 
-static lox_err_t managed_read(void *ctx, uint32_t offset, void *buf, size_t len) {
-    managed_mem_ctx_t *m = (managed_mem_ctx_t *)ctx;
-    if (m == NULL || buf == NULL || ((size_t)offset + len) > MANAGED_CAPACITY) {
-        return LOX_ERR_STORAGE;
-    }
-    memcpy(buf, m->working + offset, len);
-    return LOX_OK;
-}
-
-static lox_err_t managed_write(void *ctx, uint32_t offset, const void *buf, size_t len) {
-    managed_mem_ctx_t *m = (managed_mem_ctx_t *)ctx;
-    if (m == NULL || buf == NULL || ((size_t)offset + len) > MANAGED_CAPACITY) {
-        return LOX_ERR_STORAGE;
-    }
-    memcpy(m->working + offset, buf, len);
-    return LOX_OK;
-}
-
-static lox_err_t managed_erase(void *ctx, uint32_t offset) {
-    managed_mem_ctx_t *m = (managed_mem_ctx_t *)ctx;
-    uint32_t base;
-    if (m == NULL || offset >= MANAGED_CAPACITY) {
-        return LOX_ERR_STORAGE;
-    }
-    base = (offset / MANAGED_ERASE_SIZE) * MANAGED_ERASE_SIZE;
-    memset(m->working + base, 0xFF, MANAGED_ERASE_SIZE);
-    return LOX_OK;
-}
-
-static lox_err_t managed_sync(void *ctx) {
-    managed_mem_ctx_t *m = (managed_mem_ctx_t *)ctx;
-    if (m == NULL) {
-        return LOX_ERR_STORAGE;
-    }
-    m->sync_calls++;
-    if (m->fail_next_sync != 0u) {
-        m->fail_next_sync = 0u;
-        return LOX_ERR_STORAGE;
-    }
-    memcpy(m->durable, m->working, MANAGED_CAPACITY);
-    return LOX_OK;
-}
-
 static void power_loss_reset_to_durable(void) {
-    memcpy(g_media.working, g_media.durable, MANAGED_CAPACITY);
+    nor_flash_power_loss(&g_media);
 }
 
 static void managed_open_db(void) {
@@ -115,21 +66,12 @@ static void managed_crash_reopen(void) {
 }
 
 static void setup_fixture(void) {
-    memset(&g_media, 0, sizeof(g_media));
-    memset(g_media.durable, 0xFF, sizeof(g_media.durable));
-    memcpy(g_media.working, g_media.durable, sizeof(g_media.working));
+    nor_flash_reset(&g_media);
     memset(&g_raw_storage, 0, sizeof(g_raw_storage));
     memset(&g_open_session, 0, sizeof(g_open_session));
     g_now = 1000u;
 
-    g_raw_storage.read = managed_read;
-    g_raw_storage.write = managed_write;
-    g_raw_storage.erase = managed_erase;
-    g_raw_storage.sync = managed_sync;
-    g_raw_storage.capacity = MANAGED_CAPACITY;
-    g_raw_storage.erase_size = MANAGED_ERASE_SIZE;
-    g_raw_storage.write_size = 1u;
-    g_raw_storage.ctx = &g_media;
+    nor_flash_bind_storage(&g_raw_storage, &g_media, MANAGED_ERASE_SIZE, 1u);
 
     lox_backend_registry_reset();
     ASSERT_EQ(lox_backend_nand_stub_register(), 0);

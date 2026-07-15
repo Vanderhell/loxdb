@@ -3,6 +3,7 @@
 #include "lox.h"
 #include "lox_backend_adapter.h"
 #include "lox_backend_open.h"
+#include "strict_nor_emulator.h"
 #include "../src/lox_internal.h"
 
 #include <stdlib.h>
@@ -17,10 +18,8 @@ enum {
 };
 
 typedef struct {
-    uint8_t durable[FS_CAPACITY];
-    uint8_t working[FS_CAPACITY];
+    nor_flash_ctx_t nor;
     uint32_t sync_calls;
-    uint8_t fail_next_sync;
     uint8_t write_through;
 } fs_mem_ctx_t;
 
@@ -38,55 +37,54 @@ static lox_timestamp_t mock_now(void) {
 
 static lox_err_t fs_read(void *ctx, uint32_t offset, void *buf, size_t len) {
     fs_mem_ctx_t *m = (fs_mem_ctx_t *)ctx;
-    if (m == NULL || buf == NULL || ((size_t)offset + len) > FS_CAPACITY) {
-        return LOX_ERR_STORAGE;
-    }
-    memcpy(buf, m->working + offset, len);
-    return LOX_OK;
+    return nor_flash_read(m != NULL ? &m->nor : NULL, offset, buf, len);
 }
 
 static lox_err_t fs_write(void *ctx, uint32_t offset, const void *buf, size_t len) {
     fs_mem_ctx_t *m = (fs_mem_ctx_t *)ctx;
-    if (m == NULL || buf == NULL || ((size_t)offset + len) > FS_CAPACITY) {
+    lox_err_t rc;
+    if (m == NULL) {
         return LOX_ERR_STORAGE;
     }
-    memcpy(m->working + offset, buf, len);
-    if (m->write_through != 0u) {
-        memcpy(m->durable + offset, buf, len);
+    rc = nor_flash_write(&m->nor, offset, buf, len);
+    if (rc == LOX_OK && m->write_through != 0u) {
+        memcpy(m->nor.durable + offset, m->nor.working + offset, len);
     }
-    return LOX_OK;
+    return rc;
 }
 
 static lox_err_t fs_erase(void *ctx, uint32_t offset) {
     fs_mem_ctx_t *m = (fs_mem_ctx_t *)ctx;
+    lox_err_t rc;
     uint32_t base;
-    if (m == NULL || offset >= FS_CAPACITY) {
+    if (m == NULL) {
         return LOX_ERR_STORAGE;
     }
-    base = (offset / FS_ERASE_SIZE) * FS_ERASE_SIZE;
-    memset(m->working + base, 0xFF, FS_ERASE_SIZE);
-    if (m->write_through != 0u) {
-        memset(m->durable + base, 0xFF, FS_ERASE_SIZE);
+    rc = nor_flash_erase(&m->nor, offset);
+    if (rc == LOX_OK && m->write_through != 0u) {
+        base = (offset / FS_ERASE_SIZE) * FS_ERASE_SIZE;
+        memcpy(m->nor.durable + base, m->nor.working + base, FS_ERASE_SIZE);
     }
-    return LOX_OK;
+    return rc;
 }
 
 static lox_err_t fs_sync(void *ctx) {
     fs_mem_ctx_t *m = (fs_mem_ctx_t *)ctx;
+    lox_err_t rc;
     if (m == NULL) {
         return LOX_ERR_STORAGE;
     }
     m->sync_calls++;
-    if (m->fail_next_sync != 0u) {
-        m->fail_next_sync = 0u;
-        return LOX_ERR_STORAGE;
-    }
-    memcpy(m->durable, m->working, FS_CAPACITY);
-    return LOX_OK;
+    rc = nor_flash_sync(&m->nor);
+    return rc;
 }
 
 static void power_loss_reset_to_durable(void) {
-    memcpy(g_media.working, g_media.durable, FS_CAPACITY);
+    nor_flash_power_loss(&g_media.nor);
+}
+
+static void clear_trace(void) {
+    g_media.nor.trace_count = 0u;
 }
 
 static void open_db(const char *backend_name, uint8_t write_through) {
@@ -130,8 +128,9 @@ static void crash_reopen(void) {
 
 static void setup_fixture(void) {
     memset(&g_media, 0, sizeof(g_media));
-    memset(g_media.durable, 0xFF, sizeof(g_media.durable));
-    memcpy(g_media.working, g_media.durable, sizeof(g_media.working));
+    nor_flash_reset(&g_media.nor);
+    g_media.nor.erase_size = FS_ERASE_SIZE;
+    g_media.nor.program_unit = 1u;
     memset(&g_raw_storage, 0, sizeof(g_raw_storage));
     memset(&g_open_session, 0, sizeof(g_open_session));
     g_effective_storage = NULL;
@@ -178,7 +177,7 @@ MDB_TEST(fs_recovery_sync_failure_does_not_commit_value) {
     uint8_t out = 0u;
 
     open_db("fs_stub", 0u);
-    g_media.fail_next_sync = 1u;
+    g_media.nor.fail_next_sync = 1u;
     ASSERT_EQ(lox_kv_set(&g_db, "volatile", &in, 1u, 0u), LOX_ERR_STORAGE);
     power_loss_reset_to_durable();
     crash_reopen();
@@ -203,6 +202,7 @@ MDB_TEST(block_recovery_reopen_preserves_value_without_raw_sync) {
 MDB_TEST(fs_recovery_clean_reopen_preserves_value) {
     uint8_t in = 43u;
     uint8_t out = 0u;
+    lox_db_stats_t stats;
 
     open_db("fs_stub", 0u);
     ASSERT_EQ(lox_kv_set(&g_db, "stable", &in, 1u, 0u), LOX_OK);
@@ -210,6 +210,36 @@ MDB_TEST(fs_recovery_clean_reopen_preserves_value) {
     open_db("fs_stub", 0u);
     ASSERT_EQ(lox_kv_get(&g_db, "stable", &out, 1u, NULL), LOX_OK);
     ASSERT_EQ(out, in);
+    ASSERT_EQ(lox_get_db_stats(&g_db, &stats), LOX_OK);
+    ASSERT_EQ(stats.recovery_detail, LOX_RECOVERY_DETAIL_CLEAN);
+}
+
+MDB_TEST(fs_recovery_trace_records_erase_program_sync_order) {
+    uint8_t in = 8u;
+    uint32_t erase_idx = UINT32_MAX;
+    uint32_t program_idx = UINT32_MAX;
+    uint32_t sync_idx = UINT32_MAX;
+    uint32_t i;
+
+    open_db("fs_stub", 0u);
+    clear_trace();
+    ASSERT_EQ(lox_kv_set(&g_db, "trace", &in, 1u, 0u), LOX_OK);
+
+    for (i = 0u; i < g_media.nor.trace_count; ++i) {
+        if (g_media.nor.trace[i].kind == NOR_TRACE_ERASE && erase_idx == UINT32_MAX) {
+            erase_idx = i;
+        } else if (g_media.nor.trace[i].kind == NOR_TRACE_PROGRAM && program_idx == UINT32_MAX) {
+            program_idx = i;
+        } else if (g_media.nor.trace[i].kind == NOR_TRACE_SYNC && sync_idx == UINT32_MAX) {
+            sync_idx = i;
+        }
+    }
+
+    ASSERT_GT(UINT32_MAX, erase_idx);
+    ASSERT_GT(UINT32_MAX, program_idx);
+    ASSERT_GT(UINT32_MAX, sync_idx);
+    ASSERT_GT(erase_idx, program_idx);
+    ASSERT_GT(sync_idx, erase_idx);
 }
 
 int main(void) {
@@ -217,5 +247,6 @@ int main(void) {
     MDB_RUN_TEST(setup_fixture, teardown_fixture, fs_recovery_sync_failure_does_not_commit_value);
     MDB_RUN_TEST(setup_fixture, teardown_fixture, block_recovery_reopen_preserves_value_without_raw_sync);
     MDB_RUN_TEST(setup_fixture, teardown_fixture, fs_recovery_clean_reopen_preserves_value);
+    MDB_RUN_TEST(setup_fixture, teardown_fixture, fs_recovery_trace_records_erase_program_sync_order);
     return MDB_RESULT();
 }

@@ -137,6 +137,7 @@ typedef struct {
     uint32_t recovery_count;
     lox_err_t last_runtime_error;
     lox_err_t last_recovery_status;
+    uint8_t recovery_detail;
     bool wal_enabled;
     lox_arena_t arena;
     lox_arena_t kv_arena;
@@ -146,6 +147,8 @@ typedef struct {
     lox_txn_stage_entry_t *txn_stage;
     uint8_t txn_active;
     uint32_t txn_stage_count;
+    uint32_t txn_next_id;
+    uint32_t txn_active_id;
     lox_ts_state_t ts;
     lox_rel_state_t rel;
     lox_storage_layout_t layout;
@@ -212,6 +215,8 @@ lox_err_t lox_persist_rel_delete(lox_t *db, const lox_table_t *table, const void
 lox_err_t lox_persist_rel_table_create(lox_t *db, const lox_schema_t *schema);
 lox_err_t lox_persist_rel_clear(lox_t *db, const lox_table_t *table);
 
+static inline uint32_t lox_wal_header_bytes(const lox_core_t *core);
+
 static inline void lox__maybe_compact(lox_t *db) {
     lox_core_t *core = lox_core(db);
     uint32_t wal_total;
@@ -219,12 +224,14 @@ static inline void lox__maybe_compact(lox_t *db) {
     uint32_t wal_fill_pct;
     uint32_t threshold;
 
-    if (!core->wal_enabled || core->layout.wal_size <= 32u || core->wal_compact_auto == 0u) {
+    uint32_t header_bytes = lox_wal_header_bytes(core);
+
+    if (!core->wal_enabled || core->layout.wal_size <= header_bytes || core->wal_compact_auto == 0u) {
         return;
     }
 
-    wal_total = core->layout.wal_size - 32u;
-    wal_used = (core->wal_used > 32u) ? (core->wal_used - 32u) : 0u;
+    wal_total = core->layout.wal_size - header_bytes;
+    wal_used = (core->wal_used > header_bytes) ? (core->wal_used - header_bytes) : 0u;
     wal_fill_pct = (wal_total == 0u) ? 0u : ((wal_used * 100u) / wal_total);
     threshold = (core->wal_compact_threshold_pct != 0u) ? core->wal_compact_threshold_pct : 75u;
     if (wal_fill_pct >= threshold) {
@@ -236,6 +243,13 @@ static inline void lox_record_error(lox_core_t *core, lox_err_t err) {
     if (core != NULL && err != LOX_OK) {
         core->last_runtime_error = err;
     }
+}
+
+static inline uint32_t lox_wal_header_bytes(const lox_core_t *core) {
+    if (core != NULL && core->storage != NULL && core->storage->erase_size != 0u) {
+        return core->storage->erase_size;
+    }
+    return 32u;
 }
 
 #endif

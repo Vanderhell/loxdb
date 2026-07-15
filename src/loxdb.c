@@ -98,7 +98,17 @@ const char *lox_err_to_string(lox_err_t err) {
 uint32_t lox_config_fingerprint(void) {
     return 0x6C6F7864u ^ (uint32_t)LOX_HANDLE_SIZE ^ ((uint32_t)LOX_SCHEMA_SIZE << 1u) ^
            ((uint32_t)sizeof(LOX_TIMESTAMP_TYPE) << 2u) ^ ((uint32_t)LOX_TS_RAW_MAX << 3u) ^
-           ((uint32_t)LOX_REL_INDEX_KEY_MAX << 4u) ^ 0x20u;
+           ((uint32_t)LOX_REL_INDEX_KEY_MAX << 4u) ^ 0x20u ^ ((uint32_t)LOX_PROFILE_CORE_MIN << 6u) ^
+           ((uint32_t)LOX_PROFILE_CORE_WAL << 7u) ^ ((uint32_t)LOX_PROFILE_CORE_PERF << 8u) ^
+           ((uint32_t)LOX_PROFILE_CORE_HIMEM << 9u) ^ ((uint32_t)LOX_PROFILE_FOOTPRINT_MIN << 10u) ^
+           ((uint32_t)LOX_ENABLE_KV << 11u) ^ ((uint32_t)LOX_ENABLE_TS << 12u) ^
+           ((uint32_t)LOX_ENABLE_REL << 13u) ^ ((uint32_t)LOX_ENABLE_WAL << 14u) ^
+           ((uint32_t)LOX_THREAD_SAFE << 15u) ^ ((uint32_t)LOX_KV_MAX_KEYS << 16u) ^
+           ((uint32_t)LOX_KV_KEY_MAX_LEN << 17u) ^ ((uint32_t)LOX_KV_VAL_MAX_LEN << 18u) ^
+           ((uint32_t)LOX_TXN_STAGE_KEYS << 19u) ^ ((uint32_t)LOX_TS_MAX_STREAMS << 20u) ^
+           ((uint32_t)LOX_TS_STREAM_NAME_LEN << 21u) ^ ((uint32_t)LOX_REL_MAX_TABLES << 22u) ^
+           ((uint32_t)LOX_REL_MAX_COLS << 23u) ^ ((uint32_t)LOX_REL_COL_NAME_LEN << 24u) ^
+           ((uint32_t)LOX_REL_TABLE_NAME_LEN << 25u);
 }
 
 lox_err_t lox_preflight(const lox_cfg_t *cfg, lox_preflight_report_t *out) {
@@ -336,14 +346,17 @@ static void lox_fill_wal_admission(const lox_core_t *core,
                                        uint32_t *out_wal_free) {
     uint32_t wal_free = 0u;
     uint8_t would_compact = 0u;
-    if (core->wal_enabled && core->layout.wal_size > core->wal_used) {
-        wal_free = core->layout.wal_size - core->wal_used;
+    uint32_t header_bytes = lox_wal_header_bytes(core);
+
+    if (core->wal_enabled && core->layout.wal_size > header_bytes) {
+        wal_free = (core->wal_used < core->layout.wal_size) ? (core->layout.wal_size - core->wal_used) : 0u;
         if (required_wal_bytes > wal_free) {
             would_compact = 1u;
-        } else if (core->wal_compact_auto != 0u && core->layout.wal_size > 32u) {
+        } else if (core->wal_compact_auto != 0u) {
             uint32_t threshold = (core->wal_compact_threshold_pct != 0u) ? core->wal_compact_threshold_pct : 75u;
-            uint32_t total = core->layout.wal_size - 32u;
-            uint32_t used_after = ((core->wal_used > 32u) ? (core->wal_used - 32u) : 0u) + required_wal_bytes;
+            uint32_t total = core->layout.wal_size - header_bytes;
+            uint32_t used_after = ((core->wal_used > header_bytes) ? (core->wal_used - header_bytes) : 0u) +
+                                  required_wal_bytes;
             uint32_t fill = (total == 0u) ? 0u : ((used_after * 100u) / total);
             if (fill >= threshold) {
                 would_compact = 1u;
@@ -426,6 +439,7 @@ lox_err_t lox_init(lox_t *db, const lox_cfg_t *cfg) {
     core->on_migrate = cfg->on_migrate;
     core->last_runtime_error = LOX_OK;
     core->last_recovery_status = LOX_OK;
+    core->recovery_detail = LOX_RECOVERY_DETAIL_CLEAN;
     core->wal_enabled = (cfg->storage != NULL) && (LOX_ENABLE_WAL != 0);
     lox_arena_init(&core->arena, core->heap, total_bytes);
 
@@ -541,6 +555,9 @@ lox_err_t lox_deinit(lox_t *db) {
         return LOX_ERR_INVALID;
     }
     status = lox_storage_flush(db);
+    core->txn_active = 0u;
+    core->txn_stage_count = 0u;
+    core->txn_active_id = 0u;
     heap = core->heap;
     lock_destroy = core->lock_destroy;
     lock_handle = core->lock_handle;
@@ -602,9 +619,12 @@ lox_err_t lox_inspect(lox_t *db, lox_stats_t *out) {
     out->ts_samples_total = ts_samples_total;
     out->ts_fill_pct = lox_fill_pct_u32(ts_samples_total, ts_capacity_total);
 
-    if (core->wal_enabled && core->layout.wal_size > 32u) {
-        wal_bytes_total = core->layout.wal_size - 32u;
-        wal_bytes_used = (core->wal_used > 32u) ? (core->wal_used - 32u) : 0u;
+    {
+        uint32_t header_bytes = lox_wal_header_bytes(core);
+        if (core->wal_enabled && core->layout.wal_size > header_bytes) {
+            wal_bytes_total = core->layout.wal_size - header_bytes;
+            wal_bytes_used = (core->wal_used > header_bytes) ? (core->wal_used - header_bytes) : 0u;
+        }
     }
     out->wal_bytes_total = wal_bytes_total;
     out->wal_bytes_used = wal_bytes_used;
@@ -645,9 +665,12 @@ lox_err_t lox_get_db_stats(lox_t *db, lox_db_stats_t *out) {
     }
 
     memset(out, 0, sizeof(*out));
-    if (core->wal_enabled && core->layout.wal_size > 32u) {
-        wal_bytes_total = core->layout.wal_size - 32u;
-        wal_bytes_used = (core->wal_used > 32u) ? (core->wal_used - 32u) : 0u;
+    {
+        uint32_t header_bytes = lox_wal_header_bytes(core);
+        if (core->wal_enabled && core->layout.wal_size > header_bytes) {
+            wal_bytes_total = core->layout.wal_size - header_bytes;
+            wal_bytes_used = (core->wal_used > header_bytes) ? (core->wal_used - header_bytes) : 0u;
+        }
     }
     out->effective_capacity_bytes = (core->storage != NULL) ? core->storage->capacity : 0u;
     out->wal_bytes_total = wal_bytes_total;
@@ -658,6 +681,7 @@ lox_err_t lox_get_db_stats(lox_t *db, lox_db_stats_t *out) {
     out->recovery_count = core->recovery_count;
     out->last_runtime_error = core->last_runtime_error;
     out->last_recovery_status = core->last_recovery_status;
+    out->recovery_detail = core->recovery_detail;
     out->active_generation = core->layout.active_generation;
     out->active_bank = core->layout.active_bank;
 
@@ -829,10 +853,13 @@ lox_err_t lox_get_effective_capacity(lox_t *db, lox_effective_capacity_t *out) {
     out->ts_samples_retained = ts_retained;
     out->ts_samples_free = (ts_total > ts_retained) ? (ts_total - ts_retained) : 0u;
 
-    if (core->wal_enabled && core->layout.wal_size > 32u) {
-        wal_total = core->layout.wal_size - 32u;
-        wal_used = (core->wal_used > 32u) ? (core->wal_used - 32u) : 0u;
-        wal_free = (wal_total > wal_used) ? (wal_total - wal_used) : 0u;
+    {
+        uint32_t header_bytes = lox_wal_header_bytes(core);
+        if (core->wal_enabled && core->layout.wal_size > header_bytes) {
+            wal_total = core->layout.wal_size - header_bytes;
+            wal_used = (core->wal_used > header_bytes) ? (core->wal_used - header_bytes) : 0u;
+            wal_free = (wal_total > wal_used) ? (wal_total - wal_used) : 0u;
+        }
     }
     out->wal_budget_total = wal_total;
     out->wal_budget_used = wal_used;
@@ -912,9 +939,12 @@ lox_err_t lox_get_pressure(lox_t *db, lox_pressure_t *out) {
     }
     out->rel_fill_pct = lox_fill_pct_u32(rel_rows_live, rel_rows_capacity);
 
-    if (core->wal_enabled && core->layout.wal_size > 32u) {
-        wal_total = core->layout.wal_size - 32u;
-        wal_used = (core->wal_used > 32u) ? (core->wal_used - 32u) : 0u;
+    {
+        uint32_t header_bytes = lox_wal_header_bytes(core);
+        if (core->wal_enabled && core->layout.wal_size > header_bytes) {
+            wal_total = core->layout.wal_size - header_bytes;
+            wal_used = (core->wal_used > header_bytes) ? (core->wal_used - header_bytes) : 0u;
+        }
     }
     out->wal_fill_pct = lox_fill_pct_u32(wal_used, wal_total);
 

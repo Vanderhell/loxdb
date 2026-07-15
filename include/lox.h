@@ -330,9 +330,19 @@ typedef struct {
     lox_err_t last_runtime_error;
     /* Last status produced by open/recovery path in current process lifetime. */
     lox_err_t last_recovery_status;
+    uint8_t recovery_detail;
     uint32_t active_generation;
     uint32_t active_bank;
 } lox_db_stats_t;
+
+typedef enum {
+    LOX_RECOVERY_DETAIL_CLEAN = 0u,
+    LOX_RECOVERY_DETAIL_DEGRADED_FALLBACK = 1u,
+    LOX_RECOVERY_DETAIL_TORN_FINAL_APPEND = 2u,
+    LOX_RECOVERY_DETAIL_SEMANTIC_CORRUPTION = 3u,
+    LOX_RECOVERY_DETAIL_UNSUPPORTED_FORMAT = 4u,
+    LOX_RECOVERY_DETAIL_DISCARDED_UNCOMMITTED_TXN = 5u
+} lox_recovery_detail_t;
 
 typedef struct {
     uint32_t live_keys;

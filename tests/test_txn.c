@@ -16,6 +16,7 @@ static lox_timestamp_t mock_now(void) {
 
 static void open_db(void) {
     lox_cfg_t cfg;
+    lox_err_t rc;
 
     memset(&g_db, 0, sizeof(g_db));
     memset(&g_storage, 0, sizeof(g_storage));
@@ -25,7 +26,8 @@ static void open_db(void) {
     cfg.storage = &g_storage;
     cfg.ram_kb = 32u;
     cfg.now = mock_now;
-    ASSERT_EQ(lox_init(&g_db, &cfg), LOX_OK);
+    rc = lox_init(&g_db, &cfg);
+    ASSERT_EQ(rc, LOX_OK);
 }
 
 static void setup_db(void) {
