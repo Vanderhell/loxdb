@@ -234,7 +234,7 @@ MDB_TEST(test_legacy_compact_markers_do_not_change_recovery_outcome) {
     uint8_t out = 0u;
     uint8_t wal_header[32];
     uint8_t kv_payload[32];
-    uint32_t off = 32u;
+    uint32_t off = g_storage.erase_size;
     uint32_t crc;
     const char *key = "B";
     size_t key_len = strlen(key);

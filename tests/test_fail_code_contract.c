@@ -314,9 +314,9 @@ MDB_TEST(contract_wal_crc_tail_corruption_recovery_drops_tail) {
 
     ASSERT_EQ(lox_kv_put(&g_db, "x1", &v1, 1u), LOX_OK);
     ASSERT_EQ(lox_kv_put(&g_db, "x2", &v2, 1u), LOX_OK);
-    /* Find second entry offset from first entry header (32B WAL header, 16B entry header). */
-    ASSERT_EQ(g_storage.read(g_storage.ctx, 42u, &data_len, sizeof(data_len)), LOX_OK);
-    second = 32u + 16u + (((uint32_t)data_len + 3u) & ~3u);
+    /* Find second entry offset from the WAL erase-sized header plus first entry header. */
+    ASSERT_EQ(g_storage.read(g_storage.ctx, g_storage.erase_size + 10u, &data_len, sizeof(data_len)), LOX_OK);
+    second = g_storage.erase_size + 16u + (((uint32_t)data_len + 3u) & ~3u);
     ASSERT_EQ(g_storage.write(g_storage.ctx, second + 12u, &bad_crc, sizeof(bad_crc)), LOX_OK);
     ASSERT_EQ(g_storage.sync(g_storage.ctx), LOX_OK);
 

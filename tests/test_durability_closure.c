@@ -295,7 +295,12 @@ MDB_TEST(corrupt_superblock_b_only_boots_from_other_copy) {
     lox_core_t *core;
     seed_mixed_state();
     ASSERT_EQ(lox_compact(&g_db), LOX_OK);
+    ASSERT_EQ(lox_compact(&g_db), LOX_OK);
     core = lox_core(&g_db);
+    if ((core->layout.active_generation & 1u) == 0u) {
+        ASSERT_EQ(lox_compact(&g_db), LOX_OK);
+        core = lox_core(&g_db);
+    }
     g_store.bytes[core->layout.super_b_offset + 20u] ^= 0xA5u;
     crash_reopen();
     verify_anchor_state();
@@ -367,8 +372,9 @@ MDB_TEST(txn_batch_with_commit_marker_replays_after_crash) {
     uint8_t v = 55u;
     uint8_t out = 0u;
 
-    ASSERT_EQ(lox_persist_kv_set_txn(&g_db, "tkey2", &v, 1u, 0u), LOX_OK);
-    ASSERT_EQ(lox_persist_txn_commit(&g_db), LOX_OK);
+    ASSERT_EQ(lox_txn_begin(&g_db), LOX_OK);
+    ASSERT_EQ(lox_kv_set(&g_db, "tkey2", &v, 1u, 0u), LOX_OK);
+    ASSERT_EQ(lox_txn_commit(&g_db), LOX_OK);
     crash_reopen();
     ASSERT_EQ(lox_kv_get(&g_db, "tkey2", &out, 1u, NULL), LOX_OK);
     ASSERT_EQ(out, 55u);
