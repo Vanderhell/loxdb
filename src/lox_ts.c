@@ -427,7 +427,7 @@ static LOX_UNUSED_FN uint32_t lox_ts_log_retain_apply(lox_ts_stream_t *stream) {
     uint32_t read_pos;
     uint32_t write_pos;
     uint32_t removed;
-    uint32_t k;
+    size_t k;
     uint32_t cap;
     uint32_t count;
     uint32_t tail;
@@ -471,9 +471,9 @@ static LOX_UNUSED_FN uint32_t lox_ts_log_retain_apply(lox_ts_stream_t *stream) {
     }
 
     removed = (uint32_t)(zone_size - write_pos);
-    for (k = zone_size; k < count; ++k) {
-        uint32_t src_idx = (tail + k) % cap;
-        uint32_t dst_idx = (tail + (k - removed)) % cap;
+    for (k = zone_size; k < (size_t)count; ++k) {
+        uint32_t src_idx = (tail + (uint32_t)k) % cap;
+        uint32_t dst_idx = (tail + (uint32_t)(k - (size_t)removed)) % cap;
         if (src_idx != dst_idx) {
             lox_ts_copy_sample_slot(stream, dst_idx, src_idx);
         }
