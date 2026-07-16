@@ -13,15 +13,15 @@ enum {
     LOX_TXN_OP_DEL = 1
 };
 
-static uint32_t lox_kv_entry_limit(void) {
+static LOX_UNUSED_FN uint32_t lox_kv_entry_limit(void) {
     return LOX_KV_MAX_KEYS - LOX_TXN_STAGE_KEYS;
 }
 
-static uint32_t lox_align4_u32(uint32_t value) {
+static LOX_UNUSED_FN uint32_t lox_align4_u32(uint32_t value) {
     return (value + 3u) & ~3u;
 }
 
-static uint32_t lox_kv_hash(const char *key) {
+static LOX_UNUSED_FN uint32_t lox_kv_hash(const char *key) {
     uint32_t hash = 2166136261u;
     size_t i;
 
@@ -33,7 +33,7 @@ static uint32_t lox_kv_hash(const char *key) {
     return hash;
 }
 
-static uint32_t lox_kv_bucket_count(void) {
+static LOX_UNUSED_FN uint32_t lox_kv_bucket_count(void) {
     uint32_t key_limit = lox_kv_entry_limit();
     size_t required_sz = 0u;
     uint32_t required = 0u;
@@ -54,7 +54,7 @@ static uint32_t lox_kv_bucket_count(void) {
     return buckets;
 }
 
-static bool lox_kv_key_valid(const char *key) {
+static LOX_UNUSED_FN bool lox_kv_key_valid(const char *key) {
     size_t len;
 
     if (key == NULL || key[0] == '\0') {
@@ -65,7 +65,7 @@ static bool lox_kv_key_valid(const char *key) {
     return len < LOX_KV_KEY_MAX_LEN;
 }
 
-static lox_timestamp_t lox_now(const lox_core_t *core) {
+static LOX_UNUSED_FN lox_timestamp_t lox_now(const lox_core_t *core) {
     if (core->now == NULL) {
         return 0;
     }
@@ -73,7 +73,7 @@ static lox_timestamp_t lox_now(const lox_core_t *core) {
     return core->now();
 }
 
-static bool lox_kv_expired(const lox_core_t *core, const lox_kv_bucket_t *bucket) {
+static LOX_UNUSED_FN bool lox_kv_expired(const lox_core_t *core, const lox_kv_bucket_t *bucket) {
 #if LOX_KV_ENABLE_TTL
     if (bucket->expires_at == 0u) {
         return false;
@@ -87,11 +87,11 @@ static bool lox_kv_expired(const lox_core_t *core, const lox_kv_bucket_t *bucket
 #endif
 }
 
-static uint32_t lox_kv_live_value_bytes(const lox_core_t *core) {
+static LOX_UNUSED_FN uint32_t lox_kv_live_value_bytes(const lox_core_t *core) {
     return core->kv.live_value_bytes;
 }
 
-static uint32_t lox_kv_fragmented_bytes(const lox_core_t *core) {
+static LOX_UNUSED_FN uint32_t lox_kv_fragmented_bytes(const lox_core_t *core) {
     uint32_t live_bytes = lox_kv_live_value_bytes(core);
 
     if (core->kv.value_used <= live_bytes) {
@@ -100,7 +100,7 @@ static uint32_t lox_kv_fragmented_bytes(const lox_core_t *core) {
     return core->kv.value_used - live_bytes;
 }
 
-static bool lox_kv_should_compact(const lox_core_t *core) {
+static LOX_UNUSED_FN bool lox_kv_should_compact(const lox_core_t *core) {
     if (core->kv.value_used == 0u) {
         return false;
     }
@@ -108,7 +108,7 @@ static bool lox_kv_should_compact(const lox_core_t *core) {
     return lox_kv_fragmented_bytes(core) > (core->kv.value_used / 2u);
 }
 
-static void lox_kv_compact(lox_core_t *core) {
+static LOX_UNUSED_FN void lox_kv_compact(lox_core_t *core) {
     uint8_t *dst = core->kv.value_store;
     uint32_t i;
 
@@ -135,13 +135,13 @@ static void lox_kv_compact(lox_core_t *core) {
     core->kv.value_used = (uint32_t)(dst - core->kv.value_store);
 }
 
-static void lox_kv_maybe_compact(lox_core_t *core) {
+static LOX_UNUSED_FN void lox_kv_maybe_compact(lox_core_t *core) {
     if (lox_kv_should_compact(core)) {
         lox_kv_compact(core);
     }
 }
 
-static lox_err_t lox_kv_find_slot(lox_core_t *core,
+static LOX_UNUSED_FN lox_err_t lox_kv_find_slot(lox_core_t *core,
                                           const char *key,
                                           uint32_t *slot_out,
                                           bool *found_out,
@@ -196,7 +196,7 @@ static lox_err_t lox_kv_find_slot(lox_core_t *core,
     return LOX_ERR_FULL;
 }
 
-static void lox_kv_normalize_access_clock(lox_core_t *core) {
+static LOX_UNUSED_FN void lox_kv_normalize_access_clock(lox_core_t *core) {
     uint32_t i;
 
     if (core->kv.access_clock != UINT32_MAX) {
@@ -211,12 +211,12 @@ static void lox_kv_normalize_access_clock(lox_core_t *core) {
     core->kv.access_clock = 2u;
 }
 
-static uint32_t lox_kv_next_access_clock(lox_core_t *core) {
+static LOX_UNUSED_FN uint32_t lox_kv_next_access_clock(lox_core_t *core) {
     lox_kv_normalize_access_clock(core);
     return core->kv.access_clock++;
 }
 
-static void lox_kv_remove_slot(lox_core_t *core, uint32_t idx) {
+static LOX_UNUSED_FN void lox_kv_remove_slot(lox_core_t *core, uint32_t idx) {
     lox_kv_bucket_t *bucket = &core->kv.buckets[idx];
 
     if (bucket->state == LOX_KV_BUCKET_LIVE && core->kv.entry_count != 0u) {
@@ -233,7 +233,7 @@ static void lox_kv_remove_slot(lox_core_t *core, uint32_t idx) {
     bucket->last_access = 0u;
 }
 
-static void lox_kv_shift_offsets(lox_core_t *core, uint32_t start_offset, int32_t delta) {
+static LOX_UNUSED_FN void lox_kv_shift_offsets(lox_core_t *core, uint32_t start_offset, int32_t delta) {
     uint32_t i;
 
     for (i = 0; i < core->kv.bucket_count; ++i) {
@@ -244,13 +244,13 @@ static void lox_kv_shift_offsets(lox_core_t *core, uint32_t start_offset, int32_
     }
 }
 
-static void lox_kv_write_bytes(uint8_t *dst, const void *val, size_t len) {
+static LOX_UNUSED_FN void lox_kv_write_bytes(uint8_t *dst, const void *val, size_t len) {
     if (len != 0u) {
         memcpy(dst, val, len);
     }
 }
 
-static lox_err_t lox_kv_overwrite_value(lox_core_t *core,
+static LOX_UNUSED_FN lox_err_t lox_kv_overwrite_value(lox_core_t *core,
                                                 lox_kv_bucket_t *bucket,
                                                 const void *val,
                                                 size_t len) {
@@ -297,7 +297,7 @@ static lox_err_t lox_kv_overwrite_value(lox_core_t *core,
     return LOX_OK;
 }
 
-static lox_err_t lox_kv_append_value(lox_core_t *core,
+static LOX_UNUSED_FN lox_err_t lox_kv_append_value(lox_core_t *core,
                                              lox_kv_bucket_t *bucket,
                                              const void *val,
                                              size_t len) {

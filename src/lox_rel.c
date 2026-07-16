@@ -10,7 +10,7 @@
 
 #define LOX_REL_ROW_SCRATCH_MAX 1024u
 
-static size_t lox_rel_type_size(lox_col_type_t type) {
+static LOX_UNUSED_FN size_t lox_rel_type_size(lox_col_type_t type) {
     if (type == LOX_COL_U8 || type == LOX_COL_I8 || type == LOX_COL_BOOL) {
         return 1u;
     }
@@ -26,7 +26,7 @@ static size_t lox_rel_type_size(lox_col_type_t type) {
     return 0u;
 }
 
-static lox_err_t lox_rel_validate_name(const char *name, size_t max_len) {
+static LOX_UNUSED_FN lox_err_t lox_rel_validate_name(const char *name, size_t max_len) {
     size_t len;
 
     if (name == NULL || name[0] == '\0') {
@@ -41,7 +41,7 @@ static lox_err_t lox_rel_validate_name(const char *name, size_t max_len) {
     return LOX_OK;
 }
 
-static lox_col_desc_t *lox_rel_find_col(lox_col_desc_t *cols, uint32_t col_count, const char *name) {
+static LOX_UNUSED_FN lox_col_desc_t *lox_rel_find_col(lox_col_desc_t *cols, uint32_t col_count, const char *name) {
     uint32_t i;
 
     for (i = 0; i < col_count; ++i) {
@@ -53,7 +53,7 @@ static lox_col_desc_t *lox_rel_find_col(lox_col_desc_t *cols, uint32_t col_count
     return NULL;
 }
 
-static const lox_col_desc_t *lox_rel_find_col_const(const lox_col_desc_t *cols, uint32_t col_count, const char *name) {
+static LOX_UNUSED_FN const lox_col_desc_t *lox_rel_find_col_const(const lox_col_desc_t *cols, uint32_t col_count, const char *name) {
     uint32_t i;
 
     for (i = 0; i < col_count; ++i) {
@@ -65,7 +65,7 @@ static const lox_col_desc_t *lox_rel_find_col_const(const lox_col_desc_t *cols, 
     return NULL;
 }
 
-static size_t lox_rel_align_for_size(size_t size) {
+static LOX_UNUSED_FN size_t lox_rel_align_for_size(size_t size) {
     if (size >= 8u) {
         return 8u;
     }
@@ -78,11 +78,11 @@ static size_t lox_rel_align_for_size(size_t size) {
     return 1u;
 }
 
-static bool rel_is_alive(const uint8_t *bitmap, uint32_t row_idx) {
+static LOX_UNUSED_FN bool rel_is_alive(const uint8_t *bitmap, uint32_t row_idx) {
     return ((bitmap[row_idx >> 3u] >> (row_idx & 7u)) & 1u) != 0u;
 }
 
-static void rel_set_alive(uint8_t *bitmap, uint32_t row_idx, bool alive) {
+static LOX_UNUSED_FN void rel_set_alive(uint8_t *bitmap, uint32_t row_idx, bool alive) {
     if (alive) {
         bitmap[row_idx >> 3u] |= (uint8_t)(1u << (row_idx & 7u));
     } else {
@@ -90,19 +90,19 @@ static void rel_set_alive(uint8_t *bitmap, uint32_t row_idx, bool alive) {
     }
 }
 
-static const void *rel_row_ptr(const lox_table_t *table, uint32_t row_idx) {
+static LOX_UNUSED_FN const void *rel_row_ptr(const lox_table_t *table, uint32_t row_idx) {
     return table->rows + ((size_t)row_idx * table->row_size);
 }
 
-static void *rel_row_ptr_mut(lox_table_t *table, uint32_t row_idx) {
+static LOX_UNUSED_FN void *rel_row_ptr_mut(lox_table_t *table, uint32_t row_idx) {
     return table->rows + ((size_t)row_idx * table->row_size);
 }
 
-static int rel_key_cmp(const void *a, const void *b, size_t size) {
+static LOX_UNUSED_FN int rel_key_cmp(const void *a, const void *b, size_t size) {
     return memcmp(a, b, size);
 }
 
-static uint32_t rel_ctz_u32(uint32_t value) {
+static LOX_UNUSED_FN uint32_t rel_ctz_u32(uint32_t value) {
 #if defined(_MSC_VER)
     unsigned long idx;
     _BitScanForward(&idx, value);
@@ -122,7 +122,7 @@ static uint32_t rel_ctz_u32(uint32_t value) {
 static const lox_col_desc_t *rel_index_col(const lox_table_t *table);
 static void rel_copy_column_to_index(uint8_t *dst, const lox_col_desc_t *col, const void *row_buf);
 
-static uint32_t rel_index_find_first(const lox_table_t *table, const void *key_bytes) {
+static LOX_UNUSED_FN uint32_t rel_index_find_first(const lox_table_t *table, const void *key_bytes) {
     int32_t lo = 0;
     int32_t hi = (int32_t)table->index_count - 1;
     int32_t result = -1;
@@ -143,7 +143,7 @@ static uint32_t rel_index_find_first(const lox_table_t *table, const void *key_b
     return (result >= 0) ? (uint32_t)result : UINT32_MAX;
 }
 
-static void rel_index_insert(lox_table_t *table, uint32_t row_idx, const void *key_bytes) {
+static LOX_UNUSED_FN void rel_index_insert(lox_table_t *table, uint32_t row_idx, const void *key_bytes) {
     int32_t lo = 0;
     int32_t hi = (int32_t)table->index_count - 1;
     int32_t pos = (int32_t)table->index_count;
@@ -167,7 +167,7 @@ static void rel_index_insert(lox_table_t *table, uint32_t row_idx, const void *k
     table->index_count++;
 }
 
-static void rel_index_remove_row(lox_table_t *table, uint32_t row_idx) {
+static LOX_UNUSED_FN void rel_index_remove_row(lox_table_t *table, uint32_t row_idx) {
     uint32_t i;
 
     for (i = 0; i < table->index_count; ++i) {
@@ -181,7 +181,7 @@ static void rel_index_remove_row(lox_table_t *table, uint32_t row_idx) {
     }
 }
 
-static void rel_order_remove_row(lox_table_t *table, uint32_t row_idx) {
+static LOX_UNUSED_FN void rel_order_remove_row(lox_table_t *table, uint32_t row_idx) {
     uint32_t i;
 
     for (i = 0; i < table->order_count; ++i) {
@@ -195,7 +195,7 @@ static void rel_order_remove_row(lox_table_t *table, uint32_t row_idx) {
     }
 }
 
-static void rel_apply_insert_row(lox_table_t *table, uint32_t row_idx, const void *row_buf) {
+static LOX_UNUSED_FN void rel_apply_insert_row(lox_table_t *table, uint32_t row_idx, const void *row_buf) {
     const lox_col_desc_t *idx_col;
 
     memcpy(rel_row_ptr_mut(table, row_idx), row_buf, table->row_size);
@@ -212,7 +212,7 @@ static void rel_apply_insert_row(lox_table_t *table, uint32_t row_idx, const voi
     table->mutation_seq++;
 }
 
-static void rel_apply_delete_row(lox_table_t *table, uint32_t row_idx) {
+static LOX_UNUSED_FN void rel_apply_delete_row(lox_table_t *table, uint32_t row_idx) {
     rel_set_alive(table->alive_bitmap, row_idx, false);
     rel_index_remove_row(table, row_idx);
     rel_order_remove_row(table, row_idx);
@@ -222,11 +222,11 @@ static void rel_apply_delete_row(lox_table_t *table, uint32_t row_idx) {
     table->mutation_seq++;
 }
 
-static bool rel_wal_mode(const lox_core_t *core) {
+static LOX_UNUSED_FN bool rel_wal_mode(const lox_core_t *core) {
     return core->wal_enabled && core->storage != NULL && !core->storage_loading && !core->wal_replaying;
 }
 
-static bool rel_has_arena_space_for_table(const lox_core_t *core, const lox_schema_impl_t *impl) {
+static LOX_UNUSED_FN bool rel_has_arena_space_for_table(const lox_core_t *core, const lox_schema_impl_t *impl) {
     size_t need_rows = 0u;
     size_t need_alive = 0u;
     size_t need_order = 0u;
@@ -251,7 +251,7 @@ static bool rel_has_arena_space_for_table(const lox_core_t *core, const lox_sche
     return lox_arena_remaining((lox_arena_t *)&core->rel_arena) >= need_total;
 }
 
-static uint32_t rel_find_free_row(const lox_table_t *table) {
+static LOX_UNUSED_FN uint32_t rel_find_free_row(const lox_table_t *table) {
     uint32_t byte_idx;
     uint32_t alive_bytes = (table->max_rows + 7u) / 8u;
 
@@ -272,7 +272,7 @@ static uint32_t rel_find_free_row(const lox_table_t *table) {
     return UINT32_MAX;
 }
 
-static lox_table_t *rel_find_table(lox_core_t *core, const char *name) {
+static LOX_UNUSED_FN lox_table_t *rel_find_table(lox_core_t *core, const char *name) {
     uint32_t i;
 
     for (i = 0; i < LOX_REL_MAX_TABLES; ++i) {
@@ -300,12 +300,12 @@ static LOX_UNUSED_FN const void *rel_index_key_ptr(const lox_table_t *table, con
     return (const uint8_t *)row_buf + col->offset;
 }
 
-static void rel_copy_column_to_index(uint8_t *dst, const lox_col_desc_t *col, const void *row_buf) {
+static LOX_UNUSED_FN void rel_copy_column_to_index(uint8_t *dst, const lox_col_desc_t *col, const void *row_buf) {
     memset(dst, 0, LOX_REL_INDEX_KEY_MAX);
     memcpy(dst, (const uint8_t *)row_buf + col->offset, col->size);
 }
 
-static lox_err_t rel_validate_str_value(const char *str, size_t max_size) {
+static LOX_UNUSED_FN lox_err_t rel_validate_str_value(const char *str, size_t max_size) {
     size_t i;
 
     for (i = 0; i < max_size; ++i) {
@@ -317,7 +317,7 @@ static lox_err_t rel_validate_str_value(const char *str, size_t max_size) {
     return LOX_ERR_SCHEMA;
 }
 
-static lox_err_t rel_validate_table_and_handle(lox_t *db, lox_table_t *table) {
+static LOX_UNUSED_FN lox_err_t rel_validate_table_and_handle(lox_t *db, lox_table_t *table) {
     if (db == NULL || table == NULL) {
         return LOX_ERR_INVALID;
     }

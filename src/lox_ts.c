@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static lox_err_t lox_ts_validate_name(const char *name) {
+static LOX_UNUSED_FN lox_err_t lox_ts_validate_name(const char *name) {
     size_t len;
 
     if (name == NULL || name[0] == '\0') {
@@ -20,7 +20,7 @@ static lox_err_t lox_ts_validate_name(const char *name) {
     return LOX_OK;
 }
 
-static lox_ts_stream_t *lox_ts_find(lox_core_t *core, const char *name) {
+static LOX_UNUSED_FN lox_ts_stream_t *lox_ts_find(lox_core_t *core, const char *name) {
     uint32_t i;
 
     for (i = 0; i < LOX_TS_MAX_STREAMS; ++i) {
@@ -33,11 +33,11 @@ static lox_ts_stream_t *lox_ts_find(lox_core_t *core, const char *name) {
     return NULL;
 }
 
-static bool lox_ts_type_valid(lox_ts_type_t type) {
+static LOX_UNUSED_FN bool lox_ts_type_valid(lox_ts_type_t type) {
     return type == LOX_TS_F32 || type == LOX_TS_I32 || type == LOX_TS_U32 || type == LOX_TS_RAW;
 }
 
-static uint32_t lox_ts_stream_val_size(const lox_ts_stream_t *stream) {
+static LOX_UNUSED_FN uint32_t lox_ts_stream_val_size(const lox_ts_stream_t *stream) {
     if (stream->type == LOX_TS_RAW) {
         return (uint32_t)stream->raw_size;
     }
@@ -47,15 +47,15 @@ static uint32_t lox_ts_stream_val_size(const lox_ts_stream_t *stream) {
     return 0u;
 }
 
-static uint8_t *lox_ts_sample_ptr(lox_ts_stream_t *stream, uint32_t idx) {
+static LOX_UNUSED_FN uint8_t *lox_ts_sample_ptr(lox_ts_stream_t *stream, uint32_t idx) {
     return stream->buf + (idx * stream->sample_stride);
 }
 
-static const uint8_t *lox_ts_sample_ptr_const(const lox_ts_stream_t *stream, uint32_t idx) {
+static LOX_UNUSED_FN const uint8_t *lox_ts_sample_ptr_const(const lox_ts_stream_t *stream, uint32_t idx) {
     return stream->buf + (idx * stream->sample_stride);
 }
 
-static void lox_ts_read_sample(const lox_ts_stream_t *stream, uint32_t idx, lox_ts_sample_t *out) {
+static LOX_UNUSED_FN void lox_ts_read_sample(const lox_ts_stream_t *stream, uint32_t idx, lox_ts_sample_t *out) {
     const uint8_t *slot = lox_ts_sample_ptr_const(stream, idx);
     uint32_t val_len = lox_ts_stream_val_size(stream);
 
@@ -64,7 +64,7 @@ static void lox_ts_read_sample(const lox_ts_stream_t *stream, uint32_t idx, lox_
     memcpy(&out->v, slot + sizeof(out->ts), val_len);
 }
 
-static void lox_ts_write_sample(const lox_ts_stream_t *stream, uint32_t idx, const lox_ts_sample_t *sample) {
+static LOX_UNUSED_FN void lox_ts_write_sample(const lox_ts_stream_t *stream, uint32_t idx, const lox_ts_sample_t *sample) {
     uint8_t *slot = lox_ts_sample_ptr((lox_ts_stream_t *)stream, idx);
     uint32_t val_len = lox_ts_stream_val_size(stream);
 
@@ -72,7 +72,7 @@ static void lox_ts_write_sample(const lox_ts_stream_t *stream, uint32_t idx, con
     memcpy(slot + sizeof(sample->ts), &sample->v, val_len);
 }
 
-static void lox_ts_copy_sample_slot(const lox_ts_stream_t *stream, uint32_t dst_idx, uint32_t src_idx) {
+static LOX_UNUSED_FN void lox_ts_copy_sample_slot(const lox_ts_stream_t *stream, uint32_t dst_idx, uint32_t src_idx) {
     uint8_t *dst = lox_ts_sample_ptr((lox_ts_stream_t *)stream, dst_idx);
     const uint8_t *src = lox_ts_sample_ptr_const(stream, src_idx);
     memcpy(dst, src, stream->sample_stride);
@@ -90,7 +90,7 @@ typedef struct {
     uint32_t keep_count;
 } lox_ts_layout_item_t;
 
-static uint32_t lox_ts_stride_for_type(lox_ts_type_t type, size_t raw_size) {
+static LOX_UNUSED_FN uint32_t lox_ts_stride_for_type(lox_ts_type_t type, size_t raw_size) {
     size_t val_size = 0u;
     size_t stride_sz = 0u;
     uint32_t stride = 0u;
@@ -113,7 +113,7 @@ static uint32_t lox_ts_stride_for_type(lox_ts_type_t type, size_t raw_size) {
     return stride;
 }
 
-static lox_err_t lox_ts_repartition(lox_core_t *core) {
+static LOX_UNUSED_FN lox_err_t lox_ts_repartition(lox_core_t *core) {
     lox_ts_layout_item_t items[LOX_TS_MAX_STREAMS];
     uint32_t count = 0u;
     uint32_t i;
@@ -265,7 +265,7 @@ static lox_err_t lox_ts_repartition(lox_core_t *core) {
     return LOX_OK;
 }
 
-static lox_err_t lox_ts_register_apply(lox_core_t *core,
+static LOX_UNUSED_FN lox_err_t lox_ts_register_apply(lox_core_t *core,
                                                const char *name,
                                                lox_ts_type_t type,
                                                size_t raw_size,
@@ -315,7 +315,7 @@ static lox_err_t lox_ts_register_apply(lox_core_t *core,
     return LOX_ERR_FULL;
 }
 
-static void lox_ts_set_value(lox_ts_stream_t *stream, lox_ts_sample_t *sample, const void *val) {
+static LOX_UNUSED_FN void lox_ts_set_value(lox_ts_stream_t *stream, lox_ts_sample_t *sample, const void *val) {
     if (stream->type == LOX_TS_F32) {
         memcpy(&sample->v.f32, val, sizeof(sample->v.f32));
     } else if (stream->type == LOX_TS_I32) {
@@ -327,7 +327,7 @@ static void lox_ts_set_value(lox_ts_stream_t *stream, lox_ts_sample_t *sample, c
     }
 }
 
-static void lox_ts_rb_insert(lox_ts_stream_t *stream, const lox_ts_sample_t *sample) {
+static LOX_UNUSED_FN void lox_ts_rb_insert(lox_ts_stream_t *stream, const lox_ts_sample_t *sample) {
     if (stream->count == stream->capacity) {
 #if LOX_TS_OVERFLOW_POLICY == LOX_TS_POLICY_DROP_OLDEST
         lox_ts_sample_t dropped;
@@ -395,7 +395,7 @@ static LOX_UNUSED_FN void lox_ts_downsample_oldest(lox_ts_stream_t *stream) {
     stream->count--;
 }
 
-static void lox_ts_merge_pair(lox_ts_stream_t *stream,
+static LOX_UNUSED_FN void lox_ts_merge_pair(lox_ts_stream_t *stream,
                                   uint32_t dst_idx,
                                   uint32_t a_idx,
                                   uint32_t b_idx) {
