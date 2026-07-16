@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog and follows semantic versioning intent where possible.
 
-## [Unreleased]
+## [1.4.3] - 2026-07-16
 
 ### Added
 
@@ -18,6 +18,7 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
   - `docs/API_REFERENCE.md`
   - `docs/COOKBOOK.md`
   - `docs/EVIDENCE_MATRIX.md`
+
 - Deterministic startup feasibility API:
   - new `lox_preflight(const lox_cfg_t*, lox_preflight_report_t*)` in core API.
   - new `lox_preflight_report_t` with RAM split and storage layout feasibility fields.
@@ -53,6 +54,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 - Build/test wiring:
   - registered `test_selfcheck`, `test_wcet_bounds`, and `test_ts_log_retain` in CMake.
   - added dedicated `lox_ts_log_retain` test library target so default TS policy behavior remains unchanged.
+
+## [Unreleased]
 
 ## [1.4.2] - 2026-07-16
 
