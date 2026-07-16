@@ -13,7 +13,6 @@ Checks: >-
   -bugprone-easily-swappable-parameters
 WarningsAsErrors: ''
 HeaderFilterRegex: '^(include|src|port)/'
-AnalyzeTemporaryDtors: false
 FormatStyle: none
 ...
 
