@@ -12,7 +12,7 @@ This file is a reality check against tests currently present in `tests/` and CTe
 - Recovery and resilience paths have dedicated tests.
 - Optional backend adapter matrix paths are covered by dedicated tests.
 - Stress lanes exist for managed and fs/block matrix paths.
-- Phase 05 package-consumer and metadata gates are now wired in CTest.
+- Installed consumer and metadata gates are now wired in CTest.
 
 ## Areas with explicit test files
 
@@ -46,7 +46,7 @@ This file is a reality check against tests currently present in `tests/` and CTe
 - broader storage-driver fault injection matrices on open path
 - wider corruption corpus breadth beyond current deterministic fixtures
 - explicit CI latency guardrails for target hardware (outside generic host CI)
-- host-side verification of Phase 05 consumer/package gates in the current build directory
+- host-side verification of consumer/package gates in the current build directory
 
 ## Notes
 

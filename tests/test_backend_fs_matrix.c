@@ -170,6 +170,7 @@ static void teardown_fixture(void) {
 static void run_near_full_lane(const char *backend_name, uint8_t write_through) {
     uint32_t i;
     uint8_t full_seen = 0u;
+    lox_pressure_t p;
     lox_stats_t st;
     open_db(backend_name, write_through);
 
@@ -200,7 +201,8 @@ static void run_near_full_lane(const char *backend_name, uint8_t write_through) 
     }
 
     ASSERT_EQ(lox_inspect(&g_db, &st), LOX_OK);
-    ASSERT_EQ((st.wal_fill_pct >= 70u || full_seen != 0u), 1);
+    ASSERT_EQ(lox_get_pressure(&g_db, &p), LOX_OK);
+    ASSERT_EQ((p.near_full_risk_pct >= 70u || full_seen != 0u), 1);
     power_loss_reset_to_durable();
     crash_reopen(backend_name, write_through);
     ASSERT_EQ(lox_inspect(&g_db, &st), LOX_OK);

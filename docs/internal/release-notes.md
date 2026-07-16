@@ -29,8 +29,7 @@ Highlights:
 
 Validation summary:
 
-- Phase 05 installed consumer and metadata gates were verified in the current
-  `build/phase05-win` Windows build tree.
+- Installed consumer and metadata gates were verified in the current build tree.
 - GCC/Clang strict C99 and ARM/ESP-IDF compile gates remain NOT VERIFIED here
   unless a concrete run artifact is linked in `docs/EVIDENCE_MATRIX.md`.
 

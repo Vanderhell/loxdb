@@ -23,13 +23,14 @@ static uint32_t g_now = 1000u;
 static uint32_t g_lock_depth = 0u;
 static uint32_t g_reentrant_lock = 0u;
 static lox_err_t g_cb_error = LOX_OK;
+static uint8_t g_lock_token = 0u;
 
 static lox_timestamp_t mock_now(void) {
     return g_now++;
 }
 
 static void *test_lock_create(void) {
-    return NULL;
+    return &g_lock_token;
 }
 
 static void test_lock(void *hdl) {

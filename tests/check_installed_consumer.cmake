@@ -24,9 +24,39 @@ if(NOT DEFINED EXPECT_CONFIGURE_FAILURE)
     set(EXPECT_CONFIGURE_FAILURE 0)
 endif()
 
+function(_lox_read_cache_value cache_file cache_key out_var)
+    set(_line "")
+    if(EXISTS "${cache_file}")
+        file(STRINGS "${cache_file}" _matches REGEX "^${cache_key}:")
+        list(LENGTH _matches _match_count)
+        if(_match_count GREATER 0)
+            list(GET _matches 0 _line)
+            string(REGEX REPLACE "^[^=]+=(.*)$" "\\1" _value "${_line}")
+            set(${out_var} "${_value}" PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+    set(${out_var} "" PARENT_SCOPE)
+endfunction()
+
 file(REMOVE_RECURSE "${INSTALL_PREFIX}" "${CONSUMER_BUILD_DIR}")
 file(MAKE_DIRECTORY "${INSTALL_PREFIX}")
 file(MAKE_DIRECTORY "${CONSUMER_BUILD_DIR}")
+
+set(_consumer_configure_args)
+set(_source_cache_file "${BUILD_DIR}/CMakeCache.txt")
+foreach(_cache_key
+        CMAKE_C_COMPILER
+        CMAKE_CXX_COMPILER
+        CMAKE_C_FLAGS_DEBUG
+        CMAKE_CXX_FLAGS_DEBUG
+        CMAKE_EXE_LINKER_FLAGS_DEBUG
+        CMAKE_SHARED_LINKER_FLAGS_DEBUG)
+    _lox_read_cache_value("${_source_cache_file}" "${_cache_key}" _cache_value)
+    if(NOT _cache_value STREQUAL "")
+        list(APPEND _consumer_configure_args "-D${_cache_key}=${_cache_value}")
+    endif()
+endforeach()
 
 execute_process(
     COMMAND "${CMAKE_COMMAND}" --build "${BUILD_DIR}" --config "${INSTALL_CONFIG}" --target loxdb lox_json_wrapper lox_import_export
@@ -55,6 +85,7 @@ execute_process(
         -B "${CONSUMER_BUILD_DIR}"
         -DCMAKE_PREFIX_PATH=${INSTALL_PREFIX}
         -DCMAKE_BUILD_TYPE=${INSTALL_CONFIG}
+        ${_consumer_configure_args}
     RESULT_VARIABLE configure_rc
     OUTPUT_VARIABLE configure_out
     ERROR_VARIABLE configure_err

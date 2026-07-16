@@ -7,13 +7,13 @@ For detailed code-level change history, see [CHANGELOG.md](../../CHANGELOG.md).
 
 ### Highlights
 
-- Phase 05 package and consumer gates are wired:
+- Package and consumer gates are wired:
   - release metadata consistency
   - installed-package C consumer
   - installed-package C++ consumer
   - version mismatch configure-fail gate
   - installed config mismatch gate
-- Phase 05 documentation truth cleanup is in progress:
+- Documentation truth cleanup is in progress:
   - API reference
   - cookbook
   - evidence matrix
@@ -29,9 +29,8 @@ For detailed code-level change history, see [CHANGELOG.md](../../CHANGELOG.md).
 
 ### Validation
 
-- New Phase 05 suites are wired in CTest.
-- Phase 05 installed consumer and metadata gates passed in the current
-  `build/phase05-win` Windows build tree.
+- New consumer/package suites are wired in CTest.
+- Installed consumer and metadata gates passed in the current build tree.
 - Full GCC/Clang strict C99 and ARM/ESP-IDF lane status remains NOT VERIFIED
   in this environment.
 

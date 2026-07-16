@@ -8,8 +8,8 @@ Status note:
   rerun in the current turn.
 - Historical verification entries below remain historical unless the current
   build output or `docs/results/` evidence says otherwise.
-- Phase 05 package/consumer and metadata gates were verified in
-  `build/phase05-win` during this turn.
+- Package/consumer and metadata gates were verified in the current build tree
+  during this turn.
 
 ## 1. Validation Gates
 
@@ -19,7 +19,7 @@ Status note:
   - latest recorded run: `docs/results/validation_summary_20260419_193234.md`
 - [x] Historical hard verdict exists in `docs/results/`
   - latest recorded: `docs/results/hard_verdict_20260419.md`
-- [ ] Current Phase 05 consumer/package gates re-run in this environment
+- [ ] Current consumer/package gates re-run in this environment
   - `test_release_metadata_consistency`
   - `test_source_detached_consumer_c`
   - `test_source_detached_consumer_cpp`

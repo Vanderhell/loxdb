@@ -55,4 +55,4 @@ Available modules under `src/backends/` and `include/lox_backend_*.h`:
 
 - `docs/results/` contains run artifacts and historical summaries.
 - Artifacts are evidence snapshots, not the API contract source of truth.
-- Phase 05 package-consumer and metadata gates are wired in CTest, but any host-side run status must be taken from the current build output, not this historical snapshot.
+- Installed consumer and metadata gates are wired in CTest, but any host-side run status must be taken from the current build output, not this historical snapshot.
