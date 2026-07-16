@@ -7,6 +7,16 @@ For detailed code-level change history, see [CHANGELOG.md](../../CHANGELOG.md).
 
 ### Highlights
 
+- Phase 05 package and consumer gates are wired:
+  - release metadata consistency
+  - installed-package C consumer
+  - installed-package C++ consumer
+  - version mismatch configure-fail gate
+  - installed config mismatch gate
+- Phase 05 documentation truth cleanup is in progress:
+  - API reference
+  - cookbook
+  - evidence matrix
 - Added free-tier runtime integrity API `lox_selfcheck()` with anomaly counters and first-anomaly string.
 - Added WCET deliverables for integrators:
   - `include/lox_wcet.h` bounds,
@@ -19,11 +29,11 @@ For detailed code-level change history, see [CHANGELOG.md](../../CHANGELOG.md).
 
 ### Validation
 
-- New suites are green in CI preset validation:
-  - `test_selfcheck`
-  - `test_wcet_bounds`
-  - `test_ts_log_retain`
-- Full Windows preset regression remains passing after integration.
+- New Phase 05 suites are wired in CTest.
+- Phase 05 installed consumer and metadata gates passed in the current
+  `build/phase05-win` Windows build tree.
+- Full GCC/Clang strict C99 and ARM/ESP-IDF lane status remains NOT VERIFIED
+  in this environment.
 
 ## v1.3.5 - 2026-04-22
 

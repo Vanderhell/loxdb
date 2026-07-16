@@ -13,7 +13,7 @@
 
 ## Release artifacts
 
-- GitHub “Source code (zip/tar.gz)” assets are automatic tag snapshots (source tree).
+- GitHub "Source code (zip/tar.gz)" assets are automatic tag snapshots (source tree).
 - `loxdb-source-vX.Y.Z.zip` is the explicit source distribution asset (source + tests + tooling).
 - `loxdb-sdk-vX.Y.Z-<platform>.(zip|tar.gz)` assets are install-prefix SDK bundles (headers + libraries + CMake package files) and are not expected to include `src/*.c`.
 
@@ -77,8 +77,6 @@ int main(void) {
 }
 ```
 
-
-
 ## Build & test (desktop)
 
 ```bash
@@ -93,28 +91,20 @@ ctest --preset ci-debug-linux
 - **TS (time-series):** typed telemetry streams (`F32/I32/U32/RAW`) with timestamp range queries and retention policies.
 - **REL (relational):** small fixed-schema tables with one indexed column, designed for predictable memory use.
 
-## Verified hardware
+## Hardware validation
 
-loxdb is written in portable C99 and works on any MCU with byte-write 
-flash storage — including ESP32 family, STM32, RP2040, nRF52, and similar 
-Cortex-M class hardware. Only platforms verified end-to-end on real 
-hardware are listed below; ports to other targets are technically 
-supported but not yet bench-validated.
-
-### Verified on hardware
+Hardware-specific claims are separated from source claims in [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
 
 | Platform | Status | Benchmarks |
 |---|---|---|
-| ESP32-S3 N16R8 (16MB NOR flash, 8MB PSRAM) | Verified — KV/TS/REL engines, WAL recovery, power-loss scenarios | [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) |
+| ESP32-S3 N16R8 (16MB NOR flash, 8MB PSRAM) | VERIFIED WITH DEFINED LIMITS - KV/TS/REL engines, WAL recovery, power-loss scenarios | [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) |
 
-Verified using the ESP32-S3 bench runners under [`bench/`](bench/). 
-Published benchmark results live in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) 
-(template until filled with real measurements).
+Verified using the ESP32-S3 bench runners under [`bench/`](bench/).
 
 ## Project status & roadmap
 
-- Current release line: `v1.4.0` (see `CHANGELOG.md`).
-- Young project focused on embedded correctness and predictable memory behavior; production use-cases and feedback are welcome.
+- Current release line: `v1.4.1` (see `CHANGELOG.md`).
+- Verification status is tracked explicitly in [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
 
 ## loxdb vs loxdb_pro
 
@@ -122,11 +112,14 @@ This repository is the MIT-licensed OSS edition. A planned commercial edition (`
 
 ## Documentation
 
+- API reference: `docs/API_REFERENCE.md`
+- Cookbook: `docs/COOKBOOK.md`
 - Getting started: `docs/GETTING_STARTED_5_MIN.md`
 - Programmer manual: `docs/PROGRAMMER_MANUAL.md`
 - Backend integration: `docs/BACKEND_INTEGRATION_GUIDE.md`
 - Port authoring (ESP32 reference): `docs/PORT_AUTHORING_GUIDE.md`
 - Schema migration: `docs/SCHEMA_MIGRATION_GUIDE.md`
+- Evidence matrix: `docs/EVIDENCE_MATRIX.md`
 - Docs index: `docs/README.md`
 
 ## Contributing & support
@@ -138,4 +131,3 @@ This repository is the MIT-licensed OSS edition. A planned commercial edition (`
 ## License
 
 MIT (see `LICENSE`).
-

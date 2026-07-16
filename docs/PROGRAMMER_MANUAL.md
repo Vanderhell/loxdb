@@ -9,6 +9,11 @@ This manual is written from the current source of truth in this repository:
 - core implementation: `src/*.c`
 - optional backend modules: `include/lox_backend_*.h`, `src/backends/*.c`
 
+For compact reference and ready-to-copy recipes, also see:
+
+- `docs/API_REFERENCE.md`
+- `docs/COOKBOOK.md`
+
 ## 1. What loxdb is
 
 `loxdb` is an embedded C99 storage library with one unified API over three data engines:
@@ -83,6 +88,28 @@ Depending on your platform/path:
 
 - CMake (main build and variants)
 - CTest (test execution)
+
+## 3.4 Installed-package usage
+
+The installed package exports `loxdb::loxdb` and a generated `loxdbConfig.cmake`
+plus version file for `find_package(loxdb CONFIG REQUIRED)`.
+
+Minimal installed C consumer:
+
+```cmake
+find_package(loxdb CONFIG REQUIRED)
+target_link_libraries(app PRIVATE loxdb::loxdb)
+```
+
+Minimal installed C++ consumer:
+
+```cmake
+find_package(loxdb CONFIG REQUIRED)
+target_link_libraries(app PRIVATE loxdb::loxdb)
+```
+
+The repository verifies these consumers in detached build tests. See
+`tests/consumer/install_c/` and `tests/consumer/install_cpp/`.
 
 ## 3.4 Error codes (public API)
 

@@ -2,44 +2,46 @@
 
 ## Title
 
-`loxdb v1.3.7`
+`loxdb v1.4.1`
 
 ## Release text (GitHub Release body)
 
-This release expands the free MIT core with runtime integrity checks, WCET
-documentation/bounds, and logarithmic time-series retention.
+This release expands the free MIT core with package-consumer verification,
+metadata consistency checks, and documentation truth cleanup.
 
 Highlights:
 
-- Added `lox_selfcheck()` to validate internal KV/TS/REL/WAL invariants at runtime.
-- Added WCET package:
-  - `include/lox_wcet.h`
-  - `docs/WCET_ANALYSIS.md`
-  - `tests/test_wcet_bounds.c`
-- Added TS logarithmic retention path:
-  - `LOX_TS_POLICY_LOG_RETAIN`
-  - `lox_ts_register_ex(...)`
-  - per-stream log-retain zone configuration.
-- Added dedicated test coverage:
-  - `tests/test_selfcheck.c`
-  - `tests/test_wcet_bounds.c`
-  - `tests/test_ts_log_retain.c`
+- Added detached installed-package consumer tests:
+  - C consumer
+  - C++ consumer
+  - version mismatch configure-fail gate
+  - installed header config mismatch compile-fail gate
+- Added release metadata consistency checks:
+  - `CMakeLists.txt`
+  - `library.json`
+  - `library.properties`
+  - `CHANGELOG.md`
+  - `docs/internal/release-notes.md`
+- Added docs truth cleanup:
+  - API reference
+  - cookbook
+  - evidence matrix
 
 Validation summary:
 
-- New suites pass:
-  - `test_selfcheck`
-  - `test_wcet_bounds`
-  - `test_ts_log_retain`
-- Full preset regression remained green after integration.
+- Phase 05 installed consumer and metadata gates were verified in the current
+  `build/phase05-win` Windows build tree.
+- GCC/Clang strict C99 and ARM/ESP-IDF compile gates remain NOT VERIFIED here
+  unless a concrete run artifact is linked in `docs/EVIDENCE_MATRIX.md`.
 
 ## Contract links
 
 - `README.md`
 - `CHANGELOG.md`
 - `RELEASE_LOG.md`
-- `docs/WCET_ANALYSIS.md`
-- `docs/SAFETY_READINESS.md`
+- `docs/API_REFERENCE.md`
+- `docs/COOKBOOK.md`
+- `docs/EVIDENCE_MATRIX.md`
 - `docs/OFFLINE_VERIFIER.md`
 - `docs/PROFILE_GUARANTEES.md`
 

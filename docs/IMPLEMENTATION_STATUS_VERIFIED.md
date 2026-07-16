@@ -39,6 +39,7 @@ Available modules under `src/backends/` and `include/lox_backend_*.h`:
 - Core API: `test_kv`, `test_ts`, `test_rel`, `test_txn`, `test_wal`, `test_compact`, `test_migration`
 - Durability/recovery: `test_durability_closure`, `test_resilience`, `test_fail_code_contract`, `test_offline_verifier`
 - Contracts and misuse: `test_api_contract_matrix`, `test_error_strings`
+- Build/package consumer gates: `test_release_metadata_consistency`, `test_source_detached_consumer_c`, `test_source_detached_consumer_cpp`, `test_installed_package_version_mismatch`, `test_installed_package_config_mismatch`
 - Optional backend paths: `test_backend_*`
 - Capacity/profile variants: `test_profile_matrix`, `test_limits`, `test_storage_capacity_profiles`, `test_tiny_footprint`
 - REL corruption fixtures: `test_rel_corruption_replay`
@@ -54,3 +55,4 @@ Available modules under `src/backends/` and `include/lox_backend_*.h`:
 
 - `docs/results/` contains run artifacts and historical summaries.
 - Artifacts are evidence snapshots, not the API contract source of truth.
+- Phase 05 package-consumer and metadata gates are wired in CTest, but any host-side run status must be taken from the current build output, not this historical snapshot.

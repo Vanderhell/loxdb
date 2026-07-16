@@ -7,31 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if !LOX_ENABLE_TS
-static lox_err_t lox_ts_register_stub(lox_t *db, const char *name, lox_ts_type_t type, size_t raw_size) {
-    (void)db;
-    (void)name;
-    (void)type;
-    (void)raw_size;
-    return LOX_ERR_DISABLED;
-}
-static lox_err_t lox_ts_insert_stub(lox_t *db, const char *name, lox_timestamp_t ts, const void *val) {
-    (void)db;
-    (void)name;
-    (void)ts;
-    (void)val;
-    return LOX_ERR_DISABLED;
-}
-static lox_err_t lox_ts_clear_stub(lox_t *db, const char *name) {
-    (void)db;
-    (void)name;
-    return LOX_ERR_DISABLED;
-}
-#define lox_ts_register lox_ts_register_stub
-#define lox_ts_insert lox_ts_insert_stub
-#define lox_ts_clear lox_ts_clear_stub
-#endif
-
 #if !LOX_ENABLE_REL
 static lox_err_t lox_schema_init_stub(lox_schema_t *schema, const char *name, uint32_t max_rows) {
     (void)schema;
@@ -169,13 +144,17 @@ static uint32_t lox_bank_kv_offset(const lox_core_t *core, uint32_t bank) {
     return ((bank == 0u) ? core->layout.bank_a_offset : core->layout.bank_b_offset);
 }
 
+#if LOX_ENABLE_TS || LOX_ENABLE_REL
 static uint32_t lox_bank_ts_offset(const lox_core_t *core, uint32_t bank) {
     return lox_bank_kv_offset(core, bank) + core->layout.kv_size;
 }
+#endif
 
-static uint32_t lox_bank_rel_offset(const lox_core_t *core, uint32_t bank) {
+#if LOX_ENABLE_REL
+static LOX_UNUSED_FN uint32_t lox_bank_rel_offset(const lox_core_t *core, uint32_t bank) {
     return lox_bank_ts_offset(core, bank) + core->layout.ts_size;
 }
+#endif
 
 static bool lox_storage_ready(const lox_core_t *core) {
     return core->storage != NULL && core->storage->read != NULL && core->storage->write != NULL &&
@@ -1311,6 +1290,7 @@ static lox_err_t lox_apply_wal_entry(lox_t *db,
         if (op == LOX_WAL_OP_CLEAR) {
             return lox_kv_clear(db);
         }
+#if LOX_ENABLE_TS
     } else if (engine == LOX_WAL_ENGINE_TS) {
         if (op == LOX_WAL_OP_SET_INSERT) {
             uint8_t name_len;
@@ -1381,6 +1361,7 @@ static lox_err_t lox_apply_wal_entry(lox_t *db,
             name[name_len] = '\0';
             return lox_ts_clear(db, name);
         }
+#endif
     } else if (engine == LOX_WAL_ENGINE_REL) {
         if (op == LOX_WAL_OP_SET_INSERT) {
             uint8_t name_len;
@@ -1504,6 +1485,12 @@ static lox_err_t lox_apply_wal_entry(lox_t *db,
         }
     }
 
+    if (engine == LOX_WAL_ENGINE_META) {
+        if (op == 3u || op == 4u) {
+            return LOX_OK;
+        }
+    }
+
     return LOX_ERR_CORRUPT;
 }
 
@@ -1540,7 +1527,6 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
     block_seq = lox_get_u32(header + 12u);
     stored_crc = lox_get_u32(header + 16u);
     (void)entry_count;
-
     if (lox_get_u32(header + 0u) != LOX_WAL_MAGIC) {
         LOX_LOG("ERROR", "%s", "WAL header corrupt: resetting WAL");
         *out_header_reset = true;
@@ -1598,7 +1584,6 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
             saw_torn_append = true;
             break;
         }
-
         entry_crc = lox_get_u32(entry_header + 12u);
         crc = LOX_CRC32(entry_header, 12u);
         crc = lox_crc32(crc, payload, data_len);
@@ -1965,8 +1950,8 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
 
     /* Boot selection invariant:
      * 1) prefer newest valid superblock;
-     * 2) if no valid superblock exists, fallback to fully valid bank scan;
-     * 3) selected bank pages must all pass header+payload CRC validation.
+     * 2) if a valid superblock exists, its bank must validate or boot fails;
+     * 3) only when no valid superblock exists may we fall back to a bank scan.
      */
     if (candidate_count > 1u && candidate_gen[1] > candidate_gen[0]) {
         uint32_t tmp_bank = candidate_bank[0];
@@ -1976,15 +1961,21 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
         candidate_bank[1] = tmp_bank;
         candidate_gen[1] = tmp_gen;
     }
-    for (uint32_t i = 0u; i < candidate_count && !have_selected; ++i) {
-        err = lox_validate_bank_pages(core, candidate_bank[i], &selected_gen);
+    if (candidate_count > 0u) {
+        err = lox_validate_bank_pages(core, candidate_bank[0], &selected_gen);
         if (err == LOX_OK) {
-            selected_bank = candidate_bank[i];
+            selected_bank = candidate_bank[0];
             have_selected = true;
         } else if (err == LOX_ERR_INVALID) {
             saw_unsupported = true;
+            if (candidate_count > 1u) {
+                return LOX_ERR_INVALID;
+            }
         } else if (err == LOX_ERR_CORRUPT) {
             saw_corrupt = true;
+            if (candidate_count > 1u) {
+                return LOX_ERR_CORRUPT;
+            }
         } else {
             return err;
         }

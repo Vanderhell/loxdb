@@ -297,7 +297,19 @@ add_library(lox_footprint_min STATIC
     port/posix/lox_port_posix.c
 )
 target_include_directories(lox_footprint_min PUBLIC include port/ram port/posix PRIVATE src)
-target_compile_definitions(lox_footprint_min PRIVATE LOX_PROFILE_FOOTPRINT_MIN=1)
+target_compile_definitions(
+    lox_footprint_min
+    PRIVATE
+        LOX_PROFILE_FOOTPRINT_MIN=1
+        LOX_ENABLE_TS=0
+        LOX_ENABLE_REL=0
+        LOX_ENABLE_WAL=0
+        LOX_RAM_KB=8
+        LOX_KV_MAX_KEYS=8
+        LOX_TXN_STAGE_KEYS=2
+        LOX_KV_KEY_MAX_LEN=16
+        LOX_KV_VAL_MAX_LEN=64
+)
 
 function(create_lox_profile_variant target_name profile_macro)
     add_library(${target_name} STATIC
@@ -668,6 +680,11 @@ endif()
 
 if(LOX_BUILD_TESTS)
     enable_testing()
+    if(CMAKE_CONFIGURATION_TYPES)
+        set(LOX_PHASE05_INSTALL_CONFIG "$<CONFIG>")
+    else()
+        set(LOX_PHASE05_INSTALL_CONFIG "${CMAKE_BUILD_TYPE}")
+    endif()
     add_executable(test_kv tests/test_kv.c)
     target_include_directories(test_kv PRIVATE include tests port/ram src)
     target_link_libraries(test_kv PRIVATE loxdb)
@@ -994,8 +1011,63 @@ if(LOX_BUILD_TESTS)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
     )
 
+    add_test(
+        NAME test_release_metadata_consistency
+        COMMAND ${CMAKE_COMMAND}
+            -DPROJECT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_release_metadata.cmake
+    )
+
+    add_test(
+        NAME test_source_detached_consumer_c
+        COMMAND ${CMAKE_COMMAND}
+            -DBUILD_DIR=$<SHELL_PATH:${CMAKE_CURRENT_BINARY_DIR}>
+            -DINSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/phase05-install-c
+            -DCONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/consumer/install_c
+            -DCONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/phase05-consumer-c
+            -DCONSUMER_EXE_NAME=loxdb_installed_consumer_c
+            -DINSTALL_CONFIG=${LOX_PHASE05_INSTALL_CONFIG}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_installed_consumer.cmake
+    )
+
+    add_test(
+        NAME test_source_detached_consumer_cpp
+        COMMAND ${CMAKE_COMMAND}
+            -DBUILD_DIR=$<SHELL_PATH:${CMAKE_CURRENT_BINARY_DIR}>
+            -DINSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/phase05-install-cpp
+            -DCONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/consumer/install_cpp
+            -DCONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/phase05-consumer-cpp
+            -DCONSUMER_EXE_NAME=loxdb_installed_consumer_cpp
+            -DINSTALL_CONFIG=${LOX_PHASE05_INSTALL_CONFIG}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_installed_consumer.cmake
+    )
+
+    add_test(
+        NAME test_installed_package_version_mismatch
+        COMMAND ${CMAKE_COMMAND}
+            -DBUILD_DIR=$<SHELL_PATH:${CMAKE_CURRENT_BINARY_DIR}>
+            -DINSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/phase05-install-mismatch
+            -DCONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/consumer/version_mismatch
+            -DCONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/phase05-consumer-mismatch
+            -DCONSUMER_EXE_NAME=unused
+            -DINSTALL_CONFIG=${LOX_PHASE05_INSTALL_CONFIG}
+            -DEXPECT_CONFIGURE_FAILURE=1
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_installed_consumer.cmake
+    )
+
+    add_test(
+        NAME test_installed_package_config_mismatch
+        COMMAND ${CMAKE_COMMAND}
+            -DCC=${CMAKE_C_COMPILER}
+            -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
+            -DINCLUDE_DIR=${CMAKE_CURRENT_BINARY_DIR}/phase05-install-c/include
+            -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_handle.c
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/phase05-config-mismatch.obj
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
+    )
+
     find_program(LOX_UBSAN_CC NAMES clang clang.exe PATHS "C:/Program Files/LLVM/bin")
-    if(LOX_UBSAN_CC AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_ubsan_alignment.cmake")
+    if(LOX_UBSAN_CC)
         add_test(
             NAME test_ubsan_alignment_gate
             COMMAND ${CMAKE_COMMAND}
@@ -1007,7 +1079,7 @@ if(LOX_BUILD_TESTS)
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_ubsan_alignment.cmake
         )
     else()
-        message(STATUS "Skipping test_ubsan_alignment_gate: clang not available or missing tests/check_ubsan_alignment.cmake")
+        message(STATUS "Skipping test_ubsan_alignment_gate: clang not available")
     endif()
 
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/footprint_min_baseline.c")

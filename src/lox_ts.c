@@ -349,7 +349,7 @@ static void lox_ts_rb_insert(lox_ts_stream_t *stream, const lox_ts_sample_t *sam
     }
 }
 
-static void lox_ts_downsample_oldest(lox_ts_stream_t *stream) {
+static LOX_UNUSED_FN void lox_ts_downsample_oldest(lox_ts_stream_t *stream) {
     uint32_t i0 = stream->tail;
     uint32_t i1 = (stream->tail + 1u) % stream->capacity;
     uint32_t idx;
@@ -422,7 +422,7 @@ static void lox_ts_merge_pair(lox_ts_stream_t *stream,
     lox_ts_write_sample(stream, dst_idx, &a);
 }
 
-static uint32_t lox_ts_log_retain_apply(lox_ts_stream_t *stream) {
+static LOX_UNUSED_FN uint32_t lox_ts_log_retain_apply(lox_ts_stream_t *stream) {
     size_t zone_size = 0u;
     uint32_t read_pos;
     uint32_t write_pos;

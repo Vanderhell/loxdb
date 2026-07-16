@@ -55,7 +55,7 @@ static uint8_t *lox_align_ptr(uint8_t *ptr, size_t align) {
     return (uint8_t *)(uintptr_t)aligned;
 }
 
-static uint32_t lox_popcount8(uint8_t v) {
+static LOX_UNUSED_FN uint32_t lox_popcount8(uint8_t v) {
     uint32_t c = 0u;
     while (v != 0u) {
         c += (uint32_t)(v & 1u);
@@ -70,6 +70,9 @@ static void lox_selfcheck_set_first(lox_selfcheck_result_t *out, const char *msg
     }
 }
 
+#if 0
+/* Historical helper kept here for reference while the checked-arithmetic
+ * path is driven through the active storage and WAL code. */
 static bool lox_align_u32_local(uint32_t value, uint32_t align, uint32_t *out) {
     size_t aligned = 0u;
 
@@ -78,6 +81,7 @@ static bool lox_align_u32_local(uint32_t value, uint32_t align, uint32_t *out) {
     }
     return lox_checked_u32_from_size(aligned, out);
 }
+#endif
 
 static uint32_t lox_kv_snapshot_payload_max_local(void) {
     size_t max_entries;
@@ -404,11 +408,13 @@ static uint32_t lox_kv_tombstone_count(const lox_core_t *core) {
     return tombstones;
 }
 
-static uint32_t lox_kv_live_value_bytes_local(const lox_core_t *core) {
+static LOX_UNUSED_FN uint32_t lox_kv_live_value_bytes_local(const lox_core_t *core) {
     return core->kv.live_value_bytes;
 }
 
-static const lox_kv_bucket_t *lox_kv_find_bucket_const(const lox_core_t *core, const char *key) {
+/* Kept as reference helpers; the active code paths use the direct core accessors
+ * and checked-arithmetic helpers instead. */
+static LOX_UNUSED_FN const lox_kv_bucket_t *lox_kv_find_bucket_const(const lox_core_t *core, const char *key) {
     uint32_t i;
     for (i = 0u; i < core->kv.bucket_count; ++i) {
         const lox_kv_bucket_t *bucket = &core->kv.buckets[i];
@@ -419,7 +425,7 @@ static const lox_kv_bucket_t *lox_kv_find_bucket_const(const lox_core_t *core, c
     return NULL;
 }
 
-static const lox_ts_stream_t *lox_ts_find_const(const lox_core_t *core, const char *name) {
+static LOX_UNUSED_FN const lox_ts_stream_t *lox_ts_find_const(const lox_core_t *core, const char *name) {
     uint32_t i;
     for (i = 0u; i < LOX_TS_MAX_STREAMS; ++i) {
         const lox_ts_stream_t *stream = &core->ts.streams[i];
@@ -429,8 +435,7 @@ static const lox_ts_stream_t *lox_ts_find_const(const lox_core_t *core, const ch
     }
     return NULL;
 }
-
-static const lox_table_t *lox_rel_find_table_const(const lox_core_t *core, const char *name) {
+static LOX_UNUSED_FN const lox_table_t *lox_rel_find_table_const(const lox_core_t *core, const char *name) {
     uint32_t i;
     for (i = 0u; i < LOX_REL_MAX_TABLES; ++i) {
         const lox_table_t *table = &core->rel.tables[i];

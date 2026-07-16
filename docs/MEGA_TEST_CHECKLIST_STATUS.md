@@ -12,6 +12,7 @@ This file is a reality check against tests currently present in `tests/` and CTe
 - Recovery and resilience paths have dedicated tests.
 - Optional backend adapter matrix paths are covered by dedicated tests.
 - Stress lanes exist for managed and fs/block matrix paths.
+- Phase 05 package-consumer and metadata gates are now wired in CTest.
 
 ## Areas with explicit test files
 
@@ -31,6 +32,9 @@ This file is a reality check against tests currently present in `tests/` and CTe
   - `test_limits.c`, `test_profile_matrix.c`, `test_storage_capacity_profiles.c`, `test_tiny_footprint.c`, `footprint_min_baseline.c`
 - Thread safety/C++ wrapper:
   - `test_thread_safety.c`, `test_cpp_wrapper.cpp`
+- Installed package / release metadata:
+  - `test_release_metadata_consistency`, `test_source_detached_consumer_c`, `test_source_detached_consumer_cpp`
+  - `test_installed_package_version_mismatch`, `test_installed_package_config_mismatch`
 - Optional backend modules:
   - `test_backend_compat.c`, `test_backend_decision.c`, `test_backend_registry.c`, `test_backend_open.c`
   - `test_backend_aligned_adapter.c`, `test_backend_managed_adapter.c`, `test_backend_fs_adapter.c`
@@ -42,6 +46,7 @@ This file is a reality check against tests currently present in `tests/` and CTe
 - broader storage-driver fault injection matrices on open path
 - wider corruption corpus breadth beyond current deterministic fixtures
 - explicit CI latency guardrails for target hardware (outside generic host CI)
+- host-side verification of Phase 05 consumer/package gates in the current build directory
 
 ## Notes
 

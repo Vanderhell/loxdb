@@ -323,7 +323,7 @@ static lox_err_t lox_kv_append_value(lox_core_t *core,
     return LOX_OK;
 }
 
-static lox_err_t lox_kv_evict_lru(lox_core_t *core) {
+static LOX_UNUSED_FN lox_err_t lox_kv_evict_lru(lox_core_t *core) {
     uint32_t i;
     uint32_t best_idx = UINT32_MAX;
     uint32_t best_clock = UINT32_MAX;

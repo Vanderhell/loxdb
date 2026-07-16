@@ -292,7 +292,7 @@ static const lox_col_desc_t *rel_index_col(const lox_table_t *table) {
     return &table->cols[table->index_col];
 }
 
-static const void *rel_index_key_ptr(const lox_table_t *table, const void *row_buf) {
+static LOX_UNUSED_FN const void *rel_index_key_ptr(const lox_table_t *table, const void *row_buf) {
     const lox_col_desc_t *col = rel_index_col(table);
     if (col == NULL) {
         return NULL;

@@ -9,6 +9,12 @@
 #define LOX_PAGE_HEADER_SIZE 32u
 #define LOX_SUPERBLOCK_SIZE 32u
 
+#if defined(__GNUC__) || defined(__clang__)
+#define LOX_UNUSED_FN __attribute__((unused))
+#else
+#define LOX_UNUSED_FN
+#endif
+
 typedef struct {
     uint8_t *base;
     size_t used;
