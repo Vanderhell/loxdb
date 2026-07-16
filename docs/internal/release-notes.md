@@ -2,7 +2,7 @@
 
 ## Title
 
-`loxdb v1.4.1`
+`loxdb v1.4.2`
 
 ## Release text (GitHub Release body)
 

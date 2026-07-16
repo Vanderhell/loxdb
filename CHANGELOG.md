@@ -54,7 +54,7 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
   - registered `test_selfcheck`, `test_wcet_bounds`, and `test_ts_log_retain` in CMake.
   - added dedicated `lox_ts_log_retain` test library target so default TS policy behavior remains unchanged.
 
-## [1.4.1] - YYYY-MM-DD
+## [1.4.2] - 2026-07-16
 
 ### Changed
 
