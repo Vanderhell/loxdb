@@ -1,5 +1,15 @@
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/loxdbTargets.cmake")
+
+if(TARGET loxdb::loxdb)
+    set_target_properties(loxdb::loxdb PROPERTIES
+        MAP_IMPORTED_CONFIG_DEBUG Release
+        MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
+        MAP_IMPORTED_CONFIG_MINSIZEREL Release
+        MAP_IMPORTED_CONFIG_NOCONFIG Release
+    )
+endif()
+
 check_required_components(loxdb)
 
