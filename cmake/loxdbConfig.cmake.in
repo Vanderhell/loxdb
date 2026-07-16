@@ -3,20 +3,20 @@
 include("${CMAKE_CURRENT_LIST_DIR}/loxdbTargets.cmake")
 
 if(TARGET loxdb::loxdb)
-    get_target_property(_loxdb_release_location loxdb::loxdb IMPORTED_LOCATION_RELEASE)
-    if(_loxdb_release_location)
-        set_target_properties(loxdb::loxdb PROPERTIES
-            IMPORTED_LOCATION "${_loxdb_release_location}"
-            IMPORTED_LOCATION_DEBUG "${_loxdb_release_location}"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${_loxdb_release_location}"
-            IMPORTED_LOCATION_MINSIZEREL "${_loxdb_release_location}"
-            IMPORTED_LOCATION_NOCONFIG "${_loxdb_release_location}"
-            MAP_IMPORTED_CONFIG_DEBUG Release
-            MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
-            MAP_IMPORTED_CONFIG_MINSIZEREL Release
-            MAP_IMPORTED_CONFIG_NOCONFIG Release
-        )
-    endif()
+    foreach(_loxdb_location_property
+            IMPORTED_LOCATION_RELEASE
+            IMPORTED_LOCATION_NOCONFIG
+            IMPORTED_LOCATION_DEBUG
+            IMPORTED_LOCATION_RELWITHDEBINFO
+            IMPORTED_LOCATION_MINSIZEREL)
+        get_target_property(_loxdb_location loxdb::loxdb "${_loxdb_location_property}")
+        if(_loxdb_location)
+            set_target_properties(loxdb::loxdb PROPERTIES
+                IMPORTED_LOCATION "${_loxdb_location}"
+            )
+            break()
+        endif()
+    endforeach()
 endif()
 
 check_required_components(loxdb)
