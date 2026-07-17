@@ -1,6 +1,6 @@
 {
   "name": "loxdb",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Predictable-memory embedded database (C99) with KV, time-series, and relational engines plus WAL recovery.",
   "keywords": [
     "embedded",

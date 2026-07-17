@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(loxdb VERSION 1.4.3 LANGUAGES C CXX)
+project(loxdb VERSION 1.4.4 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)

@@ -13,6 +13,11 @@ if(TARGET loxdb::loxdb)
         if(_loxdb_location)
             set_target_properties(loxdb::loxdb PROPERTIES
                 IMPORTED_LOCATION "${_loxdb_location}"
+                IMPORTED_LOCATION_RELEASE "${_loxdb_location}"
+                IMPORTED_LOCATION_NOCONFIG "${_loxdb_location}"
+                IMPORTED_LOCATION_DEBUG "${_loxdb_location}"
+                IMPORTED_LOCATION_RELWITHDEBINFO "${_loxdb_location}"
+                IMPORTED_LOCATION_MINSIZEREL "${_loxdb_location}"
             )
             break()
         endif()

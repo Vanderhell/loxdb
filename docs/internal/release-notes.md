@@ -2,36 +2,29 @@
 
 ## Title
 
-`loxdb v1.4.3`
+`loxdb v1.4.4`
 
 ## Release text (GitHub Release body)
 
-This release expands the free MIT core with package-consumer verification,
-metadata consistency checks, and documentation truth cleanup.
+This release is a package hotfix for detached consumers and release metadata
+alignment.
 
 Highlights:
 
-- Added detached installed-package consumer tests:
-  - C consumer
-  - C++ consumer
-  - version mismatch configure-fail gate
-  - installed header config mismatch compile-fail gate
-- Added release metadata consistency checks:
+- Fixed detached installed-package consumers so `Debug` consumers resolve the
+  exported `loxdb::loxdb` location correctly.
+- Updated release metadata:
   - `CMakeLists.txt`
   - `library.json`
   - `library.properties`
+  - `README.md`
   - `CHANGELOG.md`
   - `docs/internal/release-notes.md`
-- Added docs truth cleanup:
-  - API reference
-  - cookbook
-  - evidence matrix
 
 Validation summary:
 
-- Installed consumer and metadata gates were verified in the current build tree.
-- GCC/Clang strict C99 and ARM/ESP-IDF compile gates remain NOT VERIFIED here
-  unless a concrete run artifact is linked in `docs/EVIDENCE_MATRIX.md`.
+- Detached consumer and metadata gates were verified in the current build tree.
+- Full downstream publish verification remains tied to the release workflow.
 
 ## Contract links
 
