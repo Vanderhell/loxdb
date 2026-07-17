@@ -103,7 +103,7 @@ Verified using the ESP32-S3 bench runners under [`bench/`](bench/).
 
 ## Project status & roadmap
 
-- Current release line: `v1.4.4` (see `CHANGELOG.md`).
+- Current release line: `v1.4.5` (see `CHANGELOG.md`).
 - Verification status is tracked explicitly in [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
 
 ## loxdb vs loxdb_pro

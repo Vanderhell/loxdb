@@ -2,7 +2,7 @@
 
 ## Title
 
-`loxdb v1.4.4`
+`loxdb v1.4.5`
 
 ## Release text (GitHub Release body)
 
@@ -11,8 +11,8 @@ alignment.
 
 Highlights:
 
-- Fixed detached installed-package consumers so `Debug` consumers resolve the
-  exported `loxdb::loxdb` location correctly.
+- Fixed detached installed-package consumers by setting the installed
+  `loxdb::loxdb` import location directly in the package config.
 - Updated release metadata:
   - `CMakeLists.txt`
   - `library.json`

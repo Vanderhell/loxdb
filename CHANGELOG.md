@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog and follows semantic versioning intent where possible.
 
+## [1.4.5] - 2026-07-17
+
+### Changed
+
+- Package/config hotfix:
+  - set the installed `loxdb::loxdb` import location directly in the package
+    config so detached consumers can resolve the library without relying on the
+    exported target file's config-specific location fields.
+  - kept the package import compatible with `Debug` consumers in the detached
+    consumer gate.
+
+- Release metadata alignment:
+  - `project(loxdb VERSION ...)`, `library.json`, and `library.properties`
+    aligned to the release version.
+  - `README.md` current release line updated for the next tag.
+  - `docs/internal/release-notes.md` draft updated for the next release.
+
+## [Unreleased]
+
 ## [1.4.4] - 2026-07-17
 
 ### Changed
@@ -19,8 +38,6 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
     aligned to the release version.
   - `README.md` current release line updated for the next tag.
   - `docs/internal/release-notes.md` draft updated for the next release.
-
-## [Unreleased]
 
 ## [1.4.3] - 2026-07-16
 
