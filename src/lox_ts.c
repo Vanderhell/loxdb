@@ -86,7 +86,6 @@ typedef struct {
     uint32_t capacity;
     uint32_t rem_num;
     uint8_t *new_buf;
-    uint8_t *tmp;
     uint32_t keep_count;
 } lox_ts_layout_item_t;
 
@@ -113,11 +112,86 @@ static LOX_UNUSED_FN uint32_t lox_ts_stride_for_type(lox_ts_type_t type, size_t 
     return stride;
 }
 
+static LOX_UNUSED_FN uint32_t lox_ts_gcd(uint32_t a, uint32_t b) {
+    while (b != 0u) {
+        uint32_t next = a % b;
+        a = b;
+        b = next;
+    }
+    return a;
+}
+
+static LOX_UNUSED_FN void lox_ts_rotate_slots_left(uint8_t *buf,
+                                                   uint32_t count,
+                                                   uint32_t stride,
+                                                   uint32_t shift) {
+    uint8_t tmp[sizeof(lox_timestamp_t) + LOX_TS_RAW_MAX];
+    uint32_t cycles;
+    uint32_t start;
+
+    if (count == 0u) {
+        return;
+    }
+    shift %= count;
+    if (shift == 0u) {
+        return;
+    }
+    cycles = lox_ts_gcd(count, shift);
+    for (start = 0u; start < cycles; ++start) {
+        uint32_t cur = start;
+        memcpy(tmp, buf + ((size_t)start * stride), stride);
+        for (;;) {
+            uint32_t next = (cur + shift) % count;
+            if (next == start) {
+                break;
+            }
+            memmove(buf + ((size_t)cur * stride),
+                    buf + ((size_t)next * stride),
+                    stride);
+            cur = next;
+        }
+        memcpy(buf + ((size_t)cur * stride), tmp, stride);
+    }
+}
+
+static LOX_UNUSED_FN lox_err_t lox_ts_prepare_register(const lox_core_t *core,
+                                                       const char *name,
+                                                       lox_ts_type_t type,
+                                                       size_t raw_size) {
+    size_t minimum = 0u;
+    uint32_t i;
+    uint32_t candidate_stride = lox_ts_stride_for_type(type, raw_size);
+
+    if (lox_mutation_guard(core) != LOX_OK) {
+        return LOX_ERR_INDETERMINATE;
+    }
+    if (lox_ts_find((lox_core_t *)core, name) != NULL) {
+        return LOX_ERR_EXISTS;
+    }
+    if (core->ts.registered_streams >= LOX_TS_MAX_STREAMS || candidate_stride == 0u) {
+        return core->ts.registered_streams >= LOX_TS_MAX_STREAMS ? LOX_ERR_FULL : LOX_ERR_INVALID;
+    }
+    if (!lox_checked_mul_size((size_t)candidate_stride, 4u, &minimum)) {
+        return LOX_ERR_NO_MEM;
+    }
+    for (i = 0u; i < LOX_TS_MAX_STREAMS; ++i) {
+        const lox_ts_stream_t *stream = &core->ts.streams[i];
+        size_t stream_min;
+        if (!stream->registered) {
+            continue;
+        }
+        if (!lox_checked_mul_size((size_t)stream->sample_stride, 4u, &stream_min) ||
+            !lox_checked_add_size(minimum, stream_min, &minimum)) {
+            return LOX_ERR_NO_MEM;
+        }
+    }
+    return minimum <= core->ts_arena.capacity ? LOX_OK : LOX_ERR_NO_MEM;
+}
+
 static LOX_UNUSED_FN lox_err_t lox_ts_repartition(lox_core_t *core) {
     lox_ts_layout_item_t items[LOX_TS_MAX_STREAMS];
     uint32_t count = 0u;
     uint32_t i;
-    uint32_t j;
     size_t rem_bytes = 0u;
     size_t total_weight = 0u;
     size_t sum_min = 0u;
@@ -207,57 +281,27 @@ static LOX_UNUSED_FN lox_err_t lox_ts_repartition(lox_core_t *core) {
     for (i = 0u; i < count; ++i) {
         lox_ts_stream_t *stream = items[i].stream;
         uint32_t keep = stream->count;
-        uint32_t idx;
 
         if (keep > items[i].capacity) {
             keep = items[i].capacity;
             dropped_delta += (stream->count - keep);
         }
         items[i].keep_count = keep;
-        if (keep == 0u) {
-            continue;
+        if (stream->capacity != 0u && keep != 0u) {
+            lox_ts_rotate_slots_left(stream->buf,
+                                     stream->capacity,
+                                     stream->sample_stride,
+                                     stream->tail);
+            memmove(items[i].new_buf,
+                    stream->buf + ((size_t)(stream->count - keep) * stream->sample_stride),
+                    (size_t)keep * stream->sample_stride);
         }
-
-        {
-            size_t keep_bytes = 0u;
-            if (!lox_checked_mul_size((size_t)keep, (size_t)items[i].stride, &keep_bytes)) {
-                return LOX_ERR_NO_MEM;
-            }
-            items[i].tmp = (uint8_t *)malloc(keep_bytes);
-        }
-        if (items[i].tmp == NULL) {
-            for (j = 0u; j < i; ++j) {
-                free(items[j].tmp);
-                items[j].tmp = NULL;
-            }
-            return LOX_ERR_NO_MEM;
-        }
-
-        idx = stream->tail;
-        if (stream->count > keep) {
-            idx = (stream->tail + (stream->count - keep)) % stream->capacity;
-        }
-        for (j = 0u; j < keep; ++j) {
-            memcpy(items[i].tmp + ((size_t)j * items[i].stride),
-                   stream->buf + ((size_t)idx * items[i].stride),
-                   items[i].stride);
-            idx = (idx + 1u) % stream->capacity;
-        }
-    }
-
-    for (i = 0u; i < count; ++i) {
-        lox_ts_stream_t *stream = items[i].stream;
         stream->sample_stride = items[i].stride;
         stream->capacity = items[i].capacity;
         stream->buf = items[i].new_buf;
         stream->tail = 0u;
         stream->count = items[i].keep_count;
         stream->head = (stream->count == stream->capacity) ? 0u : stream->count;
-        if (items[i].keep_count != 0u) {
-            memcpy(stream->buf, items[i].tmp, (size_t)items[i].keep_count * items[i].stride);
-        }
-        free(items[i].tmp);
-        items[i].tmp = NULL;
     }
 
     core->ts_dropped_samples += dropped_delta;
@@ -508,9 +552,6 @@ lox_err_t lox_ts_register_ex(lox_t *db,
     lox_core_t *core;
     lox_err_t err;
     lox_err_t rc = LOX_OK;
-    uint32_t before_registered = 0u;
-    uint32_t restore_index = UINT32_MAX;
-    lox_ts_stream_t restore_stream;
     lox_ts_log_retain_cfg_t local_cfg;
     const lox_ts_log_retain_cfg_t *cfg_ptr = NULL;
 
@@ -548,6 +589,10 @@ lox_err_t lox_ts_register_ex(lox_t *db,
         local_cfg = *cfg;
         cfg_ptr = &local_cfg;
     }
+    rc = lox_ts_prepare_register(core, name, type, raw_size);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
     if (core->wal_enabled && core->storage != NULL && !core->storage_loading && !core->wal_replaying) {
         rc = lox_persist_ts_register(db,
@@ -563,18 +608,6 @@ lox_err_t lox_ts_register_ex(lox_t *db,
         goto unlock;
     }
 
-    before_registered = core->ts.registered_streams;
-    memset(&restore_stream, 0, sizeof(restore_stream));
-    {
-        uint32_t i;
-        for (i = 0u; i < LOX_TS_MAX_STREAMS; ++i) {
-            if (!core->ts.streams[i].registered) {
-                restore_index = i;
-                restore_stream = core->ts.streams[i];
-                break;
-            }
-        }
-    }
     rc = lox_ts_register_apply(core, name, type, raw_size, cfg_ptr);
     if (rc != LOX_OK) {
         goto unlock;
@@ -583,15 +616,6 @@ lox_err_t lox_ts_register_ex(lox_t *db,
         rc = LOX_OK;
     } else {
         rc = lox_storage_flush(db);
-        if (rc != LOX_OK) {
-            core->ts.registered_streams = before_registered;
-            if (restore_index != UINT32_MAX) {
-                core->ts.streams[restore_index] = restore_stream;
-            }
-            if (core->ts.mutation_seq != 0u) {
-                core->ts.mutation_seq--;
-            }
-        }
     }
 
 unlock:
@@ -612,6 +636,9 @@ lox_err_t lox_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const v
     if (db == NULL || val == NULL) {
         return LOX_ERR_INVALID;
     }
+    if (lox_ts_validate_name(name) != LOX_OK) {
+        return LOX_ERR_INVALID;
+    }
 
     LOX_LOCK(db);
     core = lox_core(db);
@@ -619,7 +646,10 @@ lox_err_t lox_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const v
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
-
+    rc = lox_mutation_guard(core);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
     stream = lox_ts_find(core, name);
     if (stream == NULL) {
         rc = LOX_ERR_NOT_FOUND;
@@ -669,7 +699,6 @@ lox_err_t lox_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const v
 #endif
         lox_ts_rb_insert(stream, &sample);
         core->ts.mutation_seq++;
-        lox__maybe_compact(db);
     }
 
 unlock:
@@ -693,7 +722,6 @@ lox_err_t lox_ts_last(lox_t *db, const char *name, lox_ts_sample_t *out) {
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
-
     stream = lox_ts_find(core, name);
     if (stream == NULL || stream->count == 0u) {
         rc = LOX_ERR_NOT_FOUND;
@@ -885,9 +913,6 @@ lox_err_t lox_ts_clear(lox_t *db, const char *name) {
     lox_core_t *core;
     lox_ts_stream_t *stream;
     lox_err_t rc = LOX_OK;
-    uint32_t saved_head = 0u;
-    uint32_t saved_tail = 0u;
-    uint32_t saved_count = 0u;
 
     if (db == NULL) {
         return LOX_ERR_INVALID;
@@ -897,6 +922,10 @@ lox_err_t lox_ts_clear(lox_t *db, const char *name) {
     core = lox_core(db);
     if (core->magic != LOX_MAGIC) {
         rc = LOX_ERR_INVALID;
+        goto unlock;
+    }
+    rc = lox_mutation_guard(core);
+    if (rc != LOX_OK) {
         goto unlock;
     }
 
@@ -918,20 +947,11 @@ lox_err_t lox_ts_clear(lox_t *db, const char *name) {
         goto unlock;
     }
 
-    saved_head = stream->head;
-    saved_tail = stream->tail;
-    saved_count = stream->count;
     stream->head = 0u;
     stream->tail = 0u;
     stream->count = 0u;
     core->ts.mutation_seq++;
     rc = lox_storage_flush(db);
-    if (rc != LOX_OK) {
-        stream->head = saved_head;
-        stream->tail = saved_tail;
-        stream->count = saved_count;
-        core->ts.mutation_seq--;
-    }
 
 unlock:
     LOX_UNLOCK(db);

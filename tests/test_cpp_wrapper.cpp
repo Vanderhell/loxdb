@@ -134,7 +134,7 @@ MDB_TEST(cpp_wrapper_deinit_failure_invalidates_wrapper) {
     ASSERT_EQ(db.init(cfg), LOX_OK);
     ASSERT_EQ(db.kv_put("cpp_fail", &value, sizeof(value)), LOX_OK);
     media.fail_next_sync = 1u;
-    ASSERT_EQ(db.deinit(), LOX_ERR_STORAGE);
+    ASSERT_EQ(db.deinit(), LOX_ERR_INDETERMINATE);
     ASSERT_EQ(db.initialized(), 0);
     ASSERT_EQ(db.handle() == nullptr, 1);
 }

@@ -102,7 +102,7 @@ MDB_TEST(managed_recovery_sync_failure_does_not_commit_new_value) {
     uint8_t out = 0u;
 
     g_media.fail_next_sync = 1u;
-    ASSERT_EQ(lox_kv_set(&g_db, "volatile", &in, 1u, 0u), LOX_ERR_STORAGE);
+    ASSERT_EQ(lox_kv_set(&g_db, "volatile", &in, 1u, 0u), LOX_ERR_INDETERMINATE);
     power_loss_reset_to_durable();
     managed_crash_reopen();
     ASSERT_EQ(lox_kv_get(&g_db, "volatile", &out, 1u, NULL), LOX_ERR_NOT_FOUND);

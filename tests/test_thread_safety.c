@@ -168,7 +168,7 @@ MDB_TEST(test_deinit_failure_invalidates_handle) {
     ASSERT_EQ(lox_init(&db, &cfg), LOX_OK);
     ASSERT_EQ(lox_kv_put(&db, "d", &value, 1u), LOX_OK);
     media.fail_next_sync = 1u;
-    ASSERT_EQ(lox_deinit(&db), LOX_ERR_STORAGE);
+    ASSERT_EQ(lox_deinit(&db), LOX_ERR_INDETERMINATE);
     ASSERT_EQ(lox_kv_get(&db, "d", &out, 1u, NULL), LOX_ERR_INVALID);
 }
 

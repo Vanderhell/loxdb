@@ -317,6 +317,18 @@ static LOX_UNUSED_FN lox_err_t rel_validate_str_value(const char *str, size_t ma
     return LOX_ERR_SCHEMA;
 }
 
+static LOX_UNUSED_FN lox_err_t rel_validate_row(const lox_table_t *table, const void *row_buf) {
+    uint32_t i;
+    for (i = 0u; i < table->col_count; ++i) {
+        const lox_col_desc_t *col = &table->cols[i];
+        if (col->type == LOX_COL_STR &&
+            rel_validate_str_value((const char *)row_buf + col->offset, col->size) != LOX_OK) {
+            return LOX_ERR_SCHEMA;
+        }
+    }
+    return LOX_OK;
+}
+
 static LOX_UNUSED_FN lox_err_t rel_validate_table_and_handle(lox_t *db, lox_table_t *table) {
     if (db == NULL || table == NULL) {
         return LOX_ERR_INVALID;
@@ -476,6 +488,10 @@ lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema) {
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    rc = lox_mutation_guard(core);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
     impl = (lox_schema_impl_t *)&schema->_opaque[0];
     if (!impl->sealed) {
@@ -522,6 +538,12 @@ lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema) {
     for (i = 0; i < LOX_REL_MAX_TABLES; ++i) {
         table = &core->rel.tables[i];
         if (!table->registered) {
+            if (wal_mode) {
+                rc = lox_persist_rel_table_create(db, schema);
+                if (rc != LOX_OK) {
+                    goto unlock;
+                }
+            }
             arena_used_before = core->rel_arena.used;
             memset(table, 0, sizeof(*table));
             table->owner = core;
@@ -564,23 +586,10 @@ lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema) {
                 memset(table->index, 0, (size_t)table->max_rows * sizeof(lox_index_entry_t));
             }
             memset(table->order, 0, (size_t)table->max_rows * sizeof(uint32_t));
-            if (wal_mode) {
-                rc = lox_persist_rel_table_create(db, schema);
-                if (rc != LOX_OK) {
-                    lox_arena_rewind(&core->rel_arena, arena_used_before);
-                    memset(table, 0, sizeof(*table));
-                    goto unlock;
-                }
-            }
             table->registered = true;
             core->rel.registered_tables++;
             if (!wal_mode) {
                 rc = lox_storage_flush(db);
-                if (rc != LOX_OK) {
-                    core->rel.registered_tables--;
-                    lox_arena_rewind(&core->rel_arena, arena_used_before);
-                    memset(table, 0, sizeof(*table));
-                }
             } else {
                 rc = LOX_OK;
             }
@@ -739,6 +748,16 @@ lox_err_t lox_rel_insert(lox_t *db, lox_table_t *table, const void *row_buf) {
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    err = lox_mutation_guard(lox_core(db));
+    if (err != LOX_OK) {
+        rc = err;
+        goto unlock;
+    }
+    err = rel_validate_row(table, row_buf);
+    if (err != LOX_OK) {
+        rc = err;
+        goto unlock;
+    }
     if (table->live_count >= table->max_rows) {
         rc = LOX_ERR_FULL;
         goto unlock;
@@ -753,7 +772,6 @@ lox_err_t lox_rel_insert(lox_t *db, lox_table_t *table, const void *row_buf) {
     rc = lox_persist_rel_insert(db, table, row_buf);
     if (rc == LOX_OK) {
         rel_apply_insert_row(table, row_idx, row_buf);
-        lox__maybe_compact(db);
     }
 
 unlock:
@@ -911,6 +929,11 @@ lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, 
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    err = lox_mutation_guard(lox_core(db));
+    if (err != LOX_OK) {
+        rc = err;
+        goto unlock;
+    }
     if (table->index_col == UINT32_MAX) {
         rc = LOX_ERR_INVALID;
         goto unlock;
@@ -1029,6 +1052,11 @@ lox_err_t lox_rel_clear(lox_t *db, lox_table_t *table) {
     }
     LOX_LOCK(db);
     err = rel_validate_table_and_handle(db, table);
+    if (err != LOX_OK) {
+        rc = err;
+        goto unlock;
+    }
+    err = lox_mutation_guard(lox_core(db));
     if (err != LOX_OK) {
         rc = err;
         goto unlock;

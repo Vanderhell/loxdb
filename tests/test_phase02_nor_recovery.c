@@ -195,7 +195,7 @@ MDB_TEST(phase02_torn_final_append_reports_detail) {
 
     ASSERT_EQ(lox_kv_set(&g_db, "base", &base, 1u, 0u), LOX_OK);
     g_media.torn_next_program_bytes = 8u;
-    ASSERT_EQ(lox_kv_set(&g_db, "tail", &tail, 1u, 0u), LOX_ERR_STORAGE);
+    ASSERT_EQ(lox_kv_set(&g_db, "tail", &tail, 1u, 0u), LOX_ERR_INDETERMINATE);
 
     ASSERT_EQ(reopen_after_power_loss(), LOX_OK);
     ASSERT_EQ(lox_kv_get(&g_db, "base", &out, 1u, NULL), LOX_OK);

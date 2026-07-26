@@ -291,7 +291,8 @@ typedef enum {
     LOX_ERR_OVERFLOW = -11,
     LOX_ERR_SCHEMA = -12,
     LOX_ERR_TXN_ACTIVE = -13,
-    LOX_ERR_MODIFIED = -14
+    LOX_ERR_MODIFIED = -14,
+    LOX_ERR_INDETERMINATE = -15
 } lox_err_t;
 
 /* Returns a stable symbolic name for a loxdb error code.

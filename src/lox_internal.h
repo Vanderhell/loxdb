@@ -239,6 +239,9 @@ struct lox_core_s {
     uint8_t wal_compact_auto;
     uint8_t wal_compact_threshold_pct;
     uint8_t wal_sync_mode;
+    bool storage_faulted;
+    bool runtime_ready;
+    uint32_t wal_reserved_bytes;
     lox_err_t (*on_migrate)(lox_t *db, const char *table_name, uint16_t old_version, uint16_t new_version);
     bool storage_loading;
     bool wal_replaying;
@@ -282,6 +285,8 @@ size_t lox_kv_live_bytes(const lox_t *db);
 lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, lox_timestamp_t expires_at);
 lox_err_t lox_storage_bootstrap(lox_t *db);
 lox_err_t lox_storage_flush(lox_t *db);
+lox_err_t lox_wal_reserve(lox_t *db, uint32_t bytes);
+uint32_t lox_wal_record_size(uint32_t payload_len);
 lox_err_t lox_persist_kv_set(lox_t *db, const char *key, const void *val, size_t len, lox_timestamp_t expires_at);
 lox_err_t lox_persist_kv_del(lox_t *db, const char *key);
 lox_err_t lox_persist_kv_clear(lox_t *db);
@@ -303,6 +308,10 @@ lox_err_t lox_persist_rel_clear(lox_t *db, const lox_table_t *table);
 
 static inline uint32_t lox_wal_header_bytes(const lox_core_t *core);
 static inline void lox_record_error(lox_core_t *core, lox_err_t err);
+
+static inline lox_err_t lox_mutation_guard(const lox_core_t *core) {
+    return core->storage_faulted ? LOX_ERR_INDETERMINATE : LOX_OK;
+}
 
 static inline void lox__maybe_compact(lox_t *db) {
     lox_core_t *core = lox_core(db);

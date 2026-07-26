@@ -26,6 +26,7 @@ MDB_TEST(test_known_error_names) {
     ASSERT_EQ(strcmp(lox_err_to_string(LOX_ERR_SCHEMA), "LOX_ERR_SCHEMA"), 0);
     ASSERT_EQ(strcmp(lox_err_to_string(LOX_ERR_TXN_ACTIVE), "LOX_ERR_TXN_ACTIVE"), 0);
     ASSERT_EQ(strcmp(lox_err_to_string(LOX_ERR_MODIFIED), "LOX_ERR_MODIFIED"), 0);
+    ASSERT_EQ(strcmp(lox_err_to_string(LOX_ERR_INDETERMINATE), "LOX_ERR_INDETERMINATE"), 0);
 }
 
 MDB_TEST(test_unknown_error_name) {

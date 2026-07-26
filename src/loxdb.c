@@ -137,6 +137,8 @@ const char *lox_err_to_string(lox_err_t err) {
             return "LOX_ERR_TXN_ACTIVE";
         case LOX_ERR_MODIFIED:
             return "LOX_ERR_MODIFIED";
+        case LOX_ERR_INDETERMINATE:
+            return "LOX_ERR_INDETERMINATE";
         default:
             return "LOX_ERR_UNKNOWN";
     }
@@ -652,6 +654,7 @@ lox_err_t lox_init(lox_t *db, const lox_cfg_t *cfg) {
     }
 
     core->live_bytes = lox_kv_live_bytes(db);
+    core->runtime_ready = true;
     return LOX_OK;
 }
 
@@ -670,6 +673,10 @@ lox_err_t lox_flush(lox_t *db) {
     }
 
     core = lox_core(db);
+    if (core->storage_faulted) {
+        LOX_UNLOCK(db);
+        return LOX_ERR_INDETERMINATE;
+    }
     status = lox_storage_flush(db);
     lox_record_error(core, status);
     LOX_UNLOCK(db);
@@ -698,7 +705,7 @@ lox_err_t lox_deinit(lox_t *db) {
         LOX_UNLOCK(db);
         return LOX_ERR_INVALID;
     }
-    status = lox_storage_flush(db);
+    status = core->storage_faulted ? LOX_ERR_INDETERMINATE : lox_storage_flush(db);
     core->txn_active = 0u;
     core->txn_stage_count = 0u;
     core->txn_active_id = 0u;

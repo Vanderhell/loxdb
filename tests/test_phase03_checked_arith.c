@@ -187,10 +187,11 @@ MDB_TEST(auto_compaction_failure_is_reported_in_runtime_status) {
     uint8_t value = 1u;
     lox_db_stats_t stats;
 
-    ASSERT_EQ(lox_kv_set(&g_db_a, "hot", &value, 1u, 0u), LOX_OK);
+    ASSERT_EQ(lox_kv_set(&g_db_a, "hot", &value, 1u, 0u), LOX_ERR_INDETERMINATE);
     ASSERT_EQ(lox_get_db_stats(&g_db_a, &stats), LOX_OK);
-    ASSERT_EQ(stats.last_runtime_error, LOX_ERR_STORAGE);
-    ASSERT_EQ(lox_kv_get(&g_db_a, "hot", &value, 1u, NULL), LOX_OK);
+    ASSERT_EQ(stats.last_runtime_error, LOX_ERR_INDETERMINATE);
+    ASSERT_EQ(lox_kv_get(&g_db_a, "hot", &value, 1u, NULL), LOX_ERR_NOT_FOUND);
+    ASSERT_EQ(lox_kv_set(&g_db_a, "blocked", &value, 1u, 0u), LOX_ERR_INDETERMINATE);
     ASSERT_EQ(stats.compact_count, 0u);
 }
 

@@ -208,7 +208,7 @@ MDB_TEST(contract_storage_read_error_on_init_returns_storage) {
     ASSERT_EQ(lox_init(&db, &cfg), LOX_ERR_STORAGE);
 }
 
-MDB_TEST(contract_storage_write_error_on_kv_put_returns_storage) {
+MDB_TEST(contract_storage_write_error_on_kv_put_returns_indeterminate) {
     lox_t db;
     lox_cfg_t cfg;
     lox_storage_t st;
@@ -221,11 +221,11 @@ MDB_TEST(contract_storage_write_error_on_kv_put_returns_storage) {
     cfg.ram_kb = 32u;
     ASSERT_EQ(lox_init(&db, &cfg), LOX_OK);
     g_failmem.fail_write = true;
-    ASSERT_EQ(lox_kv_put(&db, "a", &v, 1u), LOX_ERR_STORAGE);
-    ASSERT_EQ(lox_deinit(&db), LOX_ERR_STORAGE);
+    ASSERT_EQ(lox_kv_put(&db, "a", &v, 1u), LOX_ERR_INDETERMINATE);
+    ASSERT_EQ(lox_deinit(&db), LOX_ERR_INDETERMINATE);
 }
 
-MDB_TEST(contract_storage_sync_error_on_flush_returns_storage) {
+MDB_TEST(contract_storage_sync_error_on_flush_returns_indeterminate) {
     lox_t db;
     lox_cfg_t cfg;
     lox_storage_t st;
@@ -237,8 +237,8 @@ MDB_TEST(contract_storage_sync_error_on_flush_returns_storage) {
     cfg.ram_kb = 32u;
     ASSERT_EQ(lox_init(&db, &cfg), LOX_OK);
     g_failmem.fail_sync = true;
-    ASSERT_EQ(lox_flush(&db), LOX_ERR_STORAGE);
-    ASSERT_EQ(lox_deinit(&db), LOX_ERR_STORAGE);
+    ASSERT_EQ(lox_flush(&db), LOX_ERR_INDETERMINATE);
+    ASSERT_EQ(lox_deinit(&db), LOX_ERR_INDETERMINATE);
 }
 
 MDB_TEST(contract_storage_zero_erase_size_on_init_returns_invalid) {
@@ -321,7 +321,7 @@ MDB_TEST(contract_wal_crc_tail_corruption_recovery_drops_tail) {
     ASSERT_EQ(g_storage.sync(g_storage.ctx), LOX_OK);
 
     lox_port_posix_simulate_power_loss(&g_storage);
-    ASSERT_EQ(lox_deinit(&g_db), LOX_ERR_STORAGE);
+    ASSERT_EQ(lox_deinit(&g_db), LOX_ERR_INDETERMINATE);
     lox_port_posix_deinit(&g_storage);
 
     memset(&db2, 0, sizeof(db2));
@@ -353,7 +353,7 @@ MDB_TEST(contract_wal_header_crc_corruption_recovers_clean) {
     ASSERT_EQ(g_storage.write(g_storage.ctx, 16u, &bad, sizeof(bad)), LOX_OK);
     ASSERT_EQ(g_storage.sync(g_storage.ctx), LOX_OK);
     lox_port_posix_simulate_power_loss(&g_storage);
-    ASSERT_EQ(lox_deinit(&g_db), LOX_ERR_STORAGE);
+    ASSERT_EQ(lox_deinit(&g_db), LOX_ERR_INDETERMINATE);
     lox_port_posix_deinit(&g_storage);
 
     memset(&db2, 0, sizeof(db2));
@@ -379,8 +379,8 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, contract_schema_mismatch_without_callback_returns_schema);
     MDB_RUN_TEST(setup_db, teardown_db, contract_unsupported_migration_callback_returns_schema);
     MDB_RUN_TEST(setup_db, teardown_db, contract_storage_read_error_on_init_returns_storage);
-    MDB_RUN_TEST(setup_db, teardown_db, contract_storage_write_error_on_kv_put_returns_storage);
-    MDB_RUN_TEST(setup_db, teardown_db, contract_storage_sync_error_on_flush_returns_storage);
+    MDB_RUN_TEST(setup_db, teardown_db, contract_storage_write_error_on_kv_put_returns_indeterminate);
+    MDB_RUN_TEST(setup_db, teardown_db, contract_storage_sync_error_on_flush_returns_indeterminate);
     MDB_RUN_TEST(setup_db, teardown_db, contract_storage_zero_erase_size_on_init_returns_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, contract_storage_zero_write_size_on_init_returns_invalid);
     MDB_RUN_TEST(setup_db, teardown_db, contract_storage_write_size_one_on_init_ok);
