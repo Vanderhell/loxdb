@@ -4,7 +4,6 @@
 #include "lox_arena.h"
 #include "lox_lock.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 #if !LOX_ENABLE_REL
@@ -71,8 +70,11 @@ static lox_err_t lox_rel_clear_stub(lox_t *db, lox_table_t *table) {
 
 enum {
     LOX_WAL_MAGIC = 0x4D44424Cu,
-    LOX_WAL_VERSION = 0x00010000u,
-    LOX_SNAPSHOT_FORMAT_VERSION = 0x00020000u,
+    LOX_WAL_VERSION_LEGACY = 0x00010000u,
+    LOX_WAL_VERSION = 0x00020000u,
+    LOX_SNAPSHOT_FORMAT_VERSION_LEGACY = 0x00020000u,
+    LOX_SNAPSHOT_FORMAT_VERSION = 0x00030000u,
+    LOX_EXPIRATION_SERIALIZED_SIZE = 8u,
     LOX_WAL_ENTRY_MAGIC = 0x454E5452u,
     LOX_KV_PAGE_MAGIC = 0x4B565047u,
     LOX_TS_PAGE_MAGIC = 0x54535047u,
@@ -101,7 +103,7 @@ static uint32_t lox_align_u32(uint32_t value, uint32_t align) {
     return value;
 }
 
-static uint32_t lox_kv_snapshot_payload_max(const lox_core_t *core) {
+static uint32_t lox_kv_snapshot_payload_max(const lox_core_t *core, uint32_t expiration_size) {
     uint32_t max_entries;
     size_t per_entry = 0u;
     size_t max_key_len = (LOX_KV_KEY_MAX_LEN > 0u) ? (size_t)(LOX_KV_KEY_MAX_LEN - 1u) : 0u;
@@ -110,14 +112,17 @@ static uint32_t lox_kv_snapshot_payload_max(const lox_core_t *core) {
     if (!lox_checked_add_size(1u, max_key_len, &tmp) ||
         !lox_checked_add_size(tmp, 4u, &tmp) ||
         !lox_checked_add_size(tmp, (size_t)LOX_KV_VAL_MAX_LEN, &tmp) ||
-        !lox_checked_add_size(tmp, 4u, &per_entry)) {
+        !lox_checked_add_size(tmp, (size_t)expiration_size, &per_entry)) {
         return 0u;
     }
     max_entries = (LOX_KV_MAX_KEYS > LOX_TXN_STAGE_KEYS) ? (LOX_KV_MAX_KEYS - LOX_TXN_STAGE_KEYS) : 0u;
     if (!lox_checked_mul_size((size_t)max_entries, per_entry, &tmp)) {
         return 0u;
     }
-    return (uint32_t)tmp;
+    if (!lox_checked_u32_from_size(tmp, &max_entries)) {
+        return 0u;
+    }
+    return max_entries;
 }
 
 static void lox_put_u32(uint8_t *dst, uint32_t value) {
@@ -140,6 +145,24 @@ static uint16_t lox_get_u16(const uint8_t *src) {
     return value;
 }
 
+static void lox_put_u64(uint8_t *dst, uint64_t value) {
+    lox_put_u32(dst, (uint32_t)(value & UINT32_MAX));
+    lox_put_u32(dst + 4u, (uint32_t)(value >> 32u));
+}
+
+static uint64_t lox_get_u64(const uint8_t *src) {
+    return ((uint64_t)lox_get_u32(src + 4u) << 32u) | (uint64_t)lox_get_u32(src);
+}
+
+static lox_err_t lox_timestamp_from_u64(uint64_t value, lox_timestamp_t *out) {
+    lox_timestamp_t converted = (lox_timestamp_t)value;
+    if (out == NULL || (uint64_t)converted != value) {
+        return LOX_ERR_OVERFLOW;
+    }
+    *out = converted;
+    return LOX_OK;
+}
+
 static uint32_t lox_bank_kv_offset(const lox_core_t *core, uint32_t bank) {
     return ((bank == 0u) ? core->layout.bank_a_offset : core->layout.bank_b_offset);
 }
@@ -159,6 +182,84 @@ static LOX_UNUSED_FN uint32_t lox_bank_rel_offset(const lox_core_t *core, uint32
 static bool lox_storage_ready(const lox_core_t *core) {
     return core->storage != NULL && core->storage->read != NULL && core->storage->write != NULL &&
            core->storage->erase != NULL && core->storage->sync != NULL;
+}
+
+static lox_err_t lox_compute_storage_layout(const lox_core_t *core,
+                                            uint32_t expiration_size,
+                                            lox_storage_layout_t *out) {
+    uint32_t erase_size;
+    uint32_t wal_target;
+    uint32_t wal_min;
+    uint32_t fixed_bytes;
+    uint32_t banks_bytes;
+    uint32_t need_without_wal;
+    uint32_t max_wal;
+    uint32_t payload_max;
+
+    if (core == NULL || core->storage == NULL || out == NULL || core->storage->erase_size == 0u) {
+        return LOX_ERR_INVALID;
+    }
+    memset(out, 0, sizeof(*out));
+    erase_size = core->storage->erase_size;
+    out->super_size = erase_size;
+    payload_max = lox_kv_snapshot_payload_max(core, expiration_size);
+    if (payload_max == 0u ||
+        !lox_checked_add_u32(payload_max, LOX_PAGE_HEADER_SIZE, &out->kv_size)) {
+        return LOX_ERR_OVERFLOW;
+    }
+    out->kv_size = lox_align_u32(out->kv_size, erase_size);
+    if (out->kv_size == 0u) {
+        return LOX_ERR_OVERFLOW;
+    }
+#if LOX_ENABLE_TS
+    if (!lox_checked_u32_from_size(core->ts_arena.capacity, &out->ts_size) ||
+        !lox_checked_add_u32(out->ts_size, LOX_PAGE_HEADER_SIZE, &out->ts_size)) {
+        return LOX_ERR_OVERFLOW;
+    }
+    out->ts_size = lox_align_u32(out->ts_size, erase_size);
+    if (out->ts_size == 0u) {
+        return LOX_ERR_OVERFLOW;
+    }
+#endif
+#if LOX_ENABLE_REL
+    if (!lox_checked_u32_from_size(core->rel_arena.capacity, &out->rel_size) ||
+        !lox_checked_add_u32(out->rel_size, LOX_PAGE_HEADER_SIZE, &out->rel_size)) {
+        return LOX_ERR_OVERFLOW;
+    }
+    out->rel_size = lox_align_u32(out->rel_size, erase_size);
+    if (out->rel_size == 0u) {
+        return LOX_ERR_OVERFLOW;
+    }
+#endif
+    if (!lox_checked_add_u32(out->kv_size, out->ts_size, &out->bank_size) ||
+        !lox_checked_add_u32(out->bank_size, out->rel_size, &out->bank_size) ||
+        !lox_checked_mul_u32(out->super_size, 2u, &fixed_bytes) ||
+        !lox_checked_mul_u32(out->bank_size, 2u, &banks_bytes) ||
+        !lox_checked_add_u32(fixed_bytes, banks_bytes, &need_without_wal) ||
+        !lox_checked_mul_u32(erase_size, 8u, &wal_target) ||
+        !lox_checked_mul_u32(erase_size, 2u, &wal_min)) {
+        return LOX_ERR_OVERFLOW;
+    }
+    if (core->storage->capacity < need_without_wal ||
+        core->storage->capacity - need_without_wal < wal_min) {
+        return LOX_ERR_STORAGE;
+    }
+    max_wal = core->storage->capacity - need_without_wal;
+    out->wal_size = (max_wal / erase_size) * erase_size;
+    if (out->wal_size > wal_target) {
+        out->wal_size = wal_target;
+    }
+    if (out->wal_size < wal_min) {
+        out->wal_size = wal_min;
+    }
+    if (!lox_checked_add_u32(out->wal_offset, out->wal_size, &out->super_a_offset) ||
+        !lox_checked_add_u32(out->super_a_offset, out->super_size, &out->super_b_offset) ||
+        !lox_checked_add_u32(out->super_b_offset, out->super_size, &out->bank_a_offset) ||
+        !lox_checked_add_u32(out->bank_a_offset, out->bank_size, &out->bank_b_offset) ||
+        !lox_checked_add_u32(out->bank_b_offset, out->bank_size, &out->total_size)) {
+        return LOX_ERR_OVERFLOW;
+    }
+    return (out->total_size <= core->storage->capacity) ? LOX_OK : LOX_ERR_STORAGE;
 }
 
 static lox_err_t lox_storage_read_bytes(lox_core_t *core, uint32_t offset, void *buf, size_t len) {
@@ -214,31 +315,17 @@ static lox_err_t lox_storage_sync_core(lox_core_t *core) {
 
 static lox_err_t lox_write_wal_header(lox_core_t *core) {
     uint8_t header[LOX_WAL_HEADER_SIZE];
-    uint8_t *block = NULL;
     uint32_t crc;
-    lox_err_t err;
-    uint32_t erase_size = core->storage->erase_size;
 
     memset(header, 0, sizeof(header));
     lox_put_u32(header + 0u, LOX_WAL_MAGIC);
     lox_put_u32(header + 4u, LOX_WAL_VERSION);
-    lox_put_u32(header + 8u, core->wal_entry_count);
+    /* Reserved legacy entry_count field. Replay always scans valid records. */
+    lox_put_u32(header + 8u, 0u);
     lox_put_u32(header + 12u, core->wal_sequence);
     crc = LOX_CRC32(header, 16u);
     lox_put_u32(header + 16u, crc);
-    err = lox_storage_erase_region(core, core->layout.wal_offset, lox_wal_header_bytes(core));
-    if (err != LOX_OK) {
-        return err;
-    }
-    block = (uint8_t *)malloc(erase_size);
-    if (block == NULL) {
-        return LOX_ERR_NO_MEM;
-    }
-    memset(block, 0, erase_size);
-    memcpy(block, header, sizeof(header));
-    err = lox_storage_write_bytes(core, core->layout.wal_offset, block, erase_size);
-    free(block);
-    return err;
+    return lox_storage_write_bytes(core, core->layout.wal_offset, header, sizeof(header));
 }
 
 static lox_err_t lox_reset_wal(lox_core_t *core, uint32_t next_sequence) {
@@ -287,6 +374,7 @@ static lox_err_t lox_write_page_header(lox_core_t *core,
 static lox_err_t lox_validate_page_header(const uint8_t *header,
                                               uint32_t expected_magic,
                                               uint32_t max_payload_len,
+                                              uint32_t *out_format_version,
                                               uint32_t *out_generation,
                                               uint32_t *out_payload_len,
                                               uint32_t *out_entry_count,
@@ -297,14 +385,18 @@ static lox_err_t lox_validate_page_header(const uint8_t *header,
     if (lox_get_u32(header + 0u) != expected_magic) {
         return LOX_ERR_CORRUPT;
     }
-    if (lox_get_u32(header + 4u) != LOX_SNAPSHOT_FORMAT_VERSION) {
-        return LOX_ERR_INVALID;
-    }
     if (LOX_CRC32(header, 24u) != header_crc) {
         return LOX_ERR_CORRUPT;
     }
+    if (lox_get_u32(header + 4u) != LOX_SNAPSHOT_FORMAT_VERSION &&
+        lox_get_u32(header + 4u) != LOX_SNAPSHOT_FORMAT_VERSION_LEGACY) {
+        return LOX_ERR_INVALID;
+    }
     if (payload_len > max_payload_len) {
         return LOX_ERR_CORRUPT;
+    }
+    if (out_format_version != NULL) {
+        *out_format_version = lox_get_u32(header + 4u);
     }
     *out_generation = lox_get_u32(header + 8u);
     *out_payload_len = payload_len;
@@ -320,12 +412,14 @@ static lox_err_t lox_validate_superblock(const uint8_t *super,
     if (lox_get_u32(super + 0u) != LOX_SUPER_MAGIC) {
         return LOX_ERR_CORRUPT;
     }
-    if (lox_get_u32(super + 4u) != LOX_SNAPSHOT_FORMAT_VERSION ||
-        lox_get_u32(super + 8u) != LOX_WAL_VERSION) {
-        return LOX_ERR_INVALID;
-    }
     if (LOX_CRC32(super, 20u) != header_crc) {
         return LOX_ERR_CORRUPT;
+    }
+    if (!((lox_get_u32(super + 4u) == LOX_SNAPSHOT_FORMAT_VERSION &&
+           lox_get_u32(super + 8u) == LOX_WAL_VERSION) ||
+          (lox_get_u32(super + 4u) == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY &&
+           lox_get_u32(super + 8u) == LOX_WAL_VERSION_LEGACY))) {
+        return LOX_ERR_INVALID;
     }
     if (lox_get_u32(super + 16u) > 1u) {
         return LOX_ERR_INVALID;
@@ -377,7 +471,7 @@ static lox_err_t lox_write_kv_page(lox_core_t *core, uint32_t bank, uint32_t gen
         }
 
         key_len = (uint8_t)strlen(bucket->key);
-        if (offset + 1u + key_len + 4u + bucket->val_len + 4u > max_end) {
+        if (offset + 1u + key_len + 4u + bucket->val_len + LOX_EXPIRATION_SERIALIZED_SIZE > max_end) {
             return LOX_ERR_STORAGE;
         }
 
@@ -410,13 +504,16 @@ static lox_err_t lox_write_kv_page(lox_core_t *core, uint32_t bank, uint32_t gen
         crc = lox_crc32(crc, &core->kv.value_store[bucket->val_offset], bucket->val_len);
         offset += bucket->val_len;
 
-        lox_put_u32(header, bucket->expires_at);
-        err = lox_storage_write_bytes(core, offset, header, 4u);
-        if (err != LOX_OK) {
-            return err;
+        {
+            uint8_t expiration[LOX_EXPIRATION_SERIALIZED_SIZE];
+            lox_put_u64(expiration, (uint64_t)bucket->expires_at);
+            err = lox_storage_write_bytes(core, offset, expiration, sizeof(expiration));
+            if (err != LOX_OK) {
+                return err;
+            }
+            crc = lox_crc32(crc, expiration, sizeof(expiration));
+            offset += (uint32_t)sizeof(expiration);
         }
-        crc = lox_crc32(crc, header, 4u);
-        offset += 4u;
         count++;
     }
 
@@ -759,6 +856,7 @@ static lox_err_t lox_load_kv_page(lox_t *db, uint32_t bank, uint32_t expected_ge
     uint8_t header[LOX_PAGE_HEADER_SIZE];
     uint32_t page_offset = lox_bank_kv_offset(core, bank);
     uint32_t generation = 0u;
+    uint32_t format_version = 0u;
     uint32_t payload_len = 0u;
     uint32_t payload_crc = 0u;
     uint32_t offset;
@@ -772,14 +870,16 @@ static lox_err_t lox_load_kv_page(lox_t *db, uint32_t bank, uint32_t expected_ge
     if (err != LOX_OK) {
         return err;
     }
-    if (lox_validate_page_header(header,
-                                     LOX_KV_PAGE_MAGIC,
-                                     core->layout.kv_size - LOX_PAGE_HEADER_SIZE,
-                                     &generation,
-                                     &payload_len,
-                                     &count,
-                                     &payload_crc) != LOX_OK) {
-        return LOX_ERR_CORRUPT;
+    err = lox_validate_page_header(header,
+                                   LOX_KV_PAGE_MAGIC,
+                                   core->layout.kv_size - LOX_PAGE_HEADER_SIZE,
+                                   &format_version,
+                                   &generation,
+                                   &payload_len,
+                                   &count,
+                                   &payload_crc);
+    if (err != LOX_OK) {
+        return err;
     }
     if (generation != expected_generation) {
         return LOX_ERR_CORRUPT;
@@ -790,9 +890,12 @@ static lox_err_t lox_load_kv_page(lox_t *db, uint32_t bank, uint32_t expected_ge
     for (i = 0u; i < count; ++i) {
         uint8_t key_len = 0u;
         char key[LOX_KV_KEY_MAX_LEN];
-        uint8_t u32buf[4];
+        uint8_t serialized[LOX_EXPIRATION_SERIALIZED_SIZE];
         uint32_t val_len;
-        uint32_t expires_at;
+        lox_timestamp_t expires_at;
+        uint32_t expiration_size = (format_version == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY)
+                                       ? 4u
+                                       : LOX_EXPIRATION_SERIALIZED_SIZE;
         uint8_t value[LOX_KV_VAL_MAX_LEN];
 
         if (offset + 1u > payload_offset + payload_len) {
@@ -819,18 +922,18 @@ static lox_err_t lox_load_kv_page(lox_t *db, uint32_t bank, uint32_t expected_ge
         if (offset + 4u > payload_offset + payload_len) {
             return LOX_ERR_CORRUPT;
         }
-        err = lox_storage_read_bytes(core, offset, u32buf, 4u);
+        err = lox_storage_read_bytes(core, offset, serialized, 4u);
         if (err != LOX_OK) {
             return LOX_ERR_CORRUPT;
         }
-        payload_crc_calc = lox_crc32(payload_crc_calc, u32buf, 4u);
-        val_len = lox_get_u32(u32buf);
+        payload_crc_calc = lox_crc32(payload_crc_calc, serialized, 4u);
+        val_len = lox_get_u32(serialized);
         offset += 4u;
         if (val_len > LOX_KV_VAL_MAX_LEN) {
             return LOX_ERR_CORRUPT;
         }
 
-        if (offset + val_len + 4u > payload_offset + payload_len) {
+        if (offset + val_len + expiration_size > payload_offset + payload_len) {
             return LOX_ERR_CORRUPT;
         }
         err = lox_storage_read_bytes(core, offset, value, val_len);
@@ -840,13 +943,19 @@ static lox_err_t lox_load_kv_page(lox_t *db, uint32_t bank, uint32_t expected_ge
         payload_crc_calc = lox_crc32(payload_crc_calc, value, val_len);
         offset += val_len;
 
-        err = lox_storage_read_bytes(core, offset, u32buf, 4u);
+        err = lox_storage_read_bytes(core, offset, serialized, expiration_size);
         if (err != LOX_OK) {
             return LOX_ERR_CORRUPT;
         }
-        payload_crc_calc = lox_crc32(payload_crc_calc, u32buf, 4u);
-        expires_at = lox_get_u32(u32buf);
-        offset += 4u;
+        payload_crc_calc = lox_crc32(payload_crc_calc, serialized, expiration_size);
+        err = lox_timestamp_from_u64(format_version == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY
+                                         ? (uint64_t)lox_get_u32(serialized)
+                                         : lox_get_u64(serialized),
+                                     &expires_at);
+        if (err != LOX_OK) {
+            return err;
+        }
+        offset += expiration_size;
 
         err = lox_kv_set_at(db, key, value, val_len, expires_at);
         if (err != LOX_OK) {
@@ -887,6 +996,7 @@ static lox_err_t lox_load_ts_page(lox_t *db, uint32_t bank, uint32_t expected_ge
     if (lox_validate_page_header(header,
                                      LOX_TS_PAGE_MAGIC,
                                      core->layout.ts_size - LOX_PAGE_HEADER_SIZE,
+                                     NULL,
                                      &generation,
                                      &payload_len,
                                      &stream_count,
@@ -1042,6 +1152,7 @@ static lox_err_t lox_load_rel_page(lox_t *db, uint32_t bank, uint32_t expected_g
     if (lox_validate_page_header(header,
                                      LOX_REL_PAGE_MAGIC,
                                      core->layout.rel_size - LOX_PAGE_HEADER_SIZE,
+                                     NULL,
                                      &generation,
                                      &payload_len,
                                      &table_count,
@@ -1241,34 +1352,47 @@ static lox_err_t lox_load_rel_page(lox_t *db, uint32_t bank, uint32_t expected_g
 #endif
 
 static lox_err_t lox_apply_wal_entry(lox_t *db,
-                                             uint8_t engine,
-                                             uint8_t op,
-                                             const uint8_t *data,
-                                             uint16_t data_len) {
+                                              uint8_t engine,
+                                              uint8_t op,
+                                              const uint8_t *data,
+                                              uint16_t data_len,
+                                              uint32_t wal_version) {
     if (engine == LOX_WAL_ENGINE_KV) {
         if (op == LOX_WAL_OP_SET_INSERT) {
             uint8_t key_len;
             char key[LOX_KV_KEY_MAX_LEN];
             uint32_t val_len;
-            uint32_t expires_at;
+            lox_timestamp_t expires_at;
+            uint32_t expiration_size =
+                (wal_version == LOX_WAL_VERSION_LEGACY) ? 4u : LOX_EXPIRATION_SERIALIZED_SIZE;
             const uint8_t *val;
 
             if (data_len < 1u) {
                 return LOX_ERR_CORRUPT;
             }
             key_len = data[0];
-            if ((uint32_t)key_len >= LOX_KV_KEY_MAX_LEN || data_len < (uint16_t)(1u + key_len + 8u)) {
+            if ((uint32_t)key_len >= LOX_KV_KEY_MAX_LEN ||
+                data_len < (uint16_t)(1u + key_len + 4u + expiration_size)) {
                 return LOX_ERR_CORRUPT;
             }
             memcpy(key, data + 1u, key_len);
             key[key_len] = '\0';
             val_len = lox_get_u32(data + 1u + key_len);
             if (val_len > LOX_KV_VAL_MAX_LEN ||
-                data_len < (uint16_t)(1u + key_len + 4u + val_len + 4u)) {
+                data_len < (uint16_t)(1u + key_len + 4u + val_len + expiration_size)) {
                 return LOX_ERR_CORRUPT;
             }
             val = data + 1u + key_len + 4u;
-            expires_at = lox_get_u32(val + val_len);
+            {
+                lox_err_t expiration_err =
+                    lox_timestamp_from_u64(wal_version == LOX_WAL_VERSION_LEGACY
+                                               ? (uint64_t)lox_get_u32(val + val_len)
+                                               : lox_get_u64(val + val_len),
+                                           &expires_at);
+                if (expiration_err != LOX_OK) {
+                    return expiration_err;
+                }
+            }
             return lox_kv_set_at(db, key, val, val_len, expires_at);
         }
         if (op == LOX_WAL_OP_DEL) {
@@ -1500,9 +1624,10 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
     uint32_t stored_crc;
     uint32_t entry_count;
     uint32_t block_seq;
+    uint32_t wal_version;
     uint32_t header_bytes = lox_wal_header_bytes(core);
-    uint32_t offset = core->layout.wal_offset + header_bytes;
-    uint32_t wal_end = core->layout.wal_offset + core->layout.wal_size;
+    uint32_t offset;
+    uint32_t wal_end;
     uint32_t replayed_count = 0u;
     uint8_t txn_ops[LOX_TXN_STAGE_KEYS];
     uint16_t txn_lens[LOX_TXN_STAGE_KEYS];
@@ -1518,6 +1643,11 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
     *out_had_entries = false;
     *out_header_reset = false;
 
+    if (!lox_checked_add_u32(core->layout.wal_offset, header_bytes, &offset) ||
+        !lox_checked_add_u32(core->layout.wal_offset, core->layout.wal_size, &wal_end)) {
+        return LOX_ERR_OVERFLOW;
+    }
+
     err = lox_storage_read_bytes(core, core->layout.wal_offset, header, sizeof(header));
     if (err != LOX_OK) {
         return err;
@@ -1526,15 +1656,16 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
     entry_count = lox_get_u32(header + 8u);
     block_seq = lox_get_u32(header + 12u);
     stored_crc = lox_get_u32(header + 16u);
+    wal_version = lox_get_u32(header + 4u);
     (void)entry_count;
     if (lox_get_u32(header + 0u) != LOX_WAL_MAGIC) {
         LOX_LOG("ERROR", "%s", "WAL header corrupt: resetting WAL");
         *out_header_reset = true;
-    } else if (lox_get_u32(header + 4u) != LOX_WAL_VERSION) {
-        return LOX_ERR_INVALID;
     } else if (LOX_CRC32(header, 16u) != stored_crc) {
         LOX_LOG("ERROR", "%s", "WAL header corrupt: resetting WAL");
         *out_header_reset = true;
+    } else if (wal_version != LOX_WAL_VERSION && wal_version != LOX_WAL_VERSION_LEGACY) {
+        return LOX_ERR_INVALID;
     } else {
         core->wal_sequence = block_seq;
     }
@@ -1545,7 +1676,7 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
      * - Corrupt/truncated WAL tail is ignored from first invalid entry onward.
      */
     core->wal_replaying = true;
-    while ((offset + 16u) <= wal_end) {
+    while (offset <= wal_end && (wal_end - offset) >= 16u) {
         uint8_t entry_header[16];
         uint8_t payload[1536];
         uint32_t entry_crc;
@@ -1553,6 +1684,8 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
         uint32_t aligned_len;
         uint32_t crc;
         uint32_t txid;
+        uint32_t payload_offset;
+        uint32_t record_end;
 
         err = lox_storage_read_bytes(core, offset, entry_header, sizeof(entry_header));
         if (err != LOX_OK) {
@@ -1574,12 +1707,16 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
 
         data_len = lox_get_u16(entry_header + 10u);
         aligned_len = lox_align_u32(data_len, 4u);
-        if (data_len > sizeof(payload) || offset + 16u + aligned_len > core->layout.wal_offset + core->layout.wal_size) {
-            saw_torn_append = true;
-            break;
+        {
+            if (aligned_len < data_len || data_len > sizeof(payload) ||
+                !lox_checked_add_u32(offset, 16u, &payload_offset) ||
+                !lox_checked_add_u32(payload_offset, aligned_len, &record_end) || record_end > wal_end) {
+                saw_torn_append = true;
+                break;
+            }
         }
 
-        err = lox_storage_read_bytes(core, offset + 16u, payload, aligned_len);
+        err = lox_storage_read_bytes(core, payload_offset, payload, aligned_len);
         if (err != LOX_OK) {
             saw_torn_append = true;
             break;
@@ -1610,7 +1747,7 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
             txn_lens[txn_count] = (uint16_t)(data_len - 4u);
             memcpy(txn_payloads[txn_count], payload + 4u, data_len - 4u);
             txn_count++;
-            offset += 16u + aligned_len;
+            offset = record_end;
             replayed_count++;
             continue;
         }
@@ -1637,14 +1774,15 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
                     core->wal_replaying = false;
                     return LOX_ERR_CORRUPT;
                 }
-                err = lox_apply_wal_entry(db, LOX_WAL_ENGINE_KV, txn_ops[t], txn_payloads[t], txn_lens[t]);
+                err = lox_apply_wal_entry(
+                    db, LOX_WAL_ENGINE_KV, txn_ops[t], txn_payloads[t], txn_lens[t], wal_version);
                 if (err != LOX_OK) {
                     core->wal_replaying = false;
                     return err;
                 }
             }
             txn_count = 0u;
-            offset += 16u + aligned_len;
+            offset = record_end;
             replayed_count++;
             continue;
         }
@@ -1653,17 +1791,18 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
             return LOX_ERR_CORRUPT;
         }
 
-        err = lox_apply_wal_entry(db, entry_header[8], entry_header[9], payload, data_len);
+        err = lox_apply_wal_entry(db, entry_header[8], entry_header[9], payload, data_len, wal_version);
         if (err != LOX_OK) {
             core->wal_replaying = false;
             return err;
         }
 
-        offset += 16u + aligned_len;
+        offset = record_end;
         replayed_count++;
     }
     core->wal_replaying = false;
     core->wal_used = offset - core->layout.wal_offset;
+    core->wal_entry_count = replayed_count;
     if (txn_count != 0u) {
         saw_discarded_txn = true;
     }
@@ -1731,6 +1870,7 @@ static lox_err_t lox_validate_bank_pages(lox_core_t *core, uint32_t bank, uint32
         lox_err_t rc = lox_validate_page_header(header,
                                                     LOX_KV_PAGE_MAGIC,
                                                     core->layout.kv_size - LOX_PAGE_HEADER_SIZE,
+                                                    NULL,
                                                     &gen,
                                                     &payload_len,
                                                     &entry_count,
@@ -1756,6 +1896,7 @@ static lox_err_t lox_validate_bank_pages(lox_core_t *core, uint32_t bank, uint32
             lox_err_t rc = lox_validate_page_header(header,
                                                         LOX_TS_PAGE_MAGIC,
                                                         core->layout.ts_size - LOX_PAGE_HEADER_SIZE,
+                                                        NULL,
                                                         &gen2,
                                                         &payload_len,
                                                         &entry_count,
@@ -1785,6 +1926,7 @@ static lox_err_t lox_validate_bank_pages(lox_core_t *core, uint32_t bank, uint32
             lox_err_t rc = lox_validate_page_header(header,
                                                         LOX_REL_PAGE_MAGIC,
                                                         core->layout.rel_size - LOX_PAGE_HEADER_SIZE,
+                                                        NULL,
                                                         &gen3,
                                                         &payload_len,
                                                         &entry_count,
@@ -1807,6 +1949,8 @@ static lox_err_t lox_validate_bank_pages(lox_core_t *core, uint32_t bank, uint32
     return LOX_OK;
 }
 
+static lox_err_t lox_compact_nolock(lox_t *db);
+
 lox_err_t lox_storage_bootstrap(lox_t *db) {
     lox_core_t *core = lox_core(db);
     lox_err_t err;
@@ -1827,7 +1971,10 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
     bool saw_unsupported = false;
     bool saw_corrupt = false;
     bool used_degraded_fallback = false;
+    bool legacy_layout = false;
     uint32_t erase_size;
+    lox_storage_layout_t current_layout;
+    lox_storage_layout_t legacy_candidate_layout;
 
     memset(&core->layout, 0, sizeof(core->layout));
     core->wal_sequence = 0u;
@@ -1854,64 +2001,91 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
         return LOX_ERR_INVALID;
     }
 
+    erase_size = core->storage->erase_size;
+    err = lox_compute_storage_layout(core, LOX_EXPIRATION_SERIALIZED_SIZE, &current_layout);
+    if (err != LOX_OK) {
+        return err;
+    }
+    core->layout = current_layout;
+    core->wal_used = erase_size;
+
+    err = lox_compute_storage_layout(core, 4u, &legacy_candidate_layout);
+    if (err != LOX_OK) {
+        return err;
+    }
+
     {
-        uint32_t wal_target;
-        uint32_t wal_min;
-        uint32_t fixed_bytes;
-        uint32_t need_without_wal;
-        uint32_t max_wal;
-        uint32_t max_wal_aligned;
-
-        erase_size = core->storage->erase_size;
-        core->layout.wal_offset = 0u;
-        core->layout.super_size = erase_size;
-        core->wal_used = erase_size;
-        wal_target = erase_size * 8u;
-        wal_min = erase_size * 2u;
-        core->layout.kv_size =
-            lox_align_u32(lox_kv_snapshot_payload_max(core) + LOX_PAGE_HEADER_SIZE, erase_size);
-        core->layout.ts_size =
-#if LOX_ENABLE_TS
-            lox_align_u32((uint32_t)core->ts_arena.capacity + LOX_PAGE_HEADER_SIZE, erase_size);
-#else
-            0u;
-#endif
-        core->layout.rel_size =
-#if LOX_ENABLE_REL
-            lox_align_u32((uint32_t)core->rel_arena.capacity + LOX_PAGE_HEADER_SIZE, erase_size);
-#else
-            0u;
-#endif
-        core->layout.bank_size = core->layout.kv_size + core->layout.ts_size + core->layout.rel_size;
-
-        fixed_bytes = core->layout.super_size * 2u;
-        need_without_wal = fixed_bytes + (core->layout.bank_size * 2u);
-        if (core->storage->capacity < need_without_wal + wal_min) {
-            return LOX_ERR_STORAGE;
+        uint8_t probe_a[LOX_SUPERBLOCK_SIZE];
+        uint8_t probe_b[LOX_SUPERBLOCK_SIZE];
+        uint32_t ignored_generation;
+        uint32_t ignored_bank;
+        lox_err_t probe_a_status;
+        lox_err_t probe_b_status;
+        err = lox_storage_read_bytes(core, current_layout.super_a_offset, probe_a, sizeof(probe_a));
+        if (err != LOX_OK) {
+            return err;
         }
-
-        max_wal = core->storage->capacity - need_without_wal;
-        max_wal_aligned = (max_wal / erase_size) * erase_size;
-        if (max_wal_aligned < wal_min) {
-            return LOX_ERR_STORAGE;
+        err = lox_storage_read_bytes(core, current_layout.super_b_offset, probe_b, sizeof(probe_b));
+        if (err != LOX_OK) {
+            return err;
         }
-
-        core->layout.wal_size = wal_target;
-        if (core->layout.wal_size > max_wal_aligned) {
-            core->layout.wal_size = max_wal_aligned;
-        }
-        if (core->layout.wal_size < wal_min) {
-            core->layout.wal_size = wal_min;
+        probe_a_status = lox_validate_superblock(probe_a, &ignored_generation, &ignored_bank);
+        probe_b_status = lox_validate_superblock(probe_b, &ignored_generation, &ignored_bank);
+        if ((probe_a_status == LOX_OK &&
+             lox_get_u32(probe_a + 4u) == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY) ||
+            (probe_b_status == LOX_OK &&
+             lox_get_u32(probe_b + 4u) == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY)) {
+            core->layout = legacy_candidate_layout;
+            core->wal_used = erase_size;
+            legacy_layout = true;
         }
     }
-    core->layout.super_a_offset = core->layout.wal_offset + core->layout.wal_size;
-    core->layout.super_b_offset = core->layout.super_a_offset + core->layout.super_size;
-    core->layout.bank_a_offset = core->layout.super_b_offset + core->layout.super_size;
-    core->layout.bank_b_offset = core->layout.bank_a_offset + core->layout.bank_size;
-    core->layout.total_size = core->layout.bank_b_offset + core->layout.bank_size;
 
-    if (core->storage->capacity < core->layout.total_size) {
-        return LOX_ERR_STORAGE;
+    if (!legacy_layout && legacy_candidate_layout.super_a_offset != current_layout.super_a_offset) {
+        uint8_t current_a[LOX_SUPERBLOCK_SIZE];
+        uint8_t current_b[LOX_SUPERBLOCK_SIZE];
+        uint8_t legacy_a[LOX_SUPERBLOCK_SIZE];
+        uint8_t legacy_b[LOX_SUPERBLOCK_SIZE];
+        uint32_t ignored_generation;
+        uint32_t ignored_bank;
+        lox_err_t current_a_status;
+        lox_err_t current_b_status;
+        lox_err_t legacy_a_status;
+        lox_err_t legacy_b_status;
+
+        err = lox_storage_read_bytes(core, current_layout.super_a_offset, current_a, sizeof(current_a));
+        if (err != LOX_OK) {
+            return err;
+        }
+        err = lox_storage_read_bytes(core, current_layout.super_b_offset, current_b, sizeof(current_b));
+        if (err != LOX_OK) {
+            return err;
+        }
+        current_a_status = lox_validate_superblock(current_a, &ignored_generation, &ignored_bank);
+        current_b_status = lox_validate_superblock(current_b, &ignored_generation, &ignored_bank);
+        if (current_a_status != LOX_OK && current_b_status != LOX_OK &&
+            current_a_status != LOX_ERR_INVALID && current_b_status != LOX_ERR_INVALID) {
+            err = lox_storage_read_bytes(
+                core, legacy_candidate_layout.super_a_offset, legacy_a, sizeof(legacy_a));
+            if (err != LOX_OK) {
+                return err;
+            }
+            err = lox_storage_read_bytes(
+                core, legacy_candidate_layout.super_b_offset, legacy_b, sizeof(legacy_b));
+            if (err != LOX_OK) {
+                return err;
+            }
+            legacy_a_status = lox_validate_superblock(legacy_a, &ignored_generation, &ignored_bank);
+            legacy_b_status = lox_validate_superblock(legacy_b, &ignored_generation, &ignored_bank);
+            if ((legacy_a_status == LOX_OK &&
+                 lox_get_u32(legacy_a + 4u) == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY) ||
+                (legacy_b_status == LOX_OK &&
+                 lox_get_u32(legacy_b + 4u) == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY)) {
+                core->layout = legacy_candidate_layout;
+                core->wal_used = erase_size;
+                legacy_layout = true;
+            }
+        }
     }
 
     err = lox_storage_read_bytes(core, core->layout.super_a_offset, super_a, sizeof(super_a));
@@ -2106,6 +2280,20 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
         return err;
     }
 
+    if (legacy_layout) {
+        core->layout = current_layout;
+        core->layout.active_bank = selected_bank;
+        core->layout.active_generation = selected_gen;
+        err = lox_compact_nolock(db);
+        core->last_recovery_status = err;
+        if (err == LOX_OK) {
+            core->recovery_count++;
+        } else {
+            lox_record_error(core, err);
+        }
+        return err;
+    }
+
     if (had_entries) {
         err = lox_storage_flush(db);
         core->last_recovery_status = err;
@@ -2143,8 +2331,12 @@ static lox_err_t lox_append_wal_entry(lox_t *db,
     uint8_t coalesced[320];
     uint32_t crc;
     lox_err_t err;
+    size_t aligned_size = 0u;
+    uint32_t wal_end = 0u;
+    uint32_t entry_end = 0u;
 
-    if (!lox_checked_u32_from_size((size_t)lox_align_u32(payload_len, 4u), &aligned_len) ||
+    if (!lox_checked_align_up_size((size_t)payload_len, 4u, &aligned_size) ||
+        !lox_checked_u32_from_size(aligned_size, &aligned_len) ||
         !lox_checked_add_u32(16u, aligned_len, &entry_len)) {
         return LOX_ERR_OVERFLOW;
     }
@@ -2179,6 +2371,10 @@ static lox_err_t lox_append_wal_entry(lox_t *db,
     if (!lox_checked_add_u32(core->layout.wal_offset, core->wal_used, &offset)) {
         return LOX_ERR_OVERFLOW;
     }
+    if (!lox_checked_add_u32(core->layout.wal_offset, core->layout.wal_size, &wal_end) ||
+        !lox_checked_add_u32(offset, entry_len, &entry_end) || entry_end > wal_end) {
+        return LOX_ERR_OVERFLOW;
+    }
     if (entry_len <= sizeof(coalesced)) {
         memcpy(coalesced, header, sizeof(header));
         if (payload_len != 0u) {
@@ -2196,14 +2392,18 @@ static lox_err_t lox_append_wal_entry(lox_t *db,
         if (err != LOX_OK) {
             return err;
         }
-        offset += (uint32_t)sizeof(header);
+        if (!lox_checked_add_u32(offset, (uint32_t)sizeof(header), &offset)) {
+            return LOX_ERR_OVERFLOW;
+        }
 
         if (payload_len != 0u) {
             err = lox_storage_write_bytes(core, offset, payload, payload_len);
             if (err != LOX_OK) {
                 return err;
             }
-            offset += payload_len;
+            if (!lox_checked_add_u32(offset, payload_len, &offset)) {
+                return LOX_ERR_OVERFLOW;
+            }
         }
 
         if (pad_len != 0u) {
@@ -2214,11 +2414,9 @@ static lox_err_t lox_append_wal_entry(lox_t *db,
         }
     }
 
-    core->wal_used += entry_len;
-    core->wal_entry_count++;
-    err = lox_write_wal_header(core);
-    if (err != LOX_OK) {
-        return err;
+    if (!lox_checked_add_u32(core->wal_used, entry_len, &core->wal_used) ||
+        !lox_checked_add_u32(core->wal_entry_count, 1u, &core->wal_entry_count)) {
+        return LOX_ERR_OVERFLOW;
     }
     if (core->wal_sync_mode == LOX_WAL_SYNC_ALWAYS) {
         err = lox_storage_sync_core(core);
@@ -2329,7 +2527,11 @@ lox_err_t lox_storage_flush(lox_t *db) {
     return rc;
 }
 
-lox_err_t lox_persist_kv_set(lox_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+lox_err_t lox_persist_kv_set(lox_t *db,
+                             const char *key,
+                             const void *val,
+                             size_t len,
+                             lox_timestamp_t expires_at) {
     lox_core_t *core = lox_core(db);
     uint8_t payload[256];
     size_t key_len;
@@ -2344,7 +2546,7 @@ lox_err_t lox_persist_kv_set(lox_t *db, const char *key, const void *val, size_t
 
     key_len = strlen(key);
     if (!lox_checked_add_size(1u, key_len, &payload_len) ||
-        !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+        !lox_checked_add_size(payload_len, LOX_EXPIRATION_SERIALIZED_SIZE, &payload_len) ||
         !lox_checked_add_size(payload_len, len, &payload_len) ||
         !lox_checked_add_size(payload_len, 4u, &payload_len) ||
         payload_len > sizeof(payload)) {
@@ -2354,15 +2556,19 @@ lox_err_t lox_persist_kv_set(lox_t *db, const char *key, const void *val, size_t
     memcpy(payload + 1u, key, key_len);
     lox_put_u32(payload + 1u + key_len, (uint32_t)len);
     memcpy(payload + 1u + key_len + 4u, val, len);
-    lox_put_u32(payload + 1u + key_len + 4u + len, expires_at);
+    lox_put_u64(payload + 1u + key_len + 4u + len, (uint64_t)expires_at);
     return lox_append_wal_entry(db,
                                     LOX_WAL_ENGINE_KV,
                                     LOX_WAL_OP_SET_INSERT,
                                     payload,
-                                    (uint16_t)(1u + key_len + 4u + len + 4u));
+                                    (uint16_t)(1u + key_len + 4u + len + LOX_EXPIRATION_SERIALIZED_SIZE));
 }
 
-lox_err_t lox_persist_kv_set_txn(lox_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+lox_err_t lox_persist_kv_set_txn(lox_t *db,
+                                 const char *key,
+                                 const void *val,
+                                 size_t len,
+                                 lox_timestamp_t expires_at) {
     lox_core_t *core = lox_core(db);
     uint8_t payload[260];
     size_t key_len;
@@ -2378,7 +2584,7 @@ lox_err_t lox_persist_kv_set_txn(lox_t *db, const char *key, const void *val, si
     key_len = strlen(key);
     if (!lox_checked_add_size(4u, 1u, &payload_len) ||
         !lox_checked_add_size(payload_len, key_len, &payload_len) ||
-        !lox_checked_add_size(payload_len, 4u, &payload_len) ||
+        !lox_checked_add_size(payload_len, LOX_EXPIRATION_SERIALIZED_SIZE, &payload_len) ||
         !lox_checked_add_size(payload_len, len, &payload_len) ||
         !lox_checked_add_size(payload_len, 4u, &payload_len) ||
         payload_len > sizeof(payload)) {
@@ -2389,12 +2595,13 @@ lox_err_t lox_persist_kv_set_txn(lox_t *db, const char *key, const void *val, si
     memcpy(payload + 5u, key, key_len);
     lox_put_u32(payload + 5u + key_len, (uint32_t)len);
     memcpy(payload + 5u + key_len + 4u, val, len);
-    lox_put_u32(payload + 5u + key_len + 4u + len, expires_at);
+    lox_put_u64(payload + 5u + key_len + 4u + len, (uint64_t)expires_at);
     return lox_append_wal_entry(db,
                                     LOX_WAL_ENGINE_TXN_KV,
                                     LOX_WAL_OP_SET_INSERT,
                                     payload,
-                                    (uint16_t)(4u + 1u + key_len + 4u + len + 4u));
+                                    (uint16_t)(4u + 1u + key_len + 4u + len +
+                                               LOX_EXPIRATION_SERIALIZED_SIZE));
 }
 
 lox_err_t lox_persist_kv_del(lox_t *db, const char *key) {

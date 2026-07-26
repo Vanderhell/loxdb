@@ -13,6 +13,12 @@ static const char *g_path = "wal_test.bin";
 static uint32_t g_now = 1000u;
 static uint32_t g_sync_calls = 0u;
 static lox_err_t (*g_sync_prev)(void *ctx) = NULL;
+static lox_err_t (*g_erase_prev)(void *ctx, uint32_t offset) = NULL;
+static lox_err_t (*g_write_prev)(void *ctx, uint32_t offset, const void *buf, size_t len) = NULL;
+static uint32_t g_wal_erase_calls = 0u;
+static uint32_t g_wal_header_writes = 0u;
+static uint32_t g_total_write_calls = 0u;
+static uint32_t g_trace_wal_size = 0u;
 
 typedef struct {
     uint32_t count;
@@ -29,6 +35,32 @@ static lox_err_t counting_sync(void *ctx) {
         return g_sync_prev(ctx);
     }
     return LOX_OK;
+}
+
+static lox_err_t tracing_erase(void *ctx, uint32_t offset) {
+    if (offset < g_trace_wal_size) {
+        g_wal_erase_calls++;
+    }
+    return g_erase_prev(ctx, offset);
+}
+
+static lox_err_t tracing_write(void *ctx, uint32_t offset, const void *buf, size_t len) {
+    g_total_write_calls++;
+    if (offset == 0u && len == LOX_WAL_HEADER_SIZE) {
+        g_wal_header_writes++;
+    }
+    return g_write_prev(ctx, offset, buf, len);
+}
+
+static void begin_wal_trace(void) {
+    g_erase_prev = g_storage.erase;
+    g_write_prev = g_storage.write;
+    g_trace_wal_size = lox_core(&g_db)->layout.wal_size;
+    g_wal_erase_calls = 0u;
+    g_wal_header_writes = 0u;
+    g_total_write_calls = 0u;
+    g_storage.erase = tracing_erase;
+    g_storage.write = tracing_write;
 }
 
 static void cleanup_handles(lox_t *db, lox_storage_t *storage) {
@@ -139,9 +171,46 @@ static bool rel_collect_ids(const void *row_buf, void *ctx) {
 MDB_TEST(wal_entry_written_after_kv_set) {
     uint8_t value = 7u;
     ASSERT_EQ(lox_kv_set(&g_db, "a", &value, 1u, 0u), LOX_OK);
-    ASSERT_EQ(read_u32(&g_storage, 8u), 1u);
+    ASSERT_EQ(read_u32(&g_storage, 8u), 0u);
     ASSERT_EQ(read_u32(&g_storage, wal_data_offset()), 0x454E5452u);
-    ASSERT_EQ(read_u8(&g_storage, 40u), 0u);
+    ASSERT_EQ(read_u8(&g_storage, wal_data_offset() + 8u), 0u);
+}
+
+MDB_TEST(wal_append_does_not_erase_or_rewrite_header) {
+    uint8_t value = 7u;
+    begin_wal_trace();
+    ASSERT_EQ(lox_kv_set(&g_db, "single", &value, 1u, 0u), LOX_OK);
+    ASSERT_EQ(g_wal_erase_calls, 0u);
+    ASSERT_EQ(g_wal_header_writes, 0u);
+}
+
+MDB_TEST(wal_multiple_appends_do_not_erase_or_rewrite_header) {
+    uint8_t value = 7u;
+    begin_wal_trace();
+    ASSERT_EQ(lox_kv_set(&g_db, "one", &value, 1u, 0u), LOX_OK);
+    ASSERT_EQ(lox_kv_set(&g_db, "two", &value, 1u, 0u), LOX_OK);
+    ASSERT_EQ(lox_kv_set(&g_db, "three", &value, 1u, 0u), LOX_OK);
+    ASSERT_EQ(g_wal_erase_calls, 0u);
+    ASSERT_EQ(g_wal_header_writes, 0u);
+}
+
+MDB_TEST(wal_reset_erases_region_and_writes_header_once) {
+    uint8_t value = 7u;
+    uint32_t expected_erases;
+    begin_wal_trace();
+    expected_erases = g_trace_wal_size / g_storage.erase_size;
+    ASSERT_EQ(lox_kv_set(&g_db, "reset", &value, 1u, 0u), LOX_OK);
+    ASSERT_EQ(lox_flush(&g_db), LOX_OK);
+    ASSERT_EQ(g_wal_erase_calls, expected_erases);
+    ASSERT_EQ(g_wal_header_writes, 1u);
+}
+
+MDB_TEST(ttl_overflow_is_rejected_before_storage_write) {
+    uint8_t value = 7u;
+    begin_wal_trace();
+    g_now = UINT32_MAX - 2u;
+    ASSERT_EQ(lox_kv_set(&g_db, "overflow", &value, 1u, 5u), LOX_ERR_OVERFLOW);
+    ASSERT_EQ(g_total_write_calls, 0u);
 }
 
 MDB_TEST(wal_sync_mode_controls_per_entry_sync) {
@@ -175,7 +244,7 @@ MDB_TEST(wal_entry_written_after_ts_insert) {
     uint32_t second;
     ASSERT_EQ(lox_ts_register(&g_db, "temp", LOX_TS_F32, 0u), LOX_OK);
     ASSERT_EQ(lox_ts_insert(&g_db, "temp", 10u, &value), LOX_OK);
-    ASSERT_EQ(read_u32(&g_storage, 8u), 2u);
+    ASSERT_EQ(read_u32(&g_storage, 8u), 0u);
     second = next_entry_offset(&g_storage, wal_data_offset());
     ASSERT_EQ(read_u8(&g_storage, second + 8u), 1u);
     ASSERT_EQ(read_u8(&g_storage, second + 9u), 0u);
@@ -192,7 +261,7 @@ MDB_TEST(wal_entry_written_after_rel_insert) {
     ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
     ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
-    ASSERT_EQ(read_u32(&g_storage, 8u), 2u);
+    ASSERT_EQ(read_u32(&g_storage, 8u), 0u);
     second = next_entry_offset(&g_storage, wal_data_offset());
     ASSERT_EQ(read_u8(&g_storage, second + 8u), 2u);
     ASSERT_EQ(read_u8(&g_storage, second + 9u), 0u);
@@ -508,12 +577,12 @@ MDB_TEST(wal_insufficient_storage_returns_storage) {
     lox_port_posix_remove(small_path);
 }
 
-MDB_TEST(wal_header_entry_count_tracks_multiple_writes) {
+MDB_TEST(wal_header_entry_count_is_reserved) {
     uint8_t value = 1u;
     ASSERT_EQ(lox_kv_set(&g_db, "a", &value, 1u, 0u), LOX_OK);
     ASSERT_EQ(lox_kv_set(&g_db, "b", &value, 1u, 0u), LOX_OK);
     ASSERT_EQ(lox_kv_set(&g_db, "c", &value, 1u, 0u), LOX_OK);
-    ASSERT_EQ(read_u32(&g_storage, 8u), 3u);
+    ASSERT_EQ(read_u32(&g_storage, 8u), 0u);
 }
 
 MDB_TEST(wal_sequence_advances_after_flush) {
@@ -556,6 +625,10 @@ MDB_TEST(wal_rel_iter_persists_insertion_order_after_reload) {
 
 int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, wal_entry_written_after_kv_set);
+    MDB_RUN_TEST(setup_db, teardown_db, wal_append_does_not_erase_or_rewrite_header);
+    MDB_RUN_TEST(setup_db, teardown_db, wal_multiple_appends_do_not_erase_or_rewrite_header);
+    MDB_RUN_TEST(setup_db, teardown_db, wal_reset_erases_region_and_writes_header_once);
+    MDB_RUN_TEST(setup_db, teardown_db, ttl_overflow_is_rejected_before_storage_write);
     MDB_RUN_TEST(setup_db, teardown_db, wal_sync_mode_controls_per_entry_sync);
     MDB_RUN_TEST(setup_db, teardown_db, wal_entry_written_after_ts_insert);
     MDB_RUN_TEST(setup_db, teardown_db, wal_entry_written_after_rel_insert);
@@ -579,7 +652,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, wal_kv_ttl_persisted_after_reload);
     MDB_RUN_TEST(setup_db, teardown_db, wal_kv_purge_expired_persists_deletion);
     MDB_RUN_TEST(setup_db, teardown_db, wal_insufficient_storage_returns_storage);
-    MDB_RUN_TEST(setup_db, teardown_db, wal_header_entry_count_tracks_multiple_writes);
+    MDB_RUN_TEST(setup_db, teardown_db, wal_header_entry_count_is_reserved);
     MDB_RUN_TEST(setup_db, teardown_db, wal_sequence_advances_after_flush);
     MDB_RUN_TEST(setup_db, teardown_db, wal_table_metadata_persisted_before_row_replay);
     MDB_RUN_TEST(setup_db, teardown_db, wal_rel_iter_persists_insertion_order_after_reload);

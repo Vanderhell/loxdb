@@ -95,7 +95,7 @@ static uint32_t lox_kv_snapshot_payload_max_local(void) {
     if (!lox_checked_add_size(1u, max_key_len, &key_bytes) ||
         !lox_checked_add_size(key_bytes, 4u, &tmp) ||
         !lox_checked_add_size(tmp, (size_t)LOX_KV_VAL_MAX_LEN, &val_bytes) ||
-        !lox_checked_add_size(val_bytes, 4u, &per_entry)) {
+        !lox_checked_add_size(val_bytes, 8u, &per_entry)) {
         return 0u;
     }
     max_entries = (LOX_KV_MAX_KEYS > LOX_TXN_STAGE_KEYS) ? (size_t)(LOX_KV_MAX_KEYS - LOX_TXN_STAGE_KEYS) : 0u;
@@ -1390,7 +1390,15 @@ lox_err_t lox_admit_kv_set(lox_t *db, const char *key, size_t val_len, lox_admis
     }
 
     if (core->wal_enabled) {
-        payload_len = (uint32_t)(1u + strlen(key) + 4u + val_len + 4u);
+        size_t payload_size = 0u;
+        if (!lox_checked_add_size(1u, strlen(key), &payload_size) ||
+            !lox_checked_add_size(payload_size, 4u, &payload_size) ||
+            !lox_checked_add_size(payload_size, val_len, &payload_size) ||
+            !lox_checked_add_size(payload_size, 8u, &payload_size) ||
+            !lox_checked_u32_from_size(payload_size, &payload_len)) {
+            LOX_UNLOCK(db);
+            return LOX_ERR_OVERFLOW;
+        }
         wal_bytes = lox_wal_entry_size_for_payload(payload_len);
         out->required_wal_bytes = wal_bytes;
         lox_fill_wal_admission(core, wal_bytes, &would_compact, &wal_free);

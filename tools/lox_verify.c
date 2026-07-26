@@ -20,8 +20,10 @@ enum {
 
 enum {
     LOX_WAL_MAGIC = 0x4D44424Cu,
-    LOX_WAL_VERSION = 0x00010000u,
-    LOX_SNAPSHOT_FORMAT_VERSION = 0x00020000u,
+    LOX_WAL_VERSION_LEGACY = 0x00010000u,
+    LOX_WAL_VERSION = 0x00020000u,
+    LOX_SNAPSHOT_FORMAT_VERSION_LEGACY = 0x00020000u,
+    LOX_SNAPSHOT_FORMAT_VERSION = 0x00030000u,
     LOX_WAL_ENTRY_MAGIC = 0x454E5452u,
     LOX_KV_PAGE_MAGIC = 0x4B565047u,
     LOX_TS_PAGE_MAGIC = 0x54535047u,
@@ -82,6 +84,7 @@ typedef struct {
     bool header_valid;
     bool payload_crc_valid;
     uint32_t generation;
+    uint32_t format_version;
     uint32_t payload_len;
     uint32_t entry_count;
     uint32_t payload_crc;
@@ -298,7 +301,7 @@ static bool compute_layout(uint32_t storage_capacity, const verify_cfg_t *cfg, v
     rel_bytes = total_bytes - kv_bytes - ts_bytes;
 
     max_key_len = (LOX_KV_KEY_MAX_LEN > 0u) ? (LOX_KV_KEY_MAX_LEN - 1u) : 0u;
-    per_entry = 1u + max_key_len + 4u + LOX_KV_VAL_MAX_LEN + 4u;
+    per_entry = 1u + max_key_len + 4u + LOX_KV_VAL_MAX_LEN + 8u;
     max_entries = (LOX_KV_MAX_KEYS > LOX_TXN_STAGE_KEYS) ? (LOX_KV_MAX_KEYS - LOX_TXN_STAGE_KEYS) : 0u;
     kv_payload_max = max_entries * per_entry;
 
@@ -343,6 +346,7 @@ static bool compute_layout(uint32_t storage_capacity, const verify_cfg_t *cfg, v
 static bool validate_page_header(const uint8_t *header,
                                  uint32_t expected_magic,
                                  uint32_t max_payload_len,
+                                 uint32_t *out_format_version,
                                  uint32_t *out_generation,
                                  uint32_t *out_payload_len,
                                  uint32_t *out_entry_count,
@@ -352,15 +356,17 @@ static bool validate_page_header(const uint8_t *header,
     if (get_u32(header + 0u) != expected_magic) {
         return false;
     }
-    if (get_u32(header + 4u) != LOX_SNAPSHOT_FORMAT_VERSION) {
+    if (LOX_CRC32(header, 24u) != header_crc) {
         return false;
     }
-    if (LOX_CRC32(header, 24u) != header_crc) {
+    if (get_u32(header + 4u) != LOX_SNAPSHOT_FORMAT_VERSION &&
+        get_u32(header + 4u) != LOX_SNAPSHOT_FORMAT_VERSION_LEGACY) {
         return false;
     }
     if (payload_len > max_payload_len) {
         return false;
     }
+    *out_format_version = get_u32(header + 4u);
     *out_generation = get_u32(header + 8u);
     *out_payload_len = payload_len;
     *out_entry_count = get_u32(header + 16u);
@@ -373,10 +379,13 @@ static bool validate_superblock(const uint8_t *super, uint32_t *out_generation, 
     if (get_u32(super + 0u) != LOX_SUPER_MAGIC) {
         return false;
     }
-    if (get_u32(super + 4u) != LOX_SNAPSHOT_FORMAT_VERSION) {
+    if (LOX_CRC32(super, 20u) != header_crc) {
         return false;
     }
-    if (LOX_CRC32(super, 20u) != header_crc) {
+    if (!((get_u32(super + 4u) == LOX_SNAPSHOT_FORMAT_VERSION &&
+           get_u32(super + 8u) == LOX_WAL_VERSION) ||
+          (get_u32(super + 4u) == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY &&
+           get_u32(super + 8u) == LOX_WAL_VERSION_LEGACY))) {
         return false;
     }
     if (get_u32(super + 16u) > 1u) {
@@ -402,6 +411,7 @@ static page_info_t inspect_page(FILE *fp, uint32_t page_offset, uint32_t expecte
     if (!validate_page_header(header,
                               expected_magic,
                               max_payload_len,
+                              &info.format_version,
                               &info.generation,
                               &info.payload_len,
                               &info.entry_count,
@@ -489,12 +499,15 @@ static bool load_payload(FILE *fp, const page_info_t *page, uint8_t **out_buf) {
 static void decode_kv_payload(const uint8_t *payload,
                               uint32_t payload_len,
                               uint32_t entry_count,
+                              uint32_t format_version,
                               uint32_t value_store_region_size,
                               kv_decode_t *out,
                               warn_log_t *warns) {
     uint32_t i;
     uint32_t off = 0u;
     uint64_t value_off = 0u;
+    uint32_t expiration_size =
+        (format_version == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY) ? 4u : 8u;
 
     if (out == NULL) {
         return;
@@ -522,7 +535,7 @@ static void decode_kv_payload(const uint8_t *payload,
             out->overlaps_detected++;
             add_warn(warns, "WARN: kv decode value range exceeds store region at entry %u", i);
         }
-        if (off + val_len + 4u > payload_len) {
+        if (off + val_len + expiration_size > payload_len) {
             out->overlaps_detected++;
             add_warn(warns, "WARN: kv decode truncated in value/expires at entry %u", i);
             break;
@@ -531,7 +544,7 @@ static void decode_kv_payload(const uint8_t *payload,
         out->live_keys++;
         out->value_bytes_used += val_len;
         off += val_len; /* value bytes */
-        off += 4u;      /* expires */
+        off += expiration_size; /* expires */
         value_off = next_value_off;
     }
     if (i != entry_count) {
@@ -679,8 +692,7 @@ static void decode_rel_payload(const uint8_t *payload,
 static wal_info_t inspect_wal(FILE *fp, const verify_layout_t *layout) {
     wal_info_t info;
     uint8_t header[LOX_WAL_HEADER_SIZE];
-    uint32_t i;
-    uint32_t offset = layout->wal_offset + LOX_WAL_HEADER_SIZE;
+    uint32_t offset = layout->wal_offset + layout->super_size;
     uint32_t pending_txn_kv = 0u;
     memset(&info, 0, sizeof(info));
     info.used_bytes = LOX_WAL_HEADER_SIZE;
@@ -694,12 +706,16 @@ static wal_info_t inspect_wal(FILE *fp, const verify_layout_t *layout) {
     if (LOX_CRC32(header, 16u) != get_u32(header + 16u)) {
         return info;
     }
+    if (get_u32(header + 4u) != LOX_WAL_VERSION &&
+        get_u32(header + 4u) != LOX_WAL_VERSION_LEGACY) {
+        return info;
+    }
     info.header_valid = true;
-    info.entry_count = get_u32(header + 8u);
     info.sequence = get_u32(header + 12u);
     info.entries_valid = true;
 
-    for (i = 0u; i < info.entry_count; ++i) {
+    while (offset <= layout->wal_offset + layout->wal_size &&
+           layout->wal_offset + layout->wal_size - offset >= 16u) {
         uint8_t entry_header[16];
         uint8_t payload[1536];
         uint16_t data_len;
@@ -714,7 +730,6 @@ static wal_info_t inspect_wal(FILE *fp, const verify_layout_t *layout) {
             break;
         }
         if (get_u32(entry_header + 0u) != LOX_WAL_ENTRY_MAGIC) {
-            info.entries_valid = false;
             break;
         }
         data_len = get_u16(entry_header + 10u);
@@ -772,6 +787,7 @@ static wal_info_t inspect_wal(FILE *fp, const verify_layout_t *layout) {
         }
 
         offset += 16u + aligned_len;
+        info.entry_count++;
     }
     info.semantic.txn_orphaned = pending_txn_kv;
     info.used_bytes = offset - layout->wal_offset;
@@ -968,6 +984,7 @@ int main(int argc, char **argv) {
             decode_kv_payload(payload,
                               selected->kv.payload_len,
                               selected->kv.entry_count,
+                              selected->kv.format_version,
                               layout.kv_size - LOX_PAGE_HEADER_SIZE,
                               &kv_decode,
                               &warns);

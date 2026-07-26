@@ -240,13 +240,24 @@ MDB_TEST(phase02_degraded_fallback_reports_detail) {
 
 MDB_TEST(phase02_unsupported_format_returns_invalid) {
     const lox_core_t *core;
-    uint32_t zero = 0u;
+    uint8_t header[LOX_PAGE_HEADER_SIZE];
+    uint32_t future_version = 0x00040000u;
+    uint32_t crc;
+    uint32_t offsets[2];
+    uint32_t i;
 
     ASSERT_EQ(lox_kv_set(&g_db, "fmt", &(uint8_t){ 7u }, 1u, 0u), LOX_OK);
     ASSERT_EQ(lox_flush(&g_db), LOX_OK);
     core = lox_core_const(&g_db);
-    storage_force_patch(core->layout.bank_a_offset + 4u, &zero, sizeof(zero));
-    storage_force_patch(core->layout.bank_b_offset + 4u, &zero, sizeof(zero));
+    offsets[0] = core->layout.bank_a_offset;
+    offsets[1] = core->layout.bank_b_offset;
+    for (i = 0u; i < 2u; ++i) {
+        ASSERT_EQ(g_storage.read(g_storage.ctx, offsets[i], header, sizeof(header)), LOX_OK);
+        memcpy(header + 4u, &future_version, sizeof(future_version));
+        crc = LOX_CRC32(header, 24u);
+        memcpy(header + 24u, &crc, sizeof(crc));
+        storage_force_patch(offsets[i], header, sizeof(header));
+    }
 
     ASSERT_EQ(reopen_after_power_loss(), LOX_ERR_INVALID);
 }

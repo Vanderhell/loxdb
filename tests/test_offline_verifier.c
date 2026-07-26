@@ -166,7 +166,7 @@ static void compute_layout_32kb(verifier_layout_t *out) {
     uint32_t ts_bytes = (total_bytes * 40u) / 100u;
     uint32_t rel_bytes = total_bytes - kv_bytes - ts_bytes;
     uint32_t max_key_len = (LOX_KV_KEY_MAX_LEN > 0u) ? (LOX_KV_KEY_MAX_LEN - 1u) : 0u;
-    uint32_t per_entry = 1u + max_key_len + 4u + LOX_KV_VAL_MAX_LEN + 4u;
+    uint32_t per_entry = 1u + max_key_len + 4u + LOX_KV_VAL_MAX_LEN + 8u;
     uint32_t max_entries = (LOX_KV_MAX_KEYS > LOX_TXN_STAGE_KEYS) ? (LOX_KV_MAX_KEYS - LOX_TXN_STAGE_KEYS) : 0u;
     uint32_t kv_payload_max = max_entries * per_entry;
 
@@ -441,7 +441,6 @@ static void append_orphaned_txn_kv(const char *path) {
     verifier_layout_t l;
     FILE *fp;
     uint8_t wal_header[32];
-    uint32_t i;
     uint32_t off;
     uint32_t entry_count;
     uint16_t payload_len;
@@ -453,14 +452,18 @@ static void append_orphaned_txn_kv(const char *path) {
     fp = fopen(path, "rb+");
     ASSERT_EQ(fp != NULL, 1);
     ASSERT_EQ(read_at(fp, l.wal_offset, wal_header, sizeof(wal_header)), 1);
-    entry_count = get_u32(wal_header + 8u);
-    off = l.wal_offset + 32u;
-    for (i = 0u; i < entry_count; ++i) {
+    entry_count = 0u;
+    off = l.wal_offset + l.super_size;
+    for (;;) {
         uint8_t h[16];
         uint16_t len;
         ASSERT_EQ(read_at(fp, off, h, sizeof(h)), 1);
+        if (get_u32(h) != LOX_WAL_ENTRY_MAGIC) {
+            break;
+        }
         len = get_u16(h + 10u);
         off += 16u + align_u32((uint32_t)len, 4u);
+        entry_count++;
     }
 
     memset(payload, 0, sizeof(payload));
@@ -484,7 +487,6 @@ static void append_orphaned_txn_kv(const char *path) {
     put_u32(entry + 12u, crc);
 
     ASSERT_EQ(write_at(fp, off, entry, 16u + align_u32((uint32_t)payload_len, 4u)), 1);
-    put_u32(wal_header + 8u, entry_count + 1u);
     put_u32(wal_header + 12u, entry_count + 1u);
     put_u32(wal_header + 16u, LOX_CRC32(wal_header, 16u));
     ASSERT_EQ(write_at(fp, l.wal_offset, wal_header, sizeof(wal_header)), 1);

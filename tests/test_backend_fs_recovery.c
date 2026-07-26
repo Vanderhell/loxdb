@@ -214,7 +214,7 @@ MDB_TEST(fs_recovery_clean_reopen_preserves_value) {
     ASSERT_EQ(stats.recovery_detail, LOX_RECOVERY_DETAIL_CLEAN);
 }
 
-MDB_TEST(fs_recovery_trace_records_erase_program_sync_order) {
+MDB_TEST(fs_recovery_append_programs_and_syncs_without_erase) {
     uint8_t in = 8u;
     uint32_t erase_idx = UINT32_MAX;
     uint32_t program_idx = UINT32_MAX;
@@ -235,11 +235,10 @@ MDB_TEST(fs_recovery_trace_records_erase_program_sync_order) {
         }
     }
 
-    ASSERT_GT(UINT32_MAX, erase_idx);
+    ASSERT_EQ(erase_idx, UINT32_MAX);
     ASSERT_GT(UINT32_MAX, program_idx);
     ASSERT_GT(UINT32_MAX, sync_idx);
-    ASSERT_GT(erase_idx, program_idx);
-    ASSERT_GT(sync_idx, erase_idx);
+    ASSERT_GT(sync_idx, program_idx);
 }
 
 int main(void) {
@@ -247,6 +246,6 @@ int main(void) {
     MDB_RUN_TEST(setup_fixture, teardown_fixture, fs_recovery_sync_failure_does_not_commit_value);
     MDB_RUN_TEST(setup_fixture, teardown_fixture, block_recovery_reopen_preserves_value_without_raw_sync);
     MDB_RUN_TEST(setup_fixture, teardown_fixture, fs_recovery_clean_reopen_preserves_value);
-    MDB_RUN_TEST(setup_fixture, teardown_fixture, fs_recovery_trace_records_erase_program_sync_order);
+    MDB_RUN_TEST(setup_fixture, teardown_fixture, fs_recovery_append_programs_and_syncs_without_erase);
     return MDB_RESULT();
 }

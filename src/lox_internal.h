@@ -21,6 +21,8 @@ typedef struct {
     size_t capacity;
 } lox_arena_t;
 
+LOX_STATIC_ASSERT(timestamp_serialized_width_fits, sizeof(lox_timestamp_t) <= sizeof(uint64_t));
+
 static inline bool lox_is_power_of_two_size(size_t value) {
     return value != 0u && (value & (value - 1u)) == 0u;
 }
@@ -58,6 +60,14 @@ static inline bool lox_checked_add_u32(uint32_t a, uint32_t b, uint32_t *out) {
     return true;
 }
 
+static inline bool lox_checked_mul_u32(uint32_t a, uint32_t b, uint32_t *out) {
+    if (out == NULL || (a != 0u && b > UINT32_MAX / a)) {
+        return false;
+    }
+    *out = a * b;
+    return true;
+}
+
 static inline bool lox_checked_align_up_size(size_t value, size_t align, size_t *out) {
     size_t mask;
 
@@ -86,7 +96,7 @@ typedef struct {
     char key[LOX_KV_KEY_MAX_LEN];
     uint32_t val_offset;
     uint32_t val_len;
-    uint32_t expires_at;
+    lox_timestamp_t expires_at;
     uint32_t last_access;
 } lox_kv_bucket_t;
 
@@ -107,7 +117,7 @@ typedef struct {
     char key[LOX_KV_KEY_MAX_LEN];
     void *val_ptr;
     size_t val_len;
-    uint32_t expires_at;
+    lox_timestamp_t expires_at;
     uint8_t op;
     uint8_t val_buf[LOX_KV_VAL_MAX_LEN];
 } lox_txn_stage_entry_t;
@@ -269,13 +279,13 @@ const lox_core_t *lox_core_const(const lox_t *db);
 lox_err_t lox_kv_init(lox_t *db);
 lox_err_t lox_ts_init(lox_t *db);
 size_t lox_kv_live_bytes(const lox_t *db);
-lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, uint32_t expires_at);
+lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, lox_timestamp_t expires_at);
 lox_err_t lox_storage_bootstrap(lox_t *db);
 lox_err_t lox_storage_flush(lox_t *db);
-lox_err_t lox_persist_kv_set(lox_t *db, const char *key, const void *val, size_t len, uint32_t expires_at);
+lox_err_t lox_persist_kv_set(lox_t *db, const char *key, const void *val, size_t len, lox_timestamp_t expires_at);
 lox_err_t lox_persist_kv_del(lox_t *db, const char *key);
 lox_err_t lox_persist_kv_clear(lox_t *db);
-lox_err_t lox_persist_kv_set_txn(lox_t *db, const char *key, const void *val, size_t len, uint32_t expires_at);
+lox_err_t lox_persist_kv_set_txn(lox_t *db, const char *key, const void *val, size_t len, lox_timestamp_t expires_at);
 lox_err_t lox_persist_kv_del_txn(lox_t *db, const char *key);
 lox_err_t lox_persist_txn_commit(lox_t *db);
 lox_err_t lox_persist_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const void *val, size_t val_len);

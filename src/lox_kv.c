@@ -408,11 +408,11 @@ size_t lox_kv_live_bytes(const lox_t *db) {
 
 #if LOX_ENABLE_KV
 static lox_err_t lox_kv_set_at_internal(lox_t *db,
-                                                const char *key,
-                                                const void *val,
-                                                size_t len,
-                                                uint32_t expires_at,
-                                                bool persist) {
+                                                 const char *key,
+                                                 const void *val,
+                                                 size_t len,
+                                                 lox_timestamp_t expires_at,
+                                                 bool persist) {
     lox_core_t *core;
     lox_kv_bucket_t *bucket;
     uint32_t slot;
@@ -487,13 +487,13 @@ static lox_err_t lox_kv_set_at_internal(lox_t *db,
     return LOX_OK;
 }
 
-lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, lox_timestamp_t expires_at) {
     return lox_kv_set_at_internal(db, key, val, len, expires_at, true);
 }
 
 lox_err_t lox_kv_set(lox_t *db, const char *key, const void *val, size_t len, uint32_t ttl) {
     lox_core_t *core;
-    uint32_t expires_at = 0u;
+    lox_timestamp_t expires_at = 0;
     lox_err_t rc = LOX_OK;
 
     if (db == NULL) {
@@ -517,7 +517,18 @@ lox_err_t lox_kv_set(lox_t *db, const char *key, const void *val, size_t len, ui
 
 #if LOX_KV_ENABLE_TTL
     if (ttl != 0u) {
-        expires_at = (uint32_t)(lox_now(core) + ttl);
+        lox_timestamp_t now = lox_now(core);
+        uint64_t now_u64 = (uint64_t)now;
+        uint32_t timestamp_bits = (uint32_t)(sizeof(lox_timestamp_t) * 8u);
+        uint32_t unused_bits = 64u - timestamp_bits;
+        uint64_t timestamp_max = UINT64_MAX >> unused_bits;
+        uint64_t candidate_u64;
+        if (now_u64 > timestamp_max || (uint64_t)ttl > timestamp_max - now_u64) {
+            rc = LOX_ERR_OVERFLOW;
+            goto unlock;
+        }
+        candidate_u64 = now_u64 + (uint64_t)ttl;
+        expires_at = (lox_timestamp_t)candidate_u64;
     }
 #else
     (void)ttl;
@@ -1019,7 +1030,7 @@ unlock:
     return rc;
 }
 #else
-lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, lox_timestamp_t expires_at) {
     (void)db;
     (void)key;
     (void)val;

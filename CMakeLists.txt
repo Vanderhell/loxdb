@@ -820,6 +820,46 @@ if(LOX_BUILD_TESTS)
     target_link_libraries(test_wal PRIVATE loxdb)
     add_test(NAME test_wal COMMAND test_wal)
 
+    add_executable(test_persistence_format tests/test_persistence_format.c)
+    target_include_directories(test_persistence_format PRIVATE include tests port/ram src)
+    target_link_libraries(test_persistence_format PRIVATE loxdb)
+    add_test(NAME test_persistence_format COMMAND test_persistence_format)
+
+    add_executable(
+        test_timestamp64_persistence
+        tests/test_timestamp64_persistence.c
+        src/loxdb.c
+        src/lox_kv.c
+        src/lox_ts.c
+        src/lox_rel.c
+        src/lox_wal.c
+        src/lox_crc.c
+        port/ram/lox_port_ram.c
+        port/posix/lox_port_posix.c
+    )
+    target_include_directories(test_timestamp64_persistence PRIVATE include tests port/ram port/posix src)
+    target_compile_definitions(test_timestamp64_persistence PRIVATE LOX_TIMESTAMP_TYPE=uint64_t)
+    if(MSVC)
+        target_compile_options(test_timestamp64_persistence PRIVATE /W4)
+    else()
+        target_compile_options(test_timestamp64_persistence PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME test_timestamp64_persistence COMMAND test_timestamp64_persistence)
+
+    if(UNIX)
+        add_executable(test_no_alloc_after_init tests/test_no_alloc_after_init.c)
+        target_include_directories(test_no_alloc_after_init PRIVATE include tests port/ram src)
+        target_link_libraries(test_no_alloc_after_init PRIVATE loxdb)
+        target_link_options(
+            test_no_alloc_after_init
+            PRIVATE
+                -Wl,--wrap=malloc
+                -Wl,--wrap=calloc
+                -Wl,--wrap=realloc
+        )
+        add_test(NAME test_no_alloc_after_init COMMAND test_no_alloc_after_init)
+    endif()
+
     add_executable(test_wal_no_wal tests/test_wal_no_wal.c)
     target_include_directories(test_wal_no_wal PRIVATE include tests port/ram port/posix src)
     target_link_libraries(test_wal_no_wal PRIVATE lox_no_wal)
