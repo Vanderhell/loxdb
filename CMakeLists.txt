@@ -303,12 +303,6 @@ target_compile_definitions(
         LOX_PROFILE_FOOTPRINT_MIN=1
         LOX_ENABLE_TS=0
         LOX_ENABLE_REL=0
-        LOX_ENABLE_WAL=0
-        LOX_RAM_KB=8
-        LOX_KV_MAX_KEYS=8
-        LOX_TXN_STAGE_KEYS=2
-        LOX_KV_KEY_MAX_LEN=16
-        LOX_KV_VAL_MAX_LEN=64
 )
 
 function(create_lox_profile_variant target_name profile_macro)
@@ -730,6 +724,20 @@ if(LOX_BUILD_TESTS)
     target_link_libraries(test_preflight PRIVATE loxdb)
     add_test(NAME test_preflight COMMAND test_preflight)
 
+    function(add_preflight_engine_variant test_name library_target)
+        add_executable(${test_name} tests/test_preflight.c)
+        target_include_directories(${test_name} PRIVATE include tests port/ram src)
+        target_compile_definitions(${test_name} PRIVATE ${ARGN})
+        target_link_libraries(${test_name} PRIVATE ${library_target})
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endfunction()
+    add_preflight_engine_variant(test_preflight_kv_ts lox_rel_off LOX_ENABLE_REL=0)
+    add_preflight_engine_variant(test_preflight_kv_rel lox_ts_off LOX_ENABLE_TS=0)
+    add_preflight_engine_variant(test_preflight_ts_rel lox_kv_off LOX_ENABLE_KV=0)
+    add_preflight_engine_variant(test_preflight_kv_only lox_kv_only LOX_ENABLE_TS=0 LOX_ENABLE_REL=0)
+    add_preflight_engine_variant(test_preflight_ts_only lox_ts_only LOX_ENABLE_KV=0 LOX_ENABLE_REL=0)
+    add_preflight_engine_variant(test_preflight_rel_only lox_rel_only LOX_ENABLE_KV=0 LOX_ENABLE_TS=0)
+
     add_executable(test_public_abi_alignment tests/test_public_abi_alignment.c)
     target_include_directories(test_public_abi_alignment PRIVATE include tests port/ram src)
     target_link_libraries(test_public_abi_alignment PRIVATE loxdb)
@@ -1129,6 +1137,7 @@ if(LOX_BUILD_TESTS)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/footprint_min_baseline.c")
         add_executable(test_footprint_min_baseline tests/footprint_min_baseline.c)
         target_include_directories(test_footprint_min_baseline PRIVATE include tests port/ram port/posix src)
+        target_compile_definitions(test_footprint_min_baseline PRIVATE LOX_PROFILE_FOOTPRINT_MIN=1)
         target_link_libraries(test_footprint_min_baseline PRIVATE lox_footprint_min)
         set(_footprint_map "$<TARGET_FILE_DIR:test_footprint_min_baseline>/test_footprint_min_baseline.map")
         if(MSVC)

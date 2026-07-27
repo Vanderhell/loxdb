@@ -2,6 +2,7 @@
 #include "microtest.h"
 #include "lox.h"
 #include "strict_nor_emulator.h"
+#include "../src/lox_internal.h"
 
 #include <string.h>
 
@@ -10,13 +11,20 @@ static uint32_t g_lock_count = 0u;
 static uint32_t g_unlock_count = 0u;
 static uint32_t g_lock_depth = 0u;
 static uint32_t g_reentrant_lock = 0u;
+static uint32_t g_create_count = 0u;
+static uint32_t g_destroy_count = 0u;
+static uint32_t g_callbacks_after_destroy = 0u;
 
 static void *mock_lock_create(void) {
+    g_create_count++;
     return &g_lock_count;
 }
 
 static void mock_lock(void *hdl) {
     (void)hdl;
+    if (g_destroy_count != 0u) {
+        g_callbacks_after_destroy++;
+    }
     if (g_lock_depth != 0u) {
         g_reentrant_lock++;
     }
@@ -26,6 +34,9 @@ static void mock_lock(void *hdl) {
 
 static void mock_unlock(void *hdl) {
     (void)hdl;
+    if (g_destroy_count != 0u) {
+        g_callbacks_after_destroy++;
+    }
     if (g_lock_depth != 0u) {
         g_lock_depth--;
     }
@@ -34,6 +45,15 @@ static void mock_unlock(void *hdl) {
 
 static void mock_lock_destroy(void *hdl) {
     (void)hdl;
+    g_destroy_count++;
+}
+
+static lox_err_t fail_storage_read(void *ctx, uint32_t offset, void *buf, size_t len) {
+    (void)ctx;
+    (void)offset;
+    (void)buf;
+    (void)len;
+    return LOX_ERR_STORAGE;
 }
 
 static void setup_db(void) {
@@ -45,6 +65,9 @@ static void setup_db(void) {
     g_unlock_count = 0u;
     g_lock_depth = 0u;
     g_reentrant_lock = 0u;
+    g_create_count = 0u;
+    g_destroy_count = 0u;
+    g_callbacks_after_destroy = 0u;
     cfg.ram_kb = 32u;
     cfg.lock_create = mock_lock_create;
     cfg.lock = mock_lock;
@@ -132,6 +155,7 @@ MDB_TEST(test_init_rejects_partial_thread_safe_hooks) {
 }
 
 static void *mock_lock_create_fail(void) {
+    g_create_count++;
     return NULL;
 }
 
@@ -146,7 +170,98 @@ MDB_TEST(test_init_propagates_lock_create_failure) {
     cfg.lock = mock_lock;
     cfg.unlock = mock_unlock;
     cfg.lock_destroy = mock_lock_destroy;
+    g_create_count = 0u;
+    g_destroy_count = 0u;
     ASSERT_EQ(lox_init(&db, &cfg), LOX_ERR_NO_MEM);
+    ASSERT_EQ(g_create_count, 1u);
+    ASSERT_EQ(g_destroy_count, 0u);
+    ASSERT_EQ(lox_core_const(&db)->magic, 0u);
+}
+
+MDB_TEST(test_success_creates_and_destroys_lock_once) {
+    lox_t db;
+    lox_cfg_t cfg;
+
+    memset(&db, 0, sizeof(db));
+    memset(&cfg, 0, sizeof(cfg));
+    g_create_count = 0u;
+    g_destroy_count = 0u;
+    g_callbacks_after_destroy = 0u;
+    cfg.ram_kb = 32u;
+    cfg.lock_create = mock_lock_create;
+    cfg.lock = mock_lock;
+    cfg.unlock = mock_unlock;
+    cfg.lock_destroy = mock_lock_destroy;
+    ASSERT_EQ(lox_init(&db, &cfg), LOX_OK);
+    ASSERT_EQ(g_create_count, 1u);
+    ASSERT_EQ(g_destroy_count, 0u);
+    ASSERT_EQ(lox_deinit(&db), LOX_OK);
+    ASSERT_EQ(g_create_count, 1u);
+    ASSERT_EQ(g_destroy_count, 1u);
+    ASSERT_EQ(g_callbacks_after_destroy, 0u);
+}
+
+static void assert_storage_init_failure_destroys_lock(uint8_t fail_read,
+                                                      uint8_t fail_erase,
+                                                      uint8_t fail_program,
+                                                      uint8_t fail_sync) {
+    lox_t db;
+    lox_cfg_t cfg;
+    lox_storage_t storage;
+    nor_flash_ctx_t media;
+
+    memset(&db, 0, sizeof(db));
+    memset(&cfg, 0, sizeof(cfg));
+    memset(&storage, 0, sizeof(storage));
+    memset(&media, 0, sizeof(media));
+    nor_flash_reset(&media);
+    nor_flash_bind_storage(&storage, &media, 4096u, 1u);
+    if (fail_read != 0u) {
+        storage.read = fail_storage_read;
+    }
+    media.fail_next_erase = fail_erase;
+    media.fail_next_program = fail_program;
+    media.fail_next_sync = fail_sync;
+    g_create_count = 0u;
+    g_destroy_count = 0u;
+    g_callbacks_after_destroy = 0u;
+    cfg.storage = &storage;
+    cfg.ram_kb = 32u;
+    cfg.lock_create = mock_lock_create;
+    cfg.lock = mock_lock;
+    cfg.unlock = mock_unlock;
+    cfg.lock_destroy = mock_lock_destroy;
+    ASSERT_EQ(lox_init(&db, &cfg), LOX_ERR_STORAGE);
+    ASSERT_EQ(g_create_count, 1u);
+    ASSERT_EQ(g_destroy_count, 1u);
+    ASSERT_EQ(g_callbacks_after_destroy, 0u);
+    ASSERT_EQ(lox_core_const(&db)->magic, 0u);
+}
+
+MDB_TEST(test_all_bootstrap_io_failures_destroy_lock_once) {
+    assert_storage_init_failure_destroys_lock(1u, 0u, 0u, 0u);
+    assert_storage_init_failure_destroys_lock(0u, 1u, 0u, 0u);
+    assert_storage_init_failure_destroys_lock(0u, 0u, 1u, 0u);
+    assert_storage_init_failure_destroys_lock(0u, 0u, 0u, 1u);
+}
+
+MDB_TEST(test_engine_init_failure_destroys_lock_once) {
+    lox_t db;
+    lox_cfg_t cfg;
+
+    memset(&db, 0, sizeof(db));
+    memset(&cfg, 0, sizeof(cfg));
+    g_create_count = 0u;
+    g_destroy_count = 0u;
+    cfg.ram_kb = 8u;
+    cfg.lock_create = mock_lock_create;
+    cfg.lock = mock_lock;
+    cfg.unlock = mock_unlock;
+    cfg.lock_destroy = mock_lock_destroy;
+    ASSERT_EQ(lox_init(&db, &cfg), LOX_ERR_NO_MEM);
+    ASSERT_EQ(g_create_count, 1u);
+    ASSERT_EQ(g_destroy_count, 1u);
+    ASSERT_EQ(lox_core_const(&db)->magic, 0u);
 }
 
 MDB_TEST(test_deinit_failure_invalidates_handle) {
@@ -256,6 +371,9 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, test_null_hooks_are_safe);
     MDB_RUN_TEST(setup_empty, teardown_empty, test_init_rejects_partial_thread_safe_hooks);
     MDB_RUN_TEST(setup_empty, teardown_empty, test_init_propagates_lock_create_failure);
+    MDB_RUN_TEST(setup_empty, teardown_empty, test_success_creates_and_destroys_lock_once);
+    MDB_RUN_TEST(setup_empty, teardown_empty, test_all_bootstrap_io_failures_destroy_lock_once);
+    MDB_RUN_TEST(setup_empty, teardown_empty, test_engine_init_failure_destroys_lock_once);
     MDB_RUN_TEST(setup_empty, teardown_empty, test_deinit_failure_invalidates_handle);
     MDB_RUN_TEST(setup_db, teardown_db, test_lock_called_on_compact);
     MDB_RUN_TEST(setup_db, teardown_db, test_kv_iter_callback_reentry_no_recursive_lock);

@@ -488,10 +488,17 @@ typedef struct {
     uint32_t storage_erase_size;
     uint32_t storage_write_size;
     uint32_t wal_size;
+    uint32_t wal_offset;
+    uint32_t super_a_offset;
+    uint32_t super_b_offset;
+    uint32_t superblock_bytes;
+    uint32_t bank_a_offset;
+    uint32_t bank_b_offset;
     uint32_t bank_size;
     uint32_t kv_snapshot_bytes;
     uint32_t ts_snapshot_bytes;
     uint32_t rel_snapshot_bytes;
+    uint32_t storage_layout_bytes;
 } lox_preflight_report_t;
 
 typedef struct {

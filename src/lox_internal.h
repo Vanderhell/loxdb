@@ -201,6 +201,20 @@ typedef struct {
     uint32_t active_generation;
 } lox_storage_layout_t;
 
+typedef struct {
+    uint32_t ram_kb;
+    uint8_t kv_pct;
+    uint8_t ts_pct;
+    uint8_t rel_pct;
+    size_t total_size;
+    size_t kv_offset;
+    size_t kv_size;
+    size_t ts_offset;
+    size_t ts_size;
+    size_t rel_offset;
+    size_t rel_size;
+} lox_ram_layout_t;
+
 struct lox_core_s {
     uint32_t magic;
     uint8_t *heap;
@@ -279,6 +293,13 @@ LOX_STATIC_ASSERT(schema_align_fits, offsetof(lox_schema_alignment_probe_t, valu
 
 lox_core_t *lox_core(lox_t *db);
 const lox_core_t *lox_core_const(const lox_t *db);
+lox_err_t lox_compute_ram_layout(const lox_cfg_t *cfg, lox_ram_layout_t *out);
+lox_err_t lox_compute_storage_layout(const lox_storage_t *storage,
+                                     size_t ts_arena_size,
+                                     size_t rel_arena_size,
+                                     uint32_t expiration_size,
+                                     lox_storage_layout_t *out,
+                                     uint32_t *out_required_size);
 lox_err_t lox_kv_init(lox_t *db);
 lox_err_t lox_ts_init(lox_t *db);
 size_t lox_kv_live_bytes(const lox_t *db);
