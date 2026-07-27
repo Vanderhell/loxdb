@@ -674,6 +674,12 @@ endif()
 
 if(LOX_BUILD_TESTS)
     enable_testing()
+    add_test(
+        NAME test_benchmark_bundles_current
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_benchmark_bundles.cmake
+    )
     if(CMAKE_CONFIGURATION_TYPES)
         set(LOX_PHASE05_INSTALL_CONFIG "$<CONFIG>")
     else()

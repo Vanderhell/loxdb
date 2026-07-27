@@ -13,15 +13,11 @@ enum {
     LOX_TXN_OP_DEL = 1
 };
 
-static uint32_t lox_kv_entry_limit(void) {
+static LOX_UNUSED_FN uint32_t lox_kv_entry_limit(void) {
     return LOX_KV_MAX_KEYS - LOX_TXN_STAGE_KEYS;
 }
 
-static uint32_t lox_align4_u32(uint32_t value) {
-    return (value + 3u) & ~3u;
-}
-
-static uint32_t lox_kv_hash(const char *key) {
+static LOX_UNUSED_FN uint32_t lox_kv_hash(const char *key) {
     uint32_t hash = 2166136261u;
     size_t i;
 
@@ -33,19 +29,28 @@ static uint32_t lox_kv_hash(const char *key) {
     return hash;
 }
 
-static uint32_t lox_kv_bucket_count(void) {
+static LOX_UNUSED_FN uint32_t lox_kv_bucket_count(void) {
     uint32_t key_limit = lox_kv_entry_limit();
-    uint32_t required = (key_limit * 4u + 2u) / 3u;
+    size_t required_sz = 0u;
+    uint32_t required = 0u;
     uint32_t buckets = 1u;
 
+    if (!lox_checked_mul_size((size_t)key_limit, 4u, &required_sz)) {
+        return 0u;
+    }
+    required = (uint32_t)((required_sz + 2u) / 3u);
+
     while (buckets < required) {
+        if (buckets > UINT32_MAX / 2u) {
+            return 0u;
+        }
         buckets <<= 1u;
     }
 
     return buckets;
 }
 
-static bool lox_kv_key_valid(const char *key) {
+static LOX_UNUSED_FN bool lox_kv_key_valid(const char *key) {
     size_t len;
 
     if (key == NULL || key[0] == '\0') {
@@ -56,7 +61,7 @@ static bool lox_kv_key_valid(const char *key) {
     return len < LOX_KV_KEY_MAX_LEN;
 }
 
-static lox_timestamp_t lox_now(const lox_core_t *core) {
+static LOX_UNUSED_FN lox_timestamp_t lox_now(const lox_core_t *core) {
     if (core->now == NULL) {
         return 0;
     }
@@ -64,7 +69,7 @@ static lox_timestamp_t lox_now(const lox_core_t *core) {
     return core->now();
 }
 
-static bool lox_kv_expired(const lox_core_t *core, const lox_kv_bucket_t *bucket) {
+static LOX_UNUSED_FN bool lox_kv_expired(const lox_core_t *core, const lox_kv_bucket_t *bucket) {
 #if LOX_KV_ENABLE_TTL
     if (bucket->expires_at == 0u) {
         return false;
@@ -78,23 +83,28 @@ static bool lox_kv_expired(const lox_core_t *core, const lox_kv_bucket_t *bucket
 #endif
 }
 
-static uint32_t lox_kv_live_value_bytes(const lox_core_t *core) {
+static LOX_UNUSED_FN uint32_t lox_kv_live_value_bytes(const lox_core_t *core) {
     return core->kv.live_value_bytes;
 }
 
-static uint32_t lox_kv_fragmented_bytes(const lox_core_t *core) {
-    return core->kv.value_used - lox_kv_live_value_bytes(core);
+static LOX_UNUSED_FN uint32_t lox_kv_fragmented_bytes(const lox_core_t *core) {
+    uint32_t live_bytes = lox_kv_live_value_bytes(core);
+
+    if (core->kv.value_used <= live_bytes) {
+        return 0u;
+    }
+    return core->kv.value_used - live_bytes;
 }
 
-static bool lox_kv_should_compact(const lox_core_t *core) {
+static LOX_UNUSED_FN bool lox_kv_should_compact(const lox_core_t *core) {
     if (core->kv.value_used == 0u) {
         return false;
     }
 
-    return lox_kv_fragmented_bytes(core) * 2u > core->kv.value_used;
+    return lox_kv_fragmented_bytes(core) > (core->kv.value_used / 2u);
 }
 
-static void lox_kv_compact(lox_core_t *core) {
+static LOX_UNUSED_FN void lox_kv_compact(lox_core_t *core) {
     uint8_t *dst = core->kv.value_store;
     uint32_t i;
 
@@ -121,13 +131,13 @@ static void lox_kv_compact(lox_core_t *core) {
     core->kv.value_used = (uint32_t)(dst - core->kv.value_store);
 }
 
-static void lox_kv_maybe_compact(lox_core_t *core) {
+static LOX_UNUSED_FN void lox_kv_maybe_compact(lox_core_t *core) {
     if (lox_kv_should_compact(core)) {
         lox_kv_compact(core);
     }
 }
 
-static lox_err_t lox_kv_find_slot(lox_core_t *core,
+static LOX_UNUSED_FN lox_err_t lox_kv_find_slot(lox_core_t *core,
                                           const char *key,
                                           uint32_t *slot_out,
                                           bool *found_out,
@@ -182,7 +192,7 @@ static lox_err_t lox_kv_find_slot(lox_core_t *core,
     return LOX_ERR_FULL;
 }
 
-static void lox_kv_normalize_access_clock(lox_core_t *core) {
+static LOX_UNUSED_FN void lox_kv_normalize_access_clock(lox_core_t *core) {
     uint32_t i;
 
     if (core->kv.access_clock != UINT32_MAX) {
@@ -197,12 +207,12 @@ static void lox_kv_normalize_access_clock(lox_core_t *core) {
     core->kv.access_clock = 2u;
 }
 
-static uint32_t lox_kv_next_access_clock(lox_core_t *core) {
+static LOX_UNUSED_FN uint32_t lox_kv_next_access_clock(lox_core_t *core) {
     lox_kv_normalize_access_clock(core);
     return core->kv.access_clock++;
 }
 
-static void lox_kv_remove_slot(lox_core_t *core, uint32_t idx) {
+static LOX_UNUSED_FN void lox_kv_remove_slot(lox_core_t *core, uint32_t idx) {
     lox_kv_bucket_t *bucket = &core->kv.buckets[idx];
 
     if (bucket->state == LOX_KV_BUCKET_LIVE && core->kv.entry_count != 0u) {
@@ -219,7 +229,7 @@ static void lox_kv_remove_slot(lox_core_t *core, uint32_t idx) {
     bucket->last_access = 0u;
 }
 
-static void lox_kv_shift_offsets(lox_core_t *core, uint32_t start_offset, int32_t delta) {
+static LOX_UNUSED_FN void lox_kv_shift_offsets(lox_core_t *core, uint32_t start_offset, int32_t delta) {
     uint32_t i;
 
     for (i = 0; i < core->kv.bucket_count; ++i) {
@@ -230,13 +240,13 @@ static void lox_kv_shift_offsets(lox_core_t *core, uint32_t start_offset, int32_
     }
 }
 
-static void lox_kv_write_bytes(uint8_t *dst, const void *val, size_t len) {
+static LOX_UNUSED_FN void lox_kv_write_bytes(uint8_t *dst, const void *val, size_t len) {
     if (len != 0u) {
         memcpy(dst, val, len);
     }
 }
 
-static lox_err_t lox_kv_overwrite_value(lox_core_t *core,
+static LOX_UNUSED_FN lox_err_t lox_kv_overwrite_value(lox_core_t *core,
                                                 lox_kv_bucket_t *bucket,
                                                 const void *val,
                                                 size_t len) {
@@ -283,15 +293,21 @@ static lox_err_t lox_kv_overwrite_value(lox_core_t *core,
     return LOX_OK;
 }
 
-static lox_err_t lox_kv_append_value(lox_core_t *core,
+static LOX_UNUSED_FN lox_err_t lox_kv_append_value(lox_core_t *core,
                                              lox_kv_bucket_t *bucket,
                                              const void *val,
                                              size_t len) {
-    if (core->kv.value_used + len > core->kv.value_capacity) {
+    size_t next_used = 0u;
+
+    if (!lox_checked_add_size((size_t)core->kv.value_used, len, &next_used)) {
+        return LOX_ERR_NO_MEM;
+    }
+    if (next_used > core->kv.value_capacity) {
         lox_kv_compact(core);
     }
 
-    if (core->kv.value_used + len > core->kv.value_capacity) {
+    if (!lox_checked_add_size((size_t)core->kv.value_used, len, &next_used) ||
+        next_used > core->kv.value_capacity) {
         return LOX_ERR_NO_MEM;
     }
 
@@ -303,7 +319,7 @@ static lox_err_t lox_kv_append_value(lox_core_t *core,
     return LOX_OK;
 }
 
-static lox_err_t lox_kv_evict_lru(lox_core_t *core) {
+static LOX_UNUSED_FN lox_err_t lox_kv_evict_lru(lox_core_t *core) {
     uint32_t i;
     uint32_t best_idx = UINT32_MAX;
     uint32_t best_clock = UINT32_MAX;
@@ -334,6 +350,187 @@ static lox_err_t lox_kv_evict_lru(lox_core_t *core) {
     return LOX_OK;
 }
 
+static LOX_UNUSED_FN lox_err_t lox_kv_prepare_set(lox_core_t *core,
+                                                  const char *key,
+                                                  size_t len) {
+    uint32_t slot = 0u;
+    uint32_t live_after = core->kv.live_value_bytes;
+    bool found = false;
+    lox_err_t err;
+
+    err = lox_mutation_guard(core);
+    if (err != LOX_OK) {
+        return err;
+    }
+    err = lox_kv_find_slot(core, key, &slot, &found, NULL);
+    if (err != LOX_OK && err != LOX_ERR_FULL) {
+        return err;
+    }
+    if (found) {
+        lox_kv_bucket_t *bucket = &core->kv.buckets[slot];
+        live_after -= bucket->val_len;
+        if (len > UINT32_MAX - live_after) {
+            return LOX_ERR_OVERFLOW;
+        }
+        live_after += (uint32_t)len;
+        if (len > bucket->val_len &&
+            core->kv.value_used > core->kv.value_capacity - (uint32_t)(len - bucket->val_len)) {
+            lox_kv_compact(core);
+        }
+    } else {
+        if (core->kv.entry_count >= lox_kv_entry_limit()) {
+#if LOX_KV_OVERFLOW_POLICY == LOX_KV_POLICY_REJECT
+            return LOX_ERR_FULL;
+#else
+            uint32_t i;
+            uint32_t best = UINT32_MAX;
+            for (i = 0u; i < core->kv.bucket_count; ++i) {
+                const lox_kv_bucket_t *bucket = &core->kv.buckets[i];
+                if (bucket->state == LOX_KV_BUCKET_LIVE &&
+                    (best == UINT32_MAX ||
+                     bucket->last_access < core->kv.buckets[best].last_access)) {
+                    best = i;
+                }
+            }
+            if (best == UINT32_MAX) {
+                return LOX_ERR_FULL;
+            }
+            live_after -= core->kv.buckets[best].val_len;
+#endif
+        }
+        if (len > UINT32_MAX - live_after) {
+            return LOX_ERR_OVERFLOW;
+        }
+        live_after += (uint32_t)len;
+        if (core->kv.entry_count < lox_kv_entry_limit() &&
+            len > core->kv.value_capacity - core->kv.value_used) {
+            lox_kv_compact(core);
+        }
+    }
+    return live_after <= core->kv.value_capacity ? LOX_OK : LOX_ERR_NO_MEM;
+}
+
+typedef struct {
+    char key[LOX_KV_KEY_MAX_LEN];
+    uint32_t val_len;
+    uint32_t last_access;
+    bool live;
+} lox_kv_sim_entry_t;
+
+static LOX_UNUSED_FN lox_err_t lox_kv_prepare_transaction(lox_core_t *core,
+                                                          uint32_t *out_wal_bytes) {
+    lox_kv_sim_entry_t sim[LOX_KV_MAX_KEYS];
+    uint32_t sim_count = 0u;
+    uint32_t live_count = 0u;
+    uint32_t live_bytes = 0u;
+    uint32_t access_clock = core->kv.access_clock;
+    uint32_t wal_bytes;
+    uint32_t i;
+
+    memset(sim, 0, sizeof(sim));
+    for (i = 0u; i < core->kv.bucket_count; ++i) {
+        const lox_kv_bucket_t *bucket = &core->kv.buckets[i];
+        if (bucket->state != LOX_KV_BUCKET_LIVE) {
+            continue;
+        }
+        if (sim_count >= LOX_KV_MAX_KEYS) {
+            return LOX_ERR_FULL;
+        }
+        memcpy(sim[sim_count].key, bucket->key, sizeof(sim[sim_count].key));
+        sim[sim_count].val_len = bucket->val_len;
+        sim[sim_count].last_access = bucket->last_access;
+        sim[sim_count].live = true;
+        sim_count++;
+        live_count++;
+        live_bytes += bucket->val_len;
+    }
+
+    wal_bytes = lox_wal_record_size(8u);
+    if (wal_bytes == 0u) {
+        return LOX_ERR_OVERFLOW;
+    }
+    for (i = 0u; i < core->txn_stage_count; ++i) {
+        const lox_txn_stage_entry_t *entry = &core->txn_stage[i];
+        uint32_t j;
+        uint32_t found = UINT32_MAX;
+        uint32_t payload_len;
+        uint32_t record_bytes;
+
+        for (j = 0u; j < sim_count; ++j) {
+            if (sim[j].live && strcmp(sim[j].key, entry->key) == 0) {
+                found = j;
+                break;
+            }
+        }
+        if (entry->op == LOX_TXN_OP_PUT) {
+            if (found == UINT32_MAX && live_count >= lox_kv_entry_limit()) {
+#if LOX_KV_OVERFLOW_POLICY == LOX_KV_POLICY_REJECT
+                return LOX_ERR_FULL;
+#else
+                uint32_t victim = UINT32_MAX;
+                for (j = 0u; j < sim_count; ++j) {
+                    if (sim[j].live &&
+                        (victim == UINT32_MAX || sim[j].last_access < sim[victim].last_access)) {
+                        victim = j;
+                    }
+                }
+                if (victim == UINT32_MAX) {
+                    return LOX_ERR_FULL;
+                }
+                live_bytes -= sim[victim].val_len;
+                sim[victim].live = false;
+                found = victim;
+#endif
+            }
+            if (found == UINT32_MAX) {
+                for (j = 0u; j < sim_count; ++j) {
+                    if (!sim[j].live) {
+                        found = j;
+                        break;
+                    }
+                }
+                if (found == UINT32_MAX) {
+                    if (sim_count >= LOX_KV_MAX_KEYS) {
+                        return LOX_ERR_FULL;
+                    }
+                    found = sim_count++;
+                }
+                memset(&sim[found], 0, sizeof(sim[found]));
+                live_count++;
+            } else if (sim[found].live) {
+                live_bytes -= sim[found].val_len;
+            }
+            if (entry->val_len > UINT32_MAX - live_bytes) {
+                return LOX_ERR_OVERFLOW;
+            }
+            live_bytes += (uint32_t)entry->val_len;
+            if (live_bytes > core->kv.value_capacity) {
+                return LOX_ERR_NO_MEM;
+            }
+            memcpy(sim[found].key, entry->key, sizeof(sim[found].key));
+            sim[found].val_len = (uint32_t)entry->val_len;
+            sim[found].last_access = access_clock++;
+            sim[found].live = true;
+            payload_len = 4u + 1u + (uint32_t)strlen(entry->key) + 4u +
+                          (uint32_t)entry->val_len + 8u;
+        } else {
+            if (found != UINT32_MAX) {
+                live_bytes -= sim[found].val_len;
+                sim[found].live = false;
+                live_count--;
+            }
+            payload_len = 4u + 1u + (uint32_t)strlen(entry->key);
+        }
+        record_bytes = lox_wal_record_size(payload_len);
+        if (record_bytes == 0u || wal_bytes > UINT32_MAX - record_bytes) {
+            return LOX_ERR_OVERFLOW;
+        }
+        wal_bytes += record_bytes;
+    }
+    *out_wal_bytes = wal_bytes;
+    return LOX_OK;
+}
+
 lox_err_t lox_kv_init(lox_t *db) {
     lox_core_t *core = lox_core(db);
 #if LOX_ENABLE_KV
@@ -346,6 +543,8 @@ lox_err_t lox_kv_init(lox_t *db) {
     core->txn_stage = NULL;
     core->txn_active = 0u;
     core->txn_stage_count = 0u;
+    core->txn_next_id = 0u;
+    core->txn_active_id = 0u;
 
 #if LOX_ENABLE_KV
     entry_limit = lox_kv_entry_limit();
@@ -353,6 +552,9 @@ lox_err_t lox_kv_init(lox_t *db) {
         return LOX_ERR_NO_MEM;
     }
     core->kv.bucket_count = lox_kv_bucket_count();
+    if (core->kv.bucket_count == 0u) {
+        return LOX_ERR_NO_MEM;
+    }
     bucket_bytes = (size_t)core->kv.bucket_count * sizeof(lox_kv_bucket_t);
     stage_bytes = (size_t)LOX_TXN_STAGE_KEYS * sizeof(lox_txn_stage_entry_t);
 
@@ -383,11 +585,11 @@ size_t lox_kv_live_bytes(const lox_t *db) {
 
 #if LOX_ENABLE_KV
 static lox_err_t lox_kv_set_at_internal(lox_t *db,
-                                                const char *key,
-                                                const void *val,
-                                                size_t len,
-                                                uint32_t expires_at,
-                                                bool persist) {
+                                                 const char *key,
+                                                 const void *val,
+                                                 size_t len,
+                                                 lox_timestamp_t expires_at,
+                                                 bool persist) {
     lox_core_t *core;
     lox_kv_bucket_t *bucket;
     uint32_t slot;
@@ -462,13 +664,13 @@ static lox_err_t lox_kv_set_at_internal(lox_t *db,
     return LOX_OK;
 }
 
-lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, lox_timestamp_t expires_at) {
     return lox_kv_set_at_internal(db, key, val, len, expires_at, true);
 }
 
 lox_err_t lox_kv_set(lox_t *db, const char *key, const void *val, size_t len, uint32_t ttl) {
     lox_core_t *core;
-    uint32_t expires_at = 0u;
+    lox_timestamp_t expires_at = 0;
     lox_err_t rc = LOX_OK;
 
     if (db == NULL) {
@@ -489,10 +691,25 @@ lox_err_t lox_kv_set(lox_t *db, const char *key, const void *val, size_t len, ui
         rc = LOX_ERR_OVERFLOW;
         goto unlock;
     }
+    rc = lox_mutation_guard(core);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
 #if LOX_KV_ENABLE_TTL
     if (ttl != 0u) {
-        expires_at = (uint32_t)(lox_now(core) + ttl);
+        lox_timestamp_t now = lox_now(core);
+        uint64_t now_u64 = (uint64_t)now;
+        uint32_t timestamp_bits = (uint32_t)(sizeof(lox_timestamp_t) * 8u);
+        uint32_t unused_bits = 64u - timestamp_bits;
+        uint64_t timestamp_max = UINT64_MAX >> unused_bits;
+        uint64_t candidate_u64;
+        if (now_u64 > timestamp_max || (uint64_t)ttl > timestamp_max - now_u64) {
+            rc = LOX_ERR_OVERFLOW;
+            goto unlock;
+        }
+        candidate_u64 = now_u64 + (uint64_t)ttl;
+        expires_at = (lox_timestamp_t)candidate_u64;
     }
 #else
     (void)ttl;
@@ -517,6 +734,10 @@ lox_err_t lox_kv_set(lox_t *db, const char *key, const void *val, size_t len, ui
         core->txn_stage_count++;
         rc = LOX_OK;
     } else {
+        rc = lox_kv_prepare_set(core, key, len);
+        if (rc != LOX_OK) {
+            goto unlock;
+        }
         bool wal_first = core->wal_enabled && core->storage != NULL && !core->storage_loading && !core->wal_replaying;
         if (wal_first) {
             rc = lox_persist_kv_set(db, key, val, len, expires_at);
@@ -525,9 +746,6 @@ lox_err_t lox_kv_set(lox_t *db, const char *key, const void *val, size_t len, ui
             }
         } else {
             rc = lox_kv_set_at_internal(db, key, val, len, expires_at, true);
-        }
-        if (rc == LOX_OK) {
-            lox__maybe_compact(db);
         }
     }
 
@@ -648,6 +866,10 @@ lox_err_t lox_kv_del(lox_t *db, const char *key) {
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    rc = lox_mutation_guard(core);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
     if (core->txn_active == 1u) {
         if (core->txn_stage_count >= LOX_TXN_STAGE_KEYS) {
@@ -662,6 +884,15 @@ lox_err_t lox_kv_del(lox_t *db, const char *key) {
         goto unlock;
     }
 
+    {
+        uint32_t slot;
+        bool found;
+        rc = lox_kv_find_slot(core, key, &slot, &found, NULL);
+        if (rc != LOX_OK || !found) {
+            rc = LOX_ERR_NOT_FOUND;
+            goto unlock;
+        }
+    }
     if (core->wal_enabled && core->storage != NULL && !core->storage_loading && !core->wal_replaying) {
         rc = lox_persist_kv_del(db, key);
         if (rc == LOX_OK) {
@@ -787,8 +1018,32 @@ lox_err_t lox_kv_purge_expired(lox_t *db) {
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    rc = lox_mutation_guard(core);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
     wal_mode = core->wal_enabled && core->storage != NULL && !core->storage_loading && !core->wal_replaying;
+    if (wal_mode) {
+        uint32_t needed = 0u;
+        for (i = 0u; i < core->kv.bucket_count; ++i) {
+            lox_kv_bucket_t *bucket = &core->kv.buckets[i];
+            if (bucket->state == LOX_KV_BUCKET_LIVE && lox_kv_expired(core, bucket)) {
+                uint32_t bytes = lox_wal_record_size(1u + (uint32_t)strlen(bucket->key));
+                if (bytes == 0u || needed > UINT32_MAX - bytes) {
+                    rc = LOX_ERR_OVERFLOW;
+                    goto unlock;
+                }
+                needed += bytes;
+            }
+        }
+        if (needed != 0u) {
+            rc = lox_wal_reserve(db, needed);
+            if (rc != LOX_OK) {
+                goto unlock;
+            }
+        }
+    }
     for (i = 0; i < core->kv.bucket_count; ++i) {
         lox_kv_bucket_t *bucket = &core->kv.buckets[i];
         if (bucket->state == LOX_KV_BUCKET_LIVE && lox_kv_expired(core, bucket)) {
@@ -830,6 +1085,10 @@ lox_err_t lox_kv_clear(lox_t *db) {
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    rc = lox_mutation_guard(core);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
     if (core->wal_enabled && core->storage != NULL && !core->storage_loading && !core->wal_replaying) {
         rc = lox_persist_kv_clear(db);
@@ -868,12 +1127,21 @@ lox_err_t lox_txn_begin(lox_t *db) {
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    rc = lox_mutation_guard(core);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
     if (core->txn_active == 1u) {
         rc = LOX_ERR_TXN_ACTIVE;
         goto unlock;
     }
+    core->txn_next_id++;
+    if (core->txn_next_id == 0u) {
+        core->txn_next_id = 1u;
+    }
     core->txn_active = 1u;
     core->txn_stage_count = 0u;
+    core->txn_active_id = core->txn_next_id;
 
 unlock:
     LOX_UNLOCK(db);
@@ -883,6 +1151,7 @@ unlock:
 lox_err_t lox_txn_commit(lox_t *db) {
     lox_core_t *core;
     uint32_t i;
+    uint32_t needed = 0u;
     lox_err_t rc = LOX_OK;
 
     if (db == NULL) {
@@ -899,25 +1168,24 @@ lox_err_t lox_txn_commit(lox_t *db) {
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    rc = lox_mutation_guard(core);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
     /* TXN visibility invariant:
      * - stage entries are durable in WAL before commit marker.
      * - staged entries become visible in live KV only after durable TXN_COMMIT marker.
      */
+    rc = lox_kv_prepare_transaction(core, &needed);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
+    lox_kv_compact(core);
     if (core->wal_enabled && core->storage != NULL && !core->storage_loading && !core->wal_replaying) {
-        uint32_t needed = 16u; /* TXN_COMMIT marker */
-        for (i = 0u; i < core->txn_stage_count; ++i) {
-            lox_txn_stage_entry_t *entry = &core->txn_stage[i];
-            uint32_t key_len = (uint32_t)strlen(entry->key);
-            uint32_t payload_len = (entry->op == LOX_TXN_OP_PUT) ? (1u + key_len + 4u + (uint32_t)entry->val_len + 4u)
-                                                                     : (1u + key_len);
-            needed += 16u + lox_align4_u32(payload_len);
-        }
-        if (core->wal_used + needed > core->layout.wal_size) {
-            rc = lox_storage_flush(db);
-            if (rc != LOX_OK) {
-                goto unlock;
-            }
+        rc = lox_wal_reserve(db, needed);
+        if (rc != LOX_OK) {
+            goto unlock;
         }
     }
 
@@ -958,7 +1226,8 @@ lox_err_t lox_txn_commit(lox_t *db) {
 
     core->txn_active = 0u;
     core->txn_stage_count = 0u;
-    rc = LOX_OK;
+    core->txn_active_id = 0u;
+    rc = core->wal_enabled ? LOX_OK : lox_storage_flush(db);
 
 unlock:
     LOX_UNLOCK(db);
@@ -981,13 +1250,14 @@ lox_err_t lox_txn_rollback(lox_t *db) {
     }
     core->txn_active = 0u;
     core->txn_stage_count = 0u;
+    core->txn_active_id = 0u;
 
 unlock:
     LOX_UNLOCK(db);
     return rc;
 }
 #else
-lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, uint32_t expires_at) {
+lox_err_t lox_kv_set_at(lox_t *db, const char *key, const void *val, size_t len, lox_timestamp_t expires_at) {
     (void)db;
     (void)key;
     (void)val;

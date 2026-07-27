@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "microtest.h"
 #include "lox.h"
+#include "lox_internal.h"
 #include "../port/posix/lox_port_posix.h"
 
 #include <stdint.h>
@@ -111,46 +112,51 @@ MDB_TEST(invariant_wal_replay_stops_at_corrupt_entry) {
     uint8_t one = 1u;
     uint8_t two = 2u;
     uint8_t out = 0u;
-    uint8_t header[32];
-    uint32_t entry_count;
+    uint32_t scanned_entries = 0u;
+    uint32_t last_crc_offset = 0u;
     uint32_t off;
-    uint32_t i;
     FILE *fp;
 
     open_db_with_storage("walstop");
     ASSERT_EQ(lox_kv_set(&g_db, "snap", &one, 1u, 0u), LOX_OK);
     ASSERT_EQ(lox_flush(&g_db), LOX_OK);
     ASSERT_EQ(lox_kv_set(&g_db, "tail", &two, 1u, 0u), LOX_OK);
-    ASSERT_EQ(lox_deinit(&g_db), LOX_OK);
-
+    off = lox_core_const(&g_db)->layout.wal_offset +
+          lox_wal_header_bytes(lox_core_const(&g_db));
     fp = fopen(g_path, "r+b");
     ASSERT_EQ(fp != NULL, 1);
-    ASSERT_EQ(fread(header, 1u, sizeof(header), fp), sizeof(header));
-    memcpy(&entry_count, header + 8u, sizeof(entry_count));
-    off = 32u;
-    for (i = 0u; i < entry_count; ++i) {
+    for (;;) {
         uint8_t eh[16];
+        uint32_t magic;
         uint16_t data_len;
         uint32_t aligned;
         ASSERT_EQ(fseek(fp, (long)off, SEEK_SET), 0);
         ASSERT_EQ(fread(eh, 1u, sizeof(eh), fp), sizeof(eh));
-        memcpy(&data_len, eh + 10u, sizeof(data_len));
-        aligned = ((uint32_t)data_len + 3u) & ~3u;
-        if (i + 1u == entry_count) {
-            uint32_t bad_crc = 0u;
-            memcpy(&bad_crc, eh + 12u, sizeof(bad_crc));
-            bad_crc ^= 0x00FF00FFu;
-            ASSERT_EQ(fseek(fp, (long)(off + 12u), SEEK_SET), 0);
-            ASSERT_EQ(fwrite(&bad_crc, 1u, sizeof(bad_crc), fp), sizeof(bad_crc));
+        memcpy(&magic, eh, sizeof(magic));
+        if (magic != 0x454E5452u) {
             break;
         }
+        memcpy(&data_len, eh + 10u, sizeof(data_len));
+        aligned = ((uint32_t)data_len + 3u) & ~3u;
+        last_crc_offset = off + 12u;
+        scanned_entries++;
         off += 16u + aligned;
+    }
+    ASSERT_EQ(scanned_entries > 0u, 1);
+    {
+        uint32_t bad_crc = 0u;
+        ASSERT_EQ(fseek(fp, (long)last_crc_offset, SEEK_SET), 0);
+        ASSERT_EQ(fread(&bad_crc, 1u, sizeof(bad_crc), fp), sizeof(bad_crc));
+        bad_crc ^= 0x00FF00FFu;
+        ASSERT_EQ(fseek(fp, (long)last_crc_offset, SEEK_SET), 0);
+        ASSERT_EQ(fwrite(&bad_crc, 1u, sizeof(bad_crc), fp), sizeof(bad_crc));
     }
     ASSERT_EQ(fclose(fp), 0);
 
     reopen_db_with_storage();
     ASSERT_EQ(lox_kv_get(&g_db, "snap", &out, 1u, NULL), LOX_OK);
     ASSERT_EQ(out, one);
+    ASSERT_EQ(lox_kv_get(&g_db, "tail", &out, 1u, NULL), LOX_ERR_NOT_FOUND);
 }
 
 MDB_TEST(invariant_txn_without_commit_not_visible_after_reopen) {

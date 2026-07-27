@@ -97,8 +97,14 @@ $reopen = Require-Metric -Metrics $det.metrics -Op "reopen"
 $detName = Split-Path -Leaf $DeterministicLog
 $balName = if ($bal) { Split-Path -Leaf $BalancedLog } else { "" }
 
-$relRows = if ($null -ne $det.rowsExpected) { $det.rowsExpected } else { "TBD" }
-$tsTypeNote = if ($null -ne $det.tsRetained) { "retained=$($det.tsRetained)" } else { "retained=TBD" }
+if ($null -eq $det.rowsExpected) {
+    throw "Deterministic log is missing the REL rows_expected result"
+}
+if ($null -eq $det.tsRetained) {
+    throw "Deterministic log is missing the TS retained result"
+}
+$relRows = $det.rowsExpected
+$tsTypeNote = "retained=$($det.tsRetained)"
 
 $generatedLines = @()
 $generatedLines += '## Results - KV engine (deterministic profile)'
@@ -117,9 +123,6 @@ $generatedLines += ''
 $generatedLines += '| Stream type | insert rate (samples/s) | query p50 (us) | query p95 (us) | Notes |'
 $generatedLines += '|---|---:|---:|---:|---|'
 $generatedLines += ('| `F32` | {0} | {1} | {2} | `{3}` ({4}) |' -f (Fmt-Num $ts_ins.ops_s), $ts_q.p50_us, $ts_q.p95_us, $detName, $tsTypeNote)
-$generatedLines += '| `I32` | TBD | TBD | TBD | <!-- TODO(maintainer): add I32 run --> |'
-$generatedLines += '| `U32` | TBD | TBD | TBD | <!-- TODO(maintainer): add U32 run --> |'
-$generatedLines += '| `RAW` | TBD | TBD | TBD | <!-- TODO(maintainer): add RAW run --> |'
 $generatedLines += ''
 $generatedLines += '## Results - REL engine (deterministic profile)'
 $generatedLines += ''
@@ -163,8 +166,14 @@ if ($stress) {
     $s_reopen = Require-Metric -Metrics $stress.metrics -Op "reopen"
     $stressName = Split-Path -Leaf $StressLog
 
-    $stressTsNote = if ($null -ne $stress.tsRetained) { "retained=$($stress.tsRetained)" } else { "retained=TBD" }
-    $stressRelRows = if ($null -ne $stress.rowsExpected) { $stress.rowsExpected } else { "TBD" }
+    if ($null -eq $stress.tsRetained) {
+        throw "Stress log is missing the TS retained result"
+    }
+    if ($null -eq $stress.rowsExpected) {
+        throw "Stress log is missing the REL rows_expected result"
+    }
+    $stressTsNote = "retained=$($stress.tsRetained)"
+    $stressRelRows = $stress.rowsExpected
 
     $generated += "`r`n`r`n## Stress profile reference`r`n`r`n"
     $generated += "| Metric | Value | Notes |`r`n"

@@ -75,10 +75,9 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 - New tests:
   - `tests/test_preflight.c`
   - extended C++ wrapper coverage for preflight flow in `tests/test_cpp_wrapper.cpp`.
-- Documentation additions and sync baseline:
+- Documentation additions:
   - developer/startup/limits troubleshooting skeletons completed and linked.
-  - cross-repo docs sync workflow (`docs/DOCS_SYNC_PLAN.md`).
-  - per-change execution gate (`docs/CHANGE_CYCLE_CHECKLIST.md`).
+  - per-change execution gate (`docs/internal/CHANGE_CYCLE_CHECKLIST.md`).
 
 - Free-tier core additions (MIT):
   - `lox_selfcheck()` API + runtime structural checks for KV/TS/REL/WAL.

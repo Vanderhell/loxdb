@@ -761,6 +761,14 @@ static bool init_db() {
     cfg.wal_compact_threshold_pct = p->wal_compact_threshold_pct;
     cfg.wal_sync_mode = LOX_WAL_SYNC_FLUSH_ONLY;
 
+    lox_preflight_report_t preflight;
+    rc = lox_preflight(&cfg, &preflight);
+    if (rc != LOX_OK) {
+      Serial.printf("[WARN] lox_preflight reject profile=%s rc=%d (%s)\n",
+                    p->name, (int)rc, lox_err_to_string(rc));
+      continue;
+    }
+
     rc = lox_init(&g_db, &cfg);
     if (rc == LOX_ERR_CORRUPT || rc == LOX_ERR_EXISTS || rc == LOX_ERR_SCHEMA) {
       Serial.printf("[WARN] lox_init profile=%s rc=%d (%s), recreating storage file\n",

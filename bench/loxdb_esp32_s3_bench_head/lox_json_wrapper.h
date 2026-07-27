@@ -22,6 +22,9 @@ lox_err_t lox_json_kv_get_cstr(lox_t *db, const char *key, char *out_buf, size_t
 
 /* Encodes a record as:
  * {"key":"...","ttl":123,"value_hex":"A1B2..."}
+ *
+ * `value_hex` is byte-preserving (no numeric JSON conversion), so callers can
+ * round-trip arbitrary binary values without precision loss on the same ABI.
  */
 lox_err_t lox_json_encode_kv_record(const char *key,
                                             const void *value,

@@ -5,7 +5,7 @@ Use this checklist for every change batch.
 ## 1) Scope
 - [ ] Define change goal in 1-3 sentences.
 - [ ] Classify scope: `core api` / `engine internals` / `docs only` / `tests only`.
-- [ ] Confirm no boundary violation against `docs/CORE_PRO_BOUNDARY.md` equivalent guidance.
+- [ ] Confirm the change stays within the embedded storage-core scope described in `README.md`.
 
 ## 2) Design Guardrails
 - [ ] Identify affected invariants (`RAM`, `storage`, `fail-codes`, `recovery`).
@@ -25,7 +25,7 @@ Use this checklist for every change batch.
 ## 5) Documentation Sync
 - [ ] Update canonical core docs (`LIMITS_AND_FAILURES`, `STARTUP_DECISION_FLOW`, etc.).
 - [ ] Update `docs/README.md` if new docs were added.
-- [ ] Verify cross-repo links per `docs/DOCS_SYNC_PLAN.md`.
+- [ ] Verify links in every touched document.
 
 ## 6) Release Hygiene
 - [ ] Summarize change impact (what changed, risk, rollback).

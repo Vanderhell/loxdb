@@ -6,10 +6,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifndef LOX_PROFILE_CORE_HIMEM
-#define LOX_PROFILE_CORE_HIMEM 1
-#endif
-
 #ifndef LOX_PROFILE_CORE_MIN
 #define LOX_PROFILE_CORE_MIN 0
 #endif
@@ -172,6 +168,7 @@
 #define LOX_TS_POLICY_DROP_OLDEST 0u
 #define LOX_TS_POLICY_REJECT 1u
 #define LOX_TS_POLICY_DOWNSAMPLE 2u
+#define LOX_TS_POLICY_LOG_RETAIN 3u
 #ifndef LOX_TS_OVERFLOW_POLICY
 #define LOX_TS_OVERFLOW_POLICY LOX_TS_POLICY_DROP_OLDEST
 #endif
@@ -202,12 +199,18 @@
  * Default is a no-op with zero production overhead.
  *
  * Example (printf):
- *   #define LOX_LOG(level, fmt, ...) \
- *       printf("[loxdb][%s] " fmt "\n", level, ##__VA_ARGS__)
+ *   static inline void lox_log_printf(const char *level, const char *fmt, ...)
+ *   {
+ *       va_list ap;
+ *       va_start(ap, fmt);
+ *       printf("[loxdb][%s] ", level);
+ *       vprintf(fmt, ap);
+ *       printf("\n");
+ *       va_end(ap);
+ *   }
  *
  * Example (ESP-IDF):
- *   #define LOX_LOG(level, fmt, ...) \
- *       ESP_LOGI("loxdb", "[%s] " fmt, level, ##__VA_ARGS__)
+ *   #define LOX_LOG(level, msg) ESP_LOGI("loxdb", "[%s] %s", level, msg)
  */
 #ifndef LOX_LOG
 #define LOX_LOG(level, fmt, ...) ((void)0)
@@ -261,12 +264,13 @@ typedef LOX_TIMESTAMP_TYPE lox_timestamp_t;
 #endif
 
 typedef struct {
+    long double _align;
     uint8_t _opaque[LOX_HANDLE_SIZE];
 } lox_t;
 
 typedef struct {
     uint16_t schema_version;
-    uintptr_t _align;
+    long double _align;
     uint8_t _opaque[LOX_SCHEMA_SIZE];
 } lox_schema_t;
 
@@ -287,13 +291,15 @@ typedef enum {
     LOX_ERR_OVERFLOW = -11,
     LOX_ERR_SCHEMA = -12,
     LOX_ERR_TXN_ACTIVE = -13,
-    LOX_ERR_MODIFIED = -14
+    LOX_ERR_MODIFIED = -14,
+    LOX_ERR_INDETERMINATE = -15
 } lox_err_t;
 
 /* Returns a stable symbolic name for a loxdb error code.
  * Unknown values return "LOX_ERR_UNKNOWN".
  */
 const char *lox_err_to_string(lox_err_t err);
+uint32_t lox_config_fingerprint(void);
 
 typedef struct {
     /* Legacy aggregate stats (kept for backward compatibility). */
@@ -325,9 +331,19 @@ typedef struct {
     lox_err_t last_runtime_error;
     /* Last status produced by open/recovery path in current process lifetime. */
     lox_err_t last_recovery_status;
+    uint8_t recovery_detail;
     uint32_t active_generation;
     uint32_t active_bank;
 } lox_db_stats_t;
+
+typedef enum {
+    LOX_RECOVERY_DETAIL_CLEAN = 0u,
+    LOX_RECOVERY_DETAIL_DEGRADED_FALLBACK = 1u,
+    LOX_RECOVERY_DETAIL_TORN_FINAL_APPEND = 2u,
+    LOX_RECOVERY_DETAIL_SEMANTIC_CORRUPTION = 3u,
+    LOX_RECOVERY_DETAIL_UNSUPPORTED_FORMAT = 4u,
+    LOX_RECOVERY_DETAIL_DISCARDED_UNCOMMITTED_TXN = 5u
+} lox_recovery_detail_t;
 
 typedef struct {
     uint32_t live_keys;
@@ -457,6 +473,35 @@ typedef struct {
 } lox_cfg_t;
 
 typedef struct {
+    lox_err_t status;
+    uint32_t ram_kb;
+    uint8_t kv_pct;
+    uint8_t ts_pct;
+    uint8_t rel_pct;
+    uint32_t heap_total_bytes;
+    uint32_t kv_arena_bytes;
+    uint32_t ts_arena_bytes;
+    uint32_t rel_arena_bytes;
+    uint32_t wal_enabled;
+    uint32_t storage_required_bytes;
+    uint32_t storage_capacity_bytes;
+    uint32_t storage_erase_size;
+    uint32_t storage_write_size;
+    uint32_t wal_size;
+    uint32_t wal_offset;
+    uint32_t super_a_offset;
+    uint32_t super_b_offset;
+    uint32_t superblock_bytes;
+    uint32_t bank_a_offset;
+    uint32_t bank_b_offset;
+    uint32_t bank_size;
+    uint32_t kv_snapshot_bytes;
+    uint32_t ts_snapshot_bytes;
+    uint32_t rel_snapshot_bytes;
+    uint32_t storage_layout_bytes;
+} lox_preflight_report_t;
+
+typedef struct {
     lox_timestamp_t ts;
     union {
         float f32;
@@ -466,7 +511,27 @@ typedef struct {
     } v;
 } lox_ts_sample_t;
 
+typedef struct {
+    uint8_t kv_ok;
+    uint8_t ts_ok;
+    uint8_t rel_ok;
+    uint8_t wal_ok;
+    uint32_t kv_anomalies;
+    uint32_t ts_anomalies;
+    uint32_t rel_anomalies;
+    char first_anomaly[64];
+} lox_selfcheck_result_t;
+
+typedef struct {
+    uint8_t log_retain_zones;
+    uint8_t log_retain_zone_pct;
+} lox_ts_log_retain_cfg_t;
+
 lox_err_t lox_init(lox_t *db, const lox_cfg_t *cfg);
+lox_err_t lox_preflight(const lox_cfg_t *cfg, lox_preflight_report_t *out);
+/* Deinit is a best-effort close: it will invalidate the handle even if the
+ * final storage flush fails, and the caller must not reuse the object.
+ */
 lox_err_t lox_deinit(lox_t *db);
 lox_err_t lox_flush(lox_t *db);
 lox_err_t lox_stats(const lox_t *db, lox_stats_t *out);
@@ -477,6 +542,7 @@ lox_err_t lox_get_ts_stats(lox_t *db, lox_ts_stats_t *out);
 lox_err_t lox_get_rel_stats(lox_t *db, lox_rel_stats_t *out);
 lox_err_t lox_get_effective_capacity(lox_t *db, lox_effective_capacity_t *out);
 lox_err_t lox_get_pressure(lox_t *db, lox_pressure_t *out);
+lox_err_t lox_selfcheck(lox_t *db, lox_selfcheck_result_t *out);
 lox_err_t lox_admit_kv_set(lox_t *db, const char *key, size_t val_len, lox_admission_t *out);
 lox_err_t lox_admit_ts_insert(lox_t *db, const char *stream_name, size_t sample_len, lox_admission_t *out);
 lox_err_t lox_admit_rel_insert(lox_t *db, const char *table_name, size_t row_len, lox_admission_t *out);
@@ -487,6 +553,12 @@ lox_err_t lox_kv_set(lox_t *db, const char *key, const void *val, size_t len, ui
 lox_err_t lox_kv_get(lox_t *db, const char *key, void *buf, size_t buf_len, size_t *out_len);
 lox_err_t lox_kv_del(lox_t *db, const char *key);
 lox_err_t lox_kv_exists(lox_t *db, const char *key);
+/* Iteration contract: callback executes without DB lock held.
+ * Concurrent modifications during iteration are weakly-consistent:
+ * keys added/removed during the walk may or may not be observed.
+ * For stronger persistence ordering, use LOX_WAL_SYNC_ALWAYS and
+ * call lox_flush() before iterating.
+ */
 lox_err_t lox_kv_iter(lox_t *db, lox_kv_iter_cb_t cb, void *ctx);
 lox_err_t lox_kv_purge_expired(lox_t *db);
 lox_err_t lox_kv_clear(lox_t *db);
@@ -497,6 +569,11 @@ lox_err_t lox_txn_rollback(lox_t *db);
 
 typedef bool (*lox_ts_query_cb_t)(const lox_ts_sample_t *sample, void *ctx);
 lox_err_t lox_ts_register(lox_t *db, const char *name, lox_ts_type_t type, size_t raw_size);
+lox_err_t lox_ts_register_ex(lox_t *db,
+                                     const char *name,
+                                     lox_ts_type_t type,
+                                     size_t raw_size,
+                                     const lox_ts_log_retain_cfg_t *cfg);
 lox_err_t lox_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const void *val);
 lox_err_t lox_ts_last(lox_t *db, const char *name, lox_ts_sample_t *out);
 lox_err_t lox_ts_query(lox_t *db, const char *name, lox_timestamp_t from, lox_timestamp_t to, lox_ts_query_cb_t cb, void *ctx);
