@@ -130,7 +130,8 @@ Common codes (high-level intent):
 - `LOX_ERR_STORAGE`: backend I/O failure (`read/write/erase/sync`)
 - `LOX_ERR_CORRUPT`: unrecoverable persisted corruption detected in strict decode paths
 - `LOX_ERR_DISABLED`: feature disabled at compile time
-- `LOX_ERR_OVERFLOW`: caller buffer too small
+- `LOX_ERR_OVERFLOW`: checked arithmetic or conversion overflow, including a
+  persisted timestamp that does not fit the configured `lox_timestamp_t`
 - `LOX_ERR_SCHEMA`: schema mismatch / unsupported migration path
 - `LOX_ERR_TXN_ACTIVE`: conflicting transaction state
 - `LOX_ERR_INDETERMINATE`: storage may have partially accepted a mutation; the
@@ -185,6 +186,12 @@ When `LOX_ENABLE_WAL=1` and persistent storage is provided:
 - a possibly partial storage failure returns `LOX_ERR_INDETERMINATE` and faults
   the handle; deinitialize and reopen before further mutations
 - `lox_compact()` can reduce WAL pressure in maintenance windows
+
+When `LOX_ENABLE_WAL=0`, the storage layout reserves no WAL region:
+`wal_offset` and `wal_size` are both zero, and the first superblock begins at
+offset zero. Persistence still uses the existing dual snapshot banks. Without
+WAL replay, mutation durability is weaker: a mutation is made durable by its
+snapshot update rather than by an append-only WAL record.
 
 Physical-medium endurance remains dependent on the backend, device, workload,
 and compaction policy.
@@ -429,11 +436,14 @@ Timestamp and TTL persistence:
 
 - `lox_timestamp_t` follows `LOX_TIMESTAMP_TYPE` (default `uint32_t`).
 - TTL addition rejects overflow for the configured timestamp width.
+- Current snapshot and WAL formats serialize TS timestamps as unsigned 64-bit
+  values, independent of the configured in-memory timestamp width.
 - Current snapshot and WAL formats serialize KV expiration in 8 bytes.
 - Legacy formats with 4-byte expiration remain readable.
-- Reopen returns an error if a stored 64-bit expiration cannot fit the build's
-  timestamp type; unsupported persistent-format versions also fail rather than
-  truncate.
+- Reopen returns `LOX_ERR_OVERFLOW` if a stored 64-bit TS timestamp or
+  expiration cannot fit the build's timestamp type. Width mismatch remains
+  distinct from corruption and unsupported persistent-format versions; values
+  are never truncated.
 
 ### Callback type
 

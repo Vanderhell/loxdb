@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "lox_import_export.h"
 #include "lox_json_wrapper.h"
+#include "lox_internal.h"
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -705,7 +706,12 @@ lox_err_t lox_ie_import_ts_json(lox_t *db,
             goto ts_item_error;
         }
 
-        rc = lox_ts_insert(db, stream_name, (lox_timestamp_t)ts, bytes);
+        {
+            lox_timestamp_t sample_ts;
+            rc = lox_timestamp_from_u64(ts, &sample_ts);
+            if (rc != LOX_OK) goto ts_item_error;
+            rc = lox_ts_insert(db, stream_name, sample_ts, bytes);
+        }
         if (rc != LOX_OK) goto ts_item_error;
         imported++;
         goto ts_item_next;

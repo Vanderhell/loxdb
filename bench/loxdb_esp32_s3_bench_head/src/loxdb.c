@@ -241,9 +241,11 @@ lox_err_t lox_compute_storage_layout(const lox_storage_t *storage,
     uint32_t fixed_size;
     uint32_t banks_size;
     uint32_t need_without_wal;
+#if LOX_ENABLE_WAL
     uint32_t wal_target;
     uint32_t wal_min;
     uint32_t max_wal;
+#endif
     size_t value;
     uint32_t payload_max;
 
@@ -284,8 +286,12 @@ lox_err_t lox_compute_storage_layout(const lox_storage_t *storage,
         !lox_checked_add_u32(out->bank_size, out->rel_size, &out->bank_size) ||
         !lox_checked_mul_u32(out->super_size, 2u, &fixed_size) ||
         !lox_checked_mul_u32(out->bank_size, 2u, &banks_size) ||
-        !lox_checked_add_u32(fixed_size, banks_size, &need_without_wal) ||
-        !lox_checked_mul_u32(storage->erase_size, 8u, &wal_target) ||
+        !lox_checked_add_u32(fixed_size, banks_size, &need_without_wal)) {
+        return LOX_ERR_OVERFLOW;
+    }
+
+#if LOX_ENABLE_WAL
+    if (!lox_checked_mul_u32(storage->erase_size, 8u, &wal_target) ||
         !lox_checked_mul_u32(storage->erase_size, 2u, &wal_min) ||
         !lox_checked_add_u32(need_without_wal, wal_min, out_required_size)) {
         return LOX_ERR_OVERFLOW;
@@ -302,6 +308,9 @@ lox_err_t lox_compute_storage_layout(const lox_storage_t *storage,
             out->wal_size = wal_min;
         }
     }
+#else
+    *out_required_size = need_without_wal;
+#endif
     if (!lox_checked_add_u32(out->wal_offset, out->wal_size, &out->super_a_offset) ||
         !lox_checked_add_u32(out->super_a_offset, out->super_size, &out->super_b_offset) ||
         !lox_checked_add_u32(out->super_b_offset, out->super_size, &out->bank_a_offset) ||

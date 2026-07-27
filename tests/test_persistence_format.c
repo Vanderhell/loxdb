@@ -184,6 +184,77 @@ static uint32_t write_legacy_wal_set(uint32_t offset,
     return offset + 16u + aligned_len;
 }
 
+static uint32_t write_current_ts_wal_insert(uint32_t offset,
+                                            uint32_t sequence,
+                                            const char *name,
+                                            uint64_t timestamp,
+                                            uint32_t value) {
+    uint8_t entry[64];
+    uint8_t *payload = entry + 16u;
+    uint32_t name_len = (uint32_t)strlen(name);
+    uint16_t payload_len = (uint16_t)(1u + name_len + 8u + 1u + 4u);
+    uint32_t aligned_len = align_u32(payload_len, 4u);
+    uint32_t crc;
+
+    memset(entry, 0, sizeof(entry));
+    payload[0] = (uint8_t)name_len;
+    memcpy(payload + 1u, name, name_len);
+    put_u64(payload + 1u + name_len, timestamp);
+    payload[1u + name_len + 8u] = (uint8_t)LOX_TS_U32;
+    put_u32(payload + 1u + name_len + 9u, value);
+    put_u32(entry, WAL_ENTRY_MAGIC);
+    put_u32(entry + 4u, sequence);
+    entry[8] = 1u;
+    entry[9] = 0u;
+    put_u16(entry + 10u, payload_len);
+    crc = LOX_CRC32(entry, 12u);
+    crc = lox_crc32(crc, payload, payload_len);
+    put_u32(entry + 12u, crc);
+    memcpy(g_ram->buf + offset, entry, 16u + aligned_len);
+    return offset + 16u + aligned_len;
+}
+
+static void construct_ts_media(uint64_t timestamp, bool in_wal) {
+    lox_storage_layout_t layout = compute_layout(8u);
+    uint8_t payload[64];
+    const char *name = "wide";
+    uint32_t name_len = (uint32_t)strlen(name);
+    uint32_t payload_len = 0u;
+
+    memset(g_ram->buf, 0xFF, g_ram->capacity);
+    if (!in_wal) {
+        payload[0] = (uint8_t)name_len;
+        memcpy(payload + 1u, name, name_len);
+        payload[1u + name_len] = (uint8_t)LOX_TS_U32;
+        put_u32(payload + 1u + name_len + 1u, 0u);
+        payload[1u + name_len + 5u] = 0u;
+        payload[1u + name_len + 6u] = 0u;
+        put_u32(payload + 1u + name_len + 7u, 1u);
+        put_u64(payload + 1u + name_len + 11u, timestamp);
+        put_u32(payload + 1u + name_len + 19u, 0x12345678u);
+        payload_len = 1u + name_len + 23u;
+    }
+    write_page(layout.bank_a_offset, KV_PAGE_MAGIC, SNAPSHOT_VERSION_CURRENT, NULL, 0u, 0u);
+    write_page(layout.bank_a_offset + layout.kv_size,
+               TS_PAGE_MAGIC,
+               SNAPSHOT_VERSION_CURRENT,
+               payload_len != 0u ? payload : NULL,
+               payload_len,
+               payload_len != 0u ? 1u : 0u);
+    write_page(layout.bank_a_offset + layout.kv_size + layout.ts_size,
+               REL_PAGE_MAGIC,
+               SNAPSHOT_VERSION_CURRENT,
+               NULL,
+               0u,
+               0u);
+    write_super(layout.super_a_offset, SNAPSHOT_VERSION_CURRENT, WAL_VERSION_CURRENT);
+    write_wal_header(WAL_VERSION_CURRENT, in_wal ? 1u : 0u);
+    if (in_wal) {
+        (void)write_current_ts_wal_insert(
+            g_storage.erase_size, 1u, name, timestamp, 0x12345678u);
+    }
+}
+
 static void construct_media(uint32_t snapshot_version,
                             uint32_t wal_version,
                             uint32_t expiration_size,
@@ -255,8 +326,37 @@ MDB_TEST(expiration_too_wide_for_timestamp_type_fails) {
     ASSERT_EQ(reopen_existing(), LOX_ERR_OVERFLOW);
 }
 
+MDB_TEST(ts_snapshot_timestamp_boundaries_are_checked) {
+    lox_ts_sample_t sample;
+
+    construct_ts_media(UINT32_MAX, false);
+    ASSERT_EQ(reopen_existing(), LOX_OK);
+    ASSERT_EQ(lox_ts_last(&g_db, "wide", &sample), LOX_OK);
+    ASSERT_EQ(sample.ts, UINT32_MAX);
+    ASSERT_EQ(sample.v.u32, 0x12345678u);
+
+    construct_ts_media(UINT64_C(0x100000000), false);
+    ASSERT_EQ(reopen_existing(), LOX_ERR_OVERFLOW);
+    ASSERT_EQ(lox_ts_last(&g_db, "wide", &sample), LOX_ERR_INVALID);
+}
+
+MDB_TEST(ts_wal_timestamp_boundaries_are_checked) {
+    lox_ts_sample_t sample;
+
+    construct_ts_media(UINT32_MAX, true);
+    ASSERT_EQ(reopen_existing(), LOX_OK);
+    ASSERT_EQ(lox_ts_last(&g_db, "wide", &sample), LOX_OK);
+    ASSERT_EQ(sample.ts, UINT32_MAX);
+
+    construct_ts_media(UINT64_C(0x100000000), true);
+    ASSERT_EQ(reopen_existing(), LOX_ERR_OVERFLOW);
+    ASSERT_EQ(lox_ts_last(&g_db, "wide", &sample), LOX_ERR_INVALID);
+}
+
 int main(void) {
     MDB_RUN_TEST(open_storage, close_storage, old_snapshot_and_wal_are_opened_and_upgraded);
     MDB_RUN_TEST(open_storage, close_storage, expiration_too_wide_for_timestamp_type_fails);
+    MDB_RUN_TEST(open_storage, close_storage, ts_snapshot_timestamp_boundaries_are_checked);
+    MDB_RUN_TEST(open_storage, close_storage, ts_wal_timestamp_boundaries_are_checked);
     return MDB_RESULT();
 }

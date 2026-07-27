@@ -23,6 +23,20 @@ typedef struct {
 
 LOX_STATIC_ASSERT(timestamp_serialized_width_fits, sizeof(lox_timestamp_t) <= sizeof(uint64_t));
 
+static inline lox_err_t lox_timestamp_from_u64(uint64_t value, lox_timestamp_t *out) {
+    lox_timestamp_t converted;
+
+    if (out == NULL) {
+        return LOX_ERR_OVERFLOW;
+    }
+    converted = (lox_timestamp_t)value;
+    if ((uint64_t)converted != value) {
+        return LOX_ERR_OVERFLOW;
+    }
+    *out = converted;
+    return LOX_OK;
+}
+
 static inline bool lox_is_power_of_two_size(size_t value) {
     return value != 0u && (value & (value - 1u)) == 0u;
 }

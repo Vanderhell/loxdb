@@ -104,7 +104,7 @@ endurance validation. See [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 
 ## Project status & roadmap
 
-- Current release line: `v1.5.0` (see `CHANGELOG.md`).
+- Current release line: `v1.5.1` (see `CHANGELOG.md`).
 - Verification status is tracked explicitly in [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
 
 ## Documentation

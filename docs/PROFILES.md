@@ -26,6 +26,11 @@ If none is set, `LOX_PROFILE_CORE_WAL` is selected by default.
 - REL: available when `LOX_ENABLE_REL=1`
 - WAL/recovery path: available when `LOX_ENABLE_WAL=1` and a storage backend is provided
 
+When WAL is disabled explicitly, persistent storage reserves zero bytes for a
+WAL and begins the dual-superblock/dual-bank snapshot layout at offset zero.
+Snapshot persistence remains available, but mutation durability is weaker than
+for WAL-enabled profiles.
+
 RAM percentages are normalized across enabled engines. Disabled engines receive
 zero percent and zero arena bytes; enabled engines must receive a nonzero share.
 Both default and runtime splits follow this rule, and rounding remainder is
@@ -55,7 +60,9 @@ Intended behavior:
 Important separation:
 
 - `FOOTPRINT_MIN` is the smallest supported **durable** profile.
-- `lox_tiny` is a separate “smallest size” variant (KV-only, WAL-off) and has weaker power-loss durability semantics than WAL-enabled profiles.
+- `lox_tiny` is a separate “smallest size” variant (KV-only, WAL-off). It
+  reserves no WAL storage and has weaker power-loss durability semantics than
+  WAL-enabled profiles.
 
 ## Footprint-min baseline test intent
 

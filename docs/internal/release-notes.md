@@ -2,44 +2,31 @@
 
 ## Title
 
-`loxdb v1.5.0`
+`loxdb v1.5.1`
 
 ## Release text (GitHub Release body)
 
-This release hardens persistence, failure semantics, initialization, schema
-transitions, packaging, and CI verification.
+This focused patch release checks persisted TS timestamp width during recovery
+and removes unused WAL storage from WAL-disabled builds.
 
 Highlights:
 
-- Append-only WAL mutation records with legacy WAL and snapshot readability.
-- Fixed-width persisted timestamps and expiration values with legacy decoding.
-- No allocator calls in normal operations after successful initialization.
-- Deterministic mutation admission, indeterminate failure reporting, and
-  storage-faulted handles.
-- Shared preflight/init layout calculation, normalized RAM splits, and a
-  WAL-enabled `FOOTPRINT_MIN` profile.
-- Physically identical schema-version transitions only.
-- Blocking static-analysis, coverage, package, profile, and compiler gates.
-- Synchronized Arduino source bundles with a regression gate.
+- TS snapshot loading and WAL replay preserve the fixed 64-bit persisted value
+  when it fits `lox_timestamp_t`, and return `LOX_ERR_OVERFLOW` without
+  truncation when it does not.
+- `LOX_ENABLE_WAL=0` layouts report and reserve zero WAL bytes while retaining
+  dual-bank snapshot persistence.
+- WAL-enabled layouts and `LOX_PROFILE_FOOTPRINT_MIN` behavior are unchanged.
 
-Validation summary:
-
-- Release metadata, package/install, detached consumer, strict C99, bundle, and
-  supported local build/test gates must pass before tagging.
-- Platform-specific and sanitizer verification remains tied to the configured
-  CI lanes.
+No-WAL media created by earlier releases uses different physical offsets
+because those releases reserved an unused minimum WAL region. The v1.5.1
+no-WAL layout starts its first superblock at offset zero.
 
 ## Contract links
 
 - `README.md`
 - `CHANGELOG.md`
-- `RELEASE_LOG.md`
 - `docs/API_REFERENCE.md`
-- `docs/COOKBOOK.md`
+- `docs/PROGRAMMER_MANUAL.md`
+- `docs/PROFILES.md`
 - `docs/EVIDENCE_MATRIX.md`
-- `docs/OFFLINE_VERIFIER.md`
-- `docs/PROFILE_GUARANTEES.md`
-
-## Repository topics reference
-
-See `docs/repository-topics.md`.

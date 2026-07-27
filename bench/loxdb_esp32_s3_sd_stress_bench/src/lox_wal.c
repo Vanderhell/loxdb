@@ -132,15 +132,6 @@ static uint64_t lox_get_u64(const uint8_t *src) {
     return ((uint64_t)lox_get_u32(src + 4u) << 32u) | (uint64_t)lox_get_u32(src);
 }
 
-static lox_err_t lox_timestamp_from_u64(uint64_t value, lox_timestamp_t *out) {
-    lox_timestamp_t converted = (lox_timestamp_t)value;
-    if (out == NULL || (uint64_t)converted != value) {
-        return LOX_ERR_OVERFLOW;
-    }
-    *out = converted;
-    return LOX_OK;
-}
-
 static uint32_t lox_bank_kv_offset(const lox_core_t *core, uint32_t bank) {
     return ((bank == 0u) ? core->layout.bank_a_offset : core->layout.bank_b_offset);
 }
@@ -875,6 +866,78 @@ static lox_err_t lox_load_kv_page(lox_t *db, uint32_t bank, uint32_t expected_ge
 }
 
 #if LOX_ENABLE_TS
+static lox_err_t lox_validate_ts_page_timestamp_width(lox_core_t *core,
+                                                      uint32_t payload_offset,
+                                                      uint32_t payload_len,
+                                                      uint32_t stream_count) {
+    uint32_t offset = payload_offset;
+    uint32_t payload_end;
+    uint32_t i;
+
+    if (!lox_checked_add_u32(payload_offset, payload_len, &payload_end)) {
+        return LOX_ERR_CORRUPT;
+    }
+    for (i = 0u; i < stream_count; ++i) {
+        uint8_t name_len;
+        uint8_t metadata[11];
+        uint8_t type_byte;
+        uint32_t raw_size;
+        uint32_t sample_count;
+        uint32_t value_len;
+        uint32_t j;
+
+        if (offset >= payload_end ||
+            lox_storage_read_bytes(core, offset, &name_len, 1u) != LOX_OK) {
+            return LOX_ERR_CORRUPT;
+        }
+        offset += 1u;
+        if ((uint32_t)name_len >= LOX_TS_STREAM_NAME_LEN ||
+            (uint32_t)name_len > payload_end - offset) {
+            return LOX_ERR_CORRUPT;
+        }
+        offset += name_len;
+        if (sizeof(metadata) > payload_end - offset ||
+            lox_storage_read_bytes(core, offset, metadata, sizeof(metadata)) != LOX_OK) {
+            return LOX_ERR_CORRUPT;
+        }
+        type_byte = metadata[0];
+        raw_size = lox_get_u32(metadata + 1u);
+        sample_count = lox_get_u32(metadata + 7u);
+        if ((lox_ts_type_t)type_byte == LOX_TS_RAW) {
+            if (raw_size == 0u || raw_size > LOX_TS_RAW_MAX) {
+                return LOX_ERR_CORRUPT;
+            }
+            value_len = raw_size;
+        } else if ((lox_ts_type_t)type_byte <= LOX_TS_U32) {
+            value_len = 4u;
+        } else {
+            return LOX_ERR_CORRUPT;
+        }
+        offset += (uint32_t)sizeof(metadata);
+
+        for (j = 0u; j < sample_count; ++j) {
+            uint8_t serialized[8];
+            lox_timestamp_t sample_ts;
+            lox_err_t err;
+
+            if (8u > payload_end - offset ||
+                lox_storage_read_bytes(core, offset, serialized, sizeof(serialized)) != LOX_OK) {
+                return LOX_ERR_CORRUPT;
+            }
+            err = lox_timestamp_from_u64(lox_get_u64(serialized), &sample_ts);
+            if (err != LOX_OK) {
+                return err;
+            }
+            offset += 8u;
+            if (value_len > payload_end - offset) {
+                return LOX_ERR_CORRUPT;
+            }
+            offset += value_len;
+        }
+    }
+    return offset == payload_end ? LOX_OK : LOX_ERR_CORRUPT;
+}
+
 static lox_err_t lox_load_ts_page(lox_t *db, uint32_t bank, uint32_t expected_generation) {
     lox_core_t *core = lox_core(db);
     uint8_t header[LOX_PAGE_HEADER_SIZE];
@@ -910,6 +973,10 @@ static lox_err_t lox_load_ts_page(lox_t *db, uint32_t bank, uint32_t expected_ge
 
     offset = page_offset + LOX_PAGE_HEADER_SIZE;
     payload_offset = offset;
+    err = lox_validate_ts_page_timestamp_width(core, payload_offset, payload_len, stream_count);
+    if (err != LOX_OK) {
+        return err;
+    }
     for (i = 0u; i < stream_count; ++i) {
         uint8_t name_len = 0u;
         char name[LOX_TS_STREAM_NAME_LEN];
@@ -988,6 +1055,7 @@ static lox_err_t lox_load_ts_page(lox_t *db, uint32_t bank, uint32_t expected_ge
             uint8_t value[LOX_TS_RAW_MAX];
             uint32_t val_len = ((lox_ts_type_t)type_byte == LOX_TS_RAW) ? raw_size : 4u;
             uint64_t full_ts;
+            lox_timestamp_t sample_ts;
 
             err = lox_storage_read_bytes(core, offset, u32buf, 4u);
             if (err != LOX_OK) {
@@ -1013,7 +1081,11 @@ static lox_err_t lox_load_ts_page(lox_t *db, uint32_t bank, uint32_t expected_ge
             offset += val_len;
 
             full_ts = ((uint64_t)ts_high << 32u) | ts_low;
-            err = lox_ts_insert(db, name, (lox_timestamp_t)full_ts, value);
+            err = lox_timestamp_from_u64(full_ts, &sample_ts);
+            if (err != LOX_OK) {
+                return err;
+            }
+            err = lox_ts_insert(db, name, sample_ts, value);
             if (err != LOX_OK) {
                 return err;
             }
@@ -1325,6 +1397,7 @@ static lox_err_t lox_apply_wal_entry(lox_t *db,
             uint8_t type_byte;
             uint32_t value_len;
             uint64_t ts;
+            lox_timestamp_t sample_ts;
             lox_err_t err;
 
             if (data_len < 1u) {
@@ -1340,12 +1413,16 @@ static lox_err_t lox_apply_wal_entry(lox_t *db,
             ts_high = lox_get_u32(data + 1u + name_len + 4u);
             type_byte = data[1u + name_len + 8u];
             value_len = (uint32_t)data_len - (1u + name_len + 9u);
+            ts = ((uint64_t)ts_high << 32u) | ts_low;
+            err = lox_timestamp_from_u64(ts, &sample_ts);
+            if (err != LOX_OK) {
+                return err;
+            }
             err = lox_ts_register(db, name, (lox_ts_type_t)type_byte, value_len);
             if (err != LOX_OK && err != LOX_ERR_EXISTS) {
                 return err;
             }
-            ts = ((uint64_t)ts_high << 32u) | ts_low;
-            return lox_ts_insert(db, name, (lox_timestamp_t)ts, data + 1u + name_len + 9u);
+            return lox_ts_insert(db, name, sample_ts, data + 1u + name_len + 9u);
         }
         if (op == LOX_WAL_OP_TS_REGISTER) {
             uint8_t name_len;
@@ -1881,7 +1958,9 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
     bool saw_corrupt = false;
     bool used_degraded_fallback = false;
     bool legacy_layout = false;
+#if LOX_ENABLE_WAL
     uint32_t erase_size;
+#endif
     uint32_t required_size;
     lox_storage_layout_t current_layout;
     lox_storage_layout_t legacy_candidate_layout;
@@ -1911,7 +1990,9 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
         return LOX_ERR_INVALID;
     }
 
+#if LOX_ENABLE_WAL
     erase_size = core->storage->erase_size;
+#endif
     err = lox_compute_storage_layout(core->storage,
                                      core->ts_arena.capacity,
                                      core->rel_arena.capacity,
@@ -1922,7 +2003,11 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
         return err;
     }
     core->layout = current_layout;
+#if LOX_ENABLE_WAL
     core->wal_used = erase_size;
+#else
+    core->wal_used = 0u;
+#endif
 
     err = lox_compute_storage_layout(core->storage,
                                      core->ts_arena.capacity,
@@ -1956,7 +2041,11 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
             (probe_b_status == LOX_OK &&
              lox_get_u32(probe_b + 4u) == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY)) {
             core->layout = legacy_candidate_layout;
+#if LOX_ENABLE_WAL
             core->wal_used = erase_size;
+#else
+            core->wal_used = 0u;
+#endif
             legacy_layout = true;
         }
     }
@@ -2002,7 +2091,11 @@ lox_err_t lox_storage_bootstrap(lox_t *db) {
                 (legacy_b_status == LOX_OK &&
                  lox_get_u32(legacy_b + 4u) == LOX_SNAPSHOT_FORMAT_VERSION_LEGACY)) {
                 core->layout = legacy_candidate_layout;
+#if LOX_ENABLE_WAL
                 core->wal_used = erase_size;
+#else
+                core->wal_used = 0u;
+#endif
                 legacy_layout = true;
             }
         }

@@ -36,6 +36,12 @@ Lifecycle contract:
 calculation. `lox_preflight_report_t.storage_required_bytes` is the exact
 required persistent capacity for the supplied configuration.
 
+With `LOX_ENABLE_WAL=0`, `wal_offset`, `wal_size`, WAL statistics, and WAL
+effective-capacity/admission fields are zero. No WAL region is reserved.
+Persistent no-WAL builds continue to use dual snapshot banks, but mutation
+durability is weaker than in WAL-enabled profiles because recovery cannot replay
+an append-only mutation record.
+
 ## KV
 
 - `lox_kv_set`, `lox_kv_put`, `lox_kv_get`, `lox_kv_del`, `lox_kv_exists`
@@ -72,10 +78,12 @@ storage failure after mutation may have begun returns
 `LOX_ERR_INDETERMINATE`, faults the handle, and blocks later
 mutation/flush/compact calls. Deinitialize and reopen before continuing.
 
-The current persistent formats serialize KV expiration as an unsigned 64-bit
-value and retain compatibility with legacy 32-bit expiration records. Values
-that do not fit the configured `lox_timestamp_t`, and unsupported format
-versions, are rejected without truncation.
+The current persistent formats serialize TS timestamps and KV expiration as
+unsigned 64-bit values, independent of the configured in-memory timestamp
+width, and retain compatibility with legacy 32-bit values. Reopen returns
+`LOX_ERR_OVERFLOW` when a stored value does not fit the configured
+`lox_timestamp_t`; this width mismatch is not reported as corruption and is
+never truncated. Unsupported format versions remain a distinct error.
 
 ## Verification Status
 

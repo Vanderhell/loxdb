@@ -6,6 +6,25 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-27
+
+### Fixed
+
+- Checked fixed-width 64-bit TS timestamps before converting them to the
+  configured `lox_timestamp_t` during snapshot loading and WAL replay. Values
+  that do not fit now fail reopen with `LOX_ERR_OVERFLOW` instead of truncating.
+- Removed the reserved WAL region from `LOX_ENABLE_WAL=0` storage layouts;
+  preflight, initialization, statistics, and admission reporting now expose
+  zero WAL offset, size, capacity, and usage for those builds.
+
+### Compatibility
+
+- WAL-enabled layouts and the WAL-enabled `LOX_PROFILE_FOOTPRINT_MIN` durability
+  behavior are unchanged.
+- No-WAL builds continue to persist through dual snapshot banks, with weaker
+  per-mutation durability than WAL-enabled builds. The no-WAL on-media offsets
+  changed because the former unused WAL reservation was removed.
+
 ## [1.5.0] - 2026-07-27
 
 ### Added
