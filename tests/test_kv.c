@@ -517,6 +517,22 @@ MDB_TEST(kv_set_null_value_invalid) {
     ASSERT_EQ(lox_kv_set(&g_db, "nullval", NULL, 1u, 0u), LOX_ERR_INVALID);
 }
 
+MDB_TEST(kv_physically_full_bucket_array_returns_full) {
+    lox_core_t *core = test_core();
+    uint8_t value = 1u;
+    uint32_t i;
+
+    for (i = 0u; i < core->kv.bucket_count; ++i) {
+        core->kv.buckets[i].state = 1u;
+        core->kv.buckets[i].key_hash = i + 1u;
+    }
+
+    ASSERT_EQ(lox_kv_set(&g_db, "no-slot", &value, sizeof(value), 0u), LOX_ERR_FULL);
+    ASSERT_EQ(core->kv.entry_count, 0u);
+
+    memset(core->kv.buckets, 0, core->kv.bucket_count * sizeof(*core->kv.buckets));
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_basic, teardown_db, kv_set_and_get_basic);
     MDB_RUN_TEST(setup_basic, teardown_db, kv_get_nonexistent);
@@ -555,5 +571,6 @@ int main(void) {
     MDB_RUN_TEST(setup_basic, teardown_db, kv_hash_prefilter_still_requires_key_match);
     MDB_RUN_TEST(setup_basic, teardown_db, kv_iter_null_callback_invalid);
     MDB_RUN_TEST(setup_basic, teardown_db, kv_set_null_value_invalid);
+    MDB_RUN_TEST(setup_basic, teardown_db, kv_physically_full_bucket_array_returns_full);
     return MDB_RESULT();
 }

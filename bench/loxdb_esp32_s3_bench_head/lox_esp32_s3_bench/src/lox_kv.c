@@ -363,7 +363,7 @@ static LOX_UNUSED_FN lox_err_t lox_kv_prepare_set(lox_core_t *core,
         return err;
     }
     err = lox_kv_find_slot(core, key, &slot, &found, NULL);
-    if (err != LOX_OK && err != LOX_ERR_FULL) {
+    if (err != LOX_OK) {
         return err;
     }
     if (found) {
@@ -611,7 +611,7 @@ static lox_err_t lox_kv_set_at_internal(lox_t *db,
     }
 
     err = lox_kv_find_slot(core, key, &slot, &found, &probe_collisions);
-    if (err != LOX_OK && err != LOX_ERR_FULL) {
+    if (err != LOX_OK) {
         return err;
     }
 
