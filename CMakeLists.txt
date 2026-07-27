@@ -860,7 +860,9 @@ if(LOX_BUILD_TESTS)
     endif()
     add_test(NAME test_timestamp64_persistence COMMAND test_timestamp64_persistence)
 
-    if(UNIX)
+    # This test relies on GNU/ELF linker symbol wrapping. Apple ld does not
+    # implement --wrap, so keep the gate on the Linux lanes that support it.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_executable(test_no_alloc_after_init tests/test_no_alloc_after_init.c)
         target_include_directories(test_no_alloc_after_init PRIVATE include tests port/ram src)
         target_link_libraries(test_no_alloc_after_init PRIVATE loxdb)

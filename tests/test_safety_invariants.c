@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static lox_t g_db;
@@ -56,6 +57,13 @@ static void open_db_with_storage(const char *tag) {
 
 static void reopen_db_with_storage(void) {
     lox_cfg_t cfg;
+    lox_core_t *core = lox_core(&g_db);
+    if (core->magic == LOX_MAGIC) {
+        if (core->lock_destroy != NULL) {
+            core->lock_destroy(core->lock_handle);
+        }
+        free(core->heap);
+    }
     lox_port_posix_deinit(&g_storage);
     memset(&g_storage, 0, sizeof(g_storage));
     memset(&g_db, 0, sizeof(g_db));
