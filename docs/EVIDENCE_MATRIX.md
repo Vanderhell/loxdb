@@ -1,34 +1,25 @@
 # Evidence Matrix
 
-Status legend:
+This matrix separates what was executed on the current Windows host from CI
+configuration and hardware evidence. CI wiring is not evidence that a lane
+executed successfully.
 
-- VERIFIED
-- VERIFIED WITH DEFINED LIMITS
-- NOT VERIFIED
-- INCOMPLETE
-
-This document separates source truth from claims that depend on a specific test
-run, toolchain, or hardware environment.
-
-| Area | Status | Evidence / Notes |
+| Area | Evidence class | Current evidence |
 |---|---|---|
-| MSVC Debug build | VERIFIED | Current host build and consumer/package CTest gates were exercised in the verified build tree. |
-| GNU strict C99 Debug/Release | NOT VERIFIED | Not executed in this environment. |
-| Clang strict C99 Debug/Release | NOT VERIFIED | Not executed in this environment. |
-| C++17 wrapper consumer | VERIFIED | Detached installed consumer test is wired in CTest. |
-| Installed C consumer | VERIFIED | Detached installed consumer test is wired in CTest. |
-| Configuration mismatch installed consumer | VERIFIED | Compile-fail gate against installed headers. |
-| Package config/version files | VERIFIED | `cmake/loxdbConfig.cmake.in` and generated package version file are wired into install/export. |
-| Source-detached consumer test | VERIFIED | Consumer builds run out-of-tree from staged install prefix. |
-| ASan/UBSan gate wiring | VERIFIED WITH DEFINED LIMITS | Workflow/preset wiring present; execution depends on the Linux sanitizer lane. |
-| Static-analysis gate wiring | VERIFIED WITH DEFINED LIMITS | Workflow/preset wiring present; execution is non-blocking in CI. |
-| ARM/ESP-IDF compile gates | NOT VERIFIED | Not executed here; keep claims limited to configured build wiring. |
-| Release workflow consistency checks | VERIFIED WITH DEFINED LIMITS | Workflow contains build, test, install, package, source archive, and consumer validation steps. |
-| library.json / library.properties / CMake / changelog consistency | VERIFIED | Added metadata consistency test. |
+| MSVC Debug, full CTest, install/package, detached C/C++ consumers, mismatch gates, profiles and footprint | Executed locally | 109/109 CTest entries passed on Windows. |
+| MinGW GCC 16.1 Debug/Release | Executed locally | Debug passed 109/109; Release passed 110/110 including the Release footprint gate. |
+| Clang 22.1 MinGW-target Debug/Release | Executed locally | Debug passed 109/109; Release passed 110/110 including the Release footprint gate. |
+| Core cppcheck | Executed locally and blocking CI | `warning`, `performance`, and `portability` checks pass with zero findings. |
+| Core clang-tidy | Executed locally and blocking CI | Analyzer, bugprone, performance, and portability checks pass after genuine findings were fixed. |
+| Core line coverage | Measured locally and blocking CI | 4227/5004 lines, 84.47%; CI enforces 83% over the named core and RAM/POSIX port sources. |
+| Linux GCC Debug/Release | Blocking CI configuration | Debug platform matrix and Release compiler matrix run the full CTest suite. Not executed on this Windows host. |
+| Linux Clang Debug/Release | Blocking CI configuration | Compiler matrix runs the full CTest suite. Not executed on this Windows host. |
+| Linux ASan/UBSan | Blocking CI configuration | Preset builds and runs the full suite with halt-on-error. GCC/Clang sanitizers are not supported by the local MSVC lane and were not executed here. |
+| macOS Debug | Blocking CI configuration | Platform matrix runs build and full CTest. Not executed on this Windows host. |
+| Strict C99, installed consumers, package/install, configuration mismatch, size/profile gates | Blocking tests | These are CTest gates in each full build; their local MSVC results are included above. |
+| ESP32 benchmark numbers | In-RAM backend evidence | Measurements in `BENCHMARKS.md` cover target CPU plus the benchmark's RAM flash-like backend; they do not validate physical NOR I/O or power loss. |
+| Physical NOR erase/write/sync, brownout recovery, endurance | No physical-hardware evidence in this verification | No claim is made. These require a documented target-media run. |
+| ARM/ESP-IDF build | Configured but unexecuted here | Repository integration files exist; no embedded toolchain was installed or run for this verification. |
 
-## Notes
-
-- Real hardware results belong in `docs/results/` and should be cited with the
-  exact run file.
-- If a claim does not have a concrete test or run artifact, treat it as
-  NOT VERIFIED.
+The CI workflow is the source of truth for configured gates. A green workflow
+run is required before describing a CI lane as executed.

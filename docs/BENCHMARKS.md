@@ -1,10 +1,9 @@
 ﻿# Benchmarks (ESP32-S3 N16R8)
 
-This page is the publication home for **measured** benchmark results from the verified ESP32-S3 N16R8 setup.
-
-It is intentionally a template first: fill it only with real measured numbers from the existing local benchmark runs.
-
-<!-- TODO(maintainer): Replace all TBD cells with real numbers from ESP32-S3 N16R8 measurements. -->
+This page records measured CPU and logical-backend benchmark results from an
+ESP32-S3 N16R8 run. The storage HAL was backed by RAM. These numbers therefore
+do **not** measure physical NOR write, erase, or sync latency and are not
+evidence of flash endurance, brownout behavior, or physical-media recovery.
 
 ## Test platform
 
@@ -18,16 +17,9 @@ It is intentionally a template first: fill it only with real measured numbers fr
 - Storage backend used:
   - In-RAM flash-like storage HAL (see `bench/loxdb_esp32_s3_bench_head/README.md`)
 
-## Methodology
-
-- Iterations per measurement:
-  - <!-- TODO(maintainer): fill -->
-- Latency reporting:
-  - p50 / p95 / max (microseconds)
-- Outliers:
-  - <!-- TODO(maintainer): describe if/what is discarded and why -->
-- Warmup / cold vs steady:
-  - <!-- TODO(maintainer): describe -->
+Latency fields report p50, p95, and maximum microseconds from the cited run
+logs. Throughput fields are logical operations per second on the target CPU
+with the RAM flash-like backend.
 
 <!-- BENCHMARKS:BEGIN -->
 ## Results - KV engine (deterministic profile)
@@ -46,9 +38,6 @@ WAL impact (KV):
 | Stream type | insert rate (samples/s) | query p50 (us) | query p95 (us) | Notes |
 |---|---:|---:|---:|---|
 | `F32` | 52538.0 | 337 | 337 | `esp32_deterministic_20260511_101754_1a1c569_com19.log` (retained=384) |
-| `I32` | TBD | TBD | TBD | <!-- TODO(maintainer): add I32 run --> |
-| `U32` | TBD | TBD | TBD | <!-- TODO(maintainer): add U32 run --> |
-| `RAW` | TBD | TBD | TBD | <!-- TODO(maintainer): add RAW run --> |
 
 ## Results - REL engine (deterministic profile)
 
@@ -99,19 +88,11 @@ Steps to reproduce:
 
 1. Build and flash the bench sketch for ESP32-S3 N16R8.
 2. Run the terminal-driven commands described in the bench README.
-3. Copy measured outputs into the tables above (only real numbers; no estimates).
+3. Retain the backend identity and raw run log with any published measurement.
 
 Optional automation (logs + doc update):
 
 - `./scripts/run_esp32_bench_and_update_docs.ps1 -Port COM19`
-
-## Run notes
-
-- Latest merge-prep verdict: `docs/results/bench_verdict_20260511.md`
-- First SD stress run artifacts (2026-05-11):
-  - `docs/results/esp32_sd_stress_20260511_113124_4d1fd65_com19.md`
-  - `docs/results/esp32_sd_stress_20260511_113124_4d1fd65_com19.log`
-  - `docs/results/esp32_sd_stress_20260511_113124_4d1fd65_com19.csv`
 
 ## Related benches
 

@@ -2,16 +2,15 @@
 
 ## Overview
 
-Worst-Case Execution Time (WCET) analysis gives deterministic latency bounds for
-embedded systems where missed deadlines are unacceptable. For `loxdb`, WCET
-is derived from:
+This document supplies latency-cost formulas for engineering estimates. They
+are not certified WCET bounds. A target-specific bound must account for:
 
 - compile-time limits (`LOX_*` macros),
 - concrete algorithmic paths in `src/`,
 - hardware-dependent primitive costs (hash, compare, memcpy, flash write/sync).
 
-This document provides formula templates and conservative bounds. Use them with
-target-specific measurements to obtain microsecond-level budgets.
+Use the formulas with target-specific measurements and a justified safety
+margin.
 
 ## How to use WCET bounds
 
@@ -47,17 +46,20 @@ target-specific measurements to obtain microsecond-level budgets.
 
 ### `lox_kv_set()` (WAL sync always)
 
-- Best case: append WAL entry + sync
-- Worst case: same as above + worst storage write/sync + optional compact
+- A WAL generation header is written once and remains immutable.
+- Normal mutations append an entry; they do not erase or rewrite the header.
+- Best case: append WAL entry + sync.
+- Worst case: RAM work + entry append + backend sync + an admitted compaction.
 - Formula:
-  - `T_wcet = T_probe_wc + T_memmove(LOX_WCET_KV_MEMMOVE_MAX) + T_flash_write(LOX_WCET_WAL_KV_SET_MAX) + T_flash_sync + T_compact_wc`
+  - `T_est = T_probe_wc + T_memmove(LOX_WCET_KV_MEMMOVE_MAX) + T_storage_write(LOX_WCET_WAL_KV_SET_MAX) + T_storage_sync + T_compact_if_required`
 
 ### `lox_kv_set()` (WAL flush-only)
 
-- Best case: no immediate sync
-- Worst case: deferred compact/flush still possible
+- Best case: entry append without immediate sync.
+- `lox_flush()` supplies the deferred sync boundary.
+- A mutation can still enter the compaction path when WAL space/admission requires it.
 - Formula:
-  - `T_wcet = T_probe_wc + T_memmove(LOX_WCET_KV_MEMMOVE_MAX) + T_flash_write(LOX_WCET_WAL_KV_SET_MAX) + T_compact_wc`
+  - `T_est = T_probe_wc + T_memmove(LOX_WCET_KV_MEMMOVE_MAX) + T_storage_write(LOX_WCET_WAL_KV_SET_MAX) + T_compact_if_required`
 
 ### `lox_kv_del()`
 
@@ -138,11 +140,11 @@ target-specific measurements to obtain microsecond-level budgets.
 - Formula:
   - `T_wcet = T_kv_checks(bucket_count^2) + T_ts_checks(stream_count) + T_rel_checks(table_count + bitmap_bytes + index_count) + T_wal_checks`
 
-## Operations with unbounded WCET
+## Bound limitations
 
-No public API is mathematically unbounded in current core design; all loops are
-bounded by compile-time limits and configured capacities. Practical runtime
-variability is still hardware dependent due to backend I/O latency.
+Core loops are bounded by compile-time limits and configured capacities.
+Backend I/O latency may not be bounded by the library, so these formulas alone
+cannot establish a system WCET.
 
 ## Hardware measurement guide
 

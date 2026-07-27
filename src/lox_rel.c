@@ -260,7 +260,9 @@ static LOX_UNUSED_FN uint32_t rel_find_free_row(const lox_table_t *table) {
         uint8_t effective = table->alive_bitmap[byte_idx];
         if (row_base + 8u > table->max_rows) {
             uint32_t valid_bits = table->max_rows - row_base;
-            uint8_t valid_mask = (uint8_t)((1u << valid_bits) - 1u);
+            uint8_t valid_mask = (valid_bits >= 8u)
+                                     ? UINT8_MAX
+                                     : (uint8_t)((1u << valid_bits) - 1u);
             effective |= (uint8_t)(~valid_mask);
         }
         if (effective == 0xFFu) {

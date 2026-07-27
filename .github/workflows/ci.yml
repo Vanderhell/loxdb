@@ -49,6 +49,39 @@ jobs:
           cmake --build --preset ${{ matrix.preset }} --target lox_verify
           ctest --preset ${{ matrix.preset }} -R test_offline_verifier -V
 
+  compiler-matrix-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cxx: g++
+            build_type: Release
+          - compiler: clang
+            cxx: clang++
+            build_type: Debug
+          - compiler: clang
+            cxx: clang++
+            build_type: Release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compiler and Ninja
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build
+      - name: Configure
+        run: >
+          cmake -S . -B build/ci-${{ matrix.compiler }}-${{ matrix.build_type }}
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_C_COMPILER=${{ matrix.compiler }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+      - name: Build
+        run: cmake --build build/ci-${{ matrix.compiler }}-${{ matrix.build_type }}
+      - name: Test
+        run: >
+          ctest --test-dir build/ci-${{ matrix.compiler }}-${{ matrix.build_type }}
+          --output-on-failure
+
   sanitize-linux:
     runs-on: ubuntu-latest
     steps:
@@ -67,7 +100,6 @@ jobs:
 
   static-analysis:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install cppcheck
@@ -79,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: static-analysis-report
-          path: docs/results/cppcheck_report.txt
+          path: build/static-analysis/
 
   static-analysis-style:
     runs-on: ubuntu-latest
@@ -95,29 +127,20 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: static-analysis-style-report
-          path: docs/results/cppcheck_style_report.txt
+          path: build/static-analysis-style/
 
   clang-tidy:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-tidy
         run: sudo apt-get update && sudo apt-get install -y clang-tidy
-      - name: Configure (compile_commands.json)
-        run: cmake -S . -B build/ci-clang-tidy-linux -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-      - name: Run clang-tidy (non-blocking)
+      - name: Run core clang-tidy
         run: |
-          clang-tidy -p build/ci-clang-tidy-linux \
-            src/*.c port/posix/*.c port/ram/*.c \
-            --quiet \
-            | tee clang-tidy-report.txt
-      - name: Upload clang-tidy report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: clang-tidy-report
-          path: clang-tidy-report.txt
+          clang-tidy \
+            src/loxdb.c src/lox_kv.c src/lox_ts.c src/lox_rel.c src/lox_wal.c src/lox_crc.c \
+            port/ram/lox_port_ram.c port/posix/lox_port_posix.c \
+            --quiet -- -std=c99 -Iinclude -Isrc -Iport/ram -Iport/posix
 
   coverage-linux:
     runs-on: ubuntu-latest
@@ -133,9 +156,13 @@ jobs:
         run: ctest --preset ci-coverage-linux
       - name: Capture coverage (lcov)
         run: |
-          lcov --capture --directory build/ci-coverage-linux --output-file coverage.info
-          lcov --remove coverage.info '*/build/*' '*/tests/*' --ignore-errors unused --output-file coverage.info
-          lcov --list coverage.info
+          lcov --capture --directory build/ci-coverage-linux --output-file coverage.raw.info
+          lcov --extract coverage.raw.info \
+            '*/src/loxdb.c' '*/src/lox_kv.c' '*/src/lox_ts.c' \
+            '*/src/lox_rel.c' '*/src/lox_wal.c' '*/src/lox_crc.c' \
+            '*/port/ram/lox_port_ram.c' '*/port/posix/lox_port_posix.c' \
+            --ignore-errors unused --output-file coverage.info
+          lcov --summary coverage.info --fail-under-lines 83
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:

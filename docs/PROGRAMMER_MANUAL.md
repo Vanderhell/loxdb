@@ -65,7 +65,9 @@ Storage HAL (read/write/erase/sync)
 - loads durable state (if storage is present)
 - replays recovery path when needed
 
-All runtime operations (`kv_*`, `ts_*`, `rel_*`, `txn_*`) use that initialized state.
+All runtime operations (`kv_*`, `ts_*`, `rel_*`, `txn_*`) use that initialized
+state without core allocator churn. `lox_deinit()` releases the core heap.
+Ports and user callbacks may have their own allocation behavior.
 
 ## 3. Dependencies and external libraries
 
@@ -131,6 +133,8 @@ Common codes (high-level intent):
 - `LOX_ERR_OVERFLOW`: caller buffer too small
 - `LOX_ERR_SCHEMA`: schema mismatch / unsupported migration path
 - `LOX_ERR_TXN_ACTIVE`: conflicting transaction state
+- `LOX_ERR_INDETERMINATE`: storage may have partially accepted a mutation; the
+  handle is faulted until deinit/reopen
 
 Recovery note:
 - WAL tail truncation and WAL header reset scenarios are designed to be *recoverable*; callers should treat success as “committed state preserved” rather than “no anomaly happened”. Use the offline verifier in QA gates when needed.
@@ -173,9 +177,17 @@ Use for small fixed-schema table data.
 
 When `LOX_ENABLE_WAL=1` and persistent storage is provided:
 
-- updates are logged for recovery
-- reopen paths recover durable state
+- each WAL generation has an immutable header and append-only entries
+- WAL erase occurs only during reset/compaction
+- replay scans entries until the first invalid or torn tail
+- `LOX_WAL_SYNC_ALWAYS` syncs each durable mutation; the opt-in
+  `LOX_WAL_SYNC_FLUSH_ONLY` defers the sync boundary to flush/maintenance
+- a possibly partial storage failure returns `LOX_ERR_INDETERMINATE` and faults
+  the handle; deinitialize and reopen before further mutations
 - `lox_compact()` can reduce WAL pressure in maintenance windows
+
+Physical-medium endurance remains dependent on the backend, device, workload,
+and compaction policy.
 
 ## 5. Configuration model
 
@@ -227,11 +239,13 @@ Violations fail initialization (`LOX_ERR_INVALID`).
 
 ## 5.4 Capacity planning
 
-`loxdb` uses a three-arena RAM model computed in `lox_init()`:
+`lox_preflight()` and `lox_init()` use the same RAM and storage-layout
+calculator. The reported `storage_required_bytes` is the exact capacity
+boundary for that configuration.
 
-- `kv_arena = floor((ram_kb * 1024) * kv_pct / 100)`
-- `ts_arena = floor((ram_kb * 1024) * ts_pct / 100)`
-- `rel_arena = remaining bytes after TS and pointer-alignment step`
+Percentages are normalized across enabled engines. Disabled engines must have
+zero percent and receive zero arena bytes; enabled engines receive nonzero
+shares, with alignment and rounding remainder assigned deterministically.
 
 KV usable entry limit:
 
@@ -246,7 +260,8 @@ KV value-store capacity (current build ABI):
 
 TS retention depends on registered streams and stream stride:
 
-- `sample_stride = sizeof(timestamp) + value_size` (`F32/I32/U32=8`, `RAW16=20`)
+- `sample_stride = sizeof(lox_timestamp_t) + value_size` (with the default
+  32-bit timestamp, `F32/I32/U32=8` and `RAW16=20`)
 - `samples_per_stream ~= floor((ts_arena / stream_count) / sample_stride)`
 - `retention_hours = samples_per_stream / inserts_per_hour_per_stream`
 
@@ -254,21 +269,9 @@ Tooling:
 
 - Capacity estimator: `tools/lox_capacity_estimator.html`
 
-Wear model (storage enabled):
-
-- WAL/dual-bank layout follows `src/lox_wal.c` (`wal_target=erase*8`, `wal_min=erase*2`, two superblocks, two banks)
-- `wal_compact_threshold_pct` controls when automatic compaction triggers based on WAL fill percentage
-- lower threshold => earlier, more frequent compactions; higher threshold => longer WAL growth before compaction
-
-Worked example (ESP32 sensor node):
-
-- 3 temperature streams (`F32`), 512 KB flash, 4096 B erase blocks, 10-year target lifetime
-- set these values in `tools/lox_capacity_estimator.html`
-- verify:
-  1. RAM split leaves sufficient KV value-store for config keys
-  2. TS retention satisfies required history horizon
-  3. estimated flash lifetime is at or above target
-  4. WAL and dual-bank footprint fits within available flash
+The dual-bank/WAL layout follows `src/lox_wal.c`. Automatic compaction threshold
+changes how long append-only WAL growth continues before compaction. It does
+not by itself establish a physical-media lifetime.
 
 ## 6. Quick start (practical)
 
@@ -421,6 +424,16 @@ Storage/capacity behavior:
 - Public API remains `lox_ts_sample_t` for compatibility.
 - Internal TS ring uses packed per-stream stride: `sizeof(timestamp) + value_size`.
 - Stream capacity is computed from that stride inside each stream's fixed byte slice.
+
+Timestamp and TTL persistence:
+
+- `lox_timestamp_t` follows `LOX_TIMESTAMP_TYPE` (default `uint32_t`).
+- TTL addition rejects overflow for the configured timestamp width.
+- Current snapshot and WAL formats serialize KV expiration in 8 bytes.
+- Legacy formats with 4-byte expiration remain readable.
+- Reopen returns an error if a stored 64-bit expiration cannot fit the build's
+  timestamp type; unsupported persistent-format versions also fail rather than
+  truncate.
 
 ### Callback type
 
@@ -739,17 +752,23 @@ Choose variant by product constraints:
 
 ## 13.1 Migration callback contract (`on_migrate`)
 
-`on_migrate` is called when `lox_table_create` sees an existing table with the same name but different schema version.
+`on_migrate` is called for a version change only when the existing and proposed
+schemas have an identical physical row layout.
 
 - Callback is invoked outside the internal DB lock.
 - `migration_in_progress` guard is active during callback; recursive migration via nested `lox_table_create` is rejected with `LOX_ERR_SCHEMA`.
 - If callback returns non-`LOX_OK`, that error is propagated to caller and schema version is not advanced.
-- If callback returns `LOX_OK`, caller is responsible for data transformation correctness done inside callback before version bump completes.
+- If callback returns `LOX_OK`, it may have transformed values within the same
+  row layout; the new version is persisted before the in-memory version changes.
+- Adding, removing, renaming, resizing, reordering, or reindexing columns
+  returns `LOX_ERR_SCHEMA` before callback or WAL activity.
+- If persistence may have partially failed, `LOX_ERR_INDETERMINATE` faults the
+  handle and requires deinit/reopen.
 
 Recommended callback behavior:
 
 - Keep migration idempotent.
-- Prefer explicit read/transform/write sequence with clear fail path.
+- Keep transformations within the existing row layout.
 - Avoid creating additional schema-version transitions inside callback.
 
 ## 13.2 Known Risks / Operational Watchpoints

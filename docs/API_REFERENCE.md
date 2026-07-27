@@ -25,6 +25,17 @@ module sources.
 - `lox_admit_kv_set`, `lox_admit_ts_insert`, `lox_admit_rel_insert`
 - `lox_compact`
 
+Lifecycle contract:
+
+- successful `lox_init` performs one main core heap allocation;
+- normal core operations allocate nothing afterward;
+- `lox_deinit` releases the heap;
+- port and user-callback allocation is outside this guarantee.
+
+`lox_preflight` and `lox_init` share the same normalized RAM and storage-layout
+calculation. `lox_preflight_report_t.storage_required_bytes` is the exact
+required persistent capacity for the supplied configuration.
+
 ## KV
 
 - `lox_kv_set`, `lox_kv_put`, `lox_kv_get`, `lox_kv_del`, `lox_kv_exists`
@@ -45,6 +56,26 @@ module sources.
 - `lox_table_create`, `lox_table_get`, `lox_table_row_size`
 - `lox_row_set`, `lox_row_get`
 - `lox_rel_insert`, `lox_rel_find`, `lox_rel_find_by`, `lox_rel_delete`, `lox_rel_iter`, `lox_rel_count`, `lox_rel_clear`
+
+Schema-version transitions require identical physical schemas. Any column add,
+remove, rename, resize, reorder, or reindex returns `LOX_ERR_SCHEMA`.
+
+## Persistence and mutation failures
+
+The WAL header is immutable within a generation and entries append after it.
+Reset/compaction is the only WAL erase path; replay stops at the first invalid
+tail. `LOX_WAL_SYNC_ALWAYS` syncs mutations, while
+`LOX_WAL_SYNC_FLUSH_ONLY` defers the sync boundary.
+
+Failures known to occur before mutation begins use deterministic errors. A
+storage failure after mutation may have begun returns
+`LOX_ERR_INDETERMINATE`, faults the handle, and blocks later
+mutation/flush/compact calls. Deinitialize and reopen before continuing.
+
+The current persistent formats serialize KV expiration as an unsigned 64-bit
+value and retain compatibility with legacy 32-bit expiration records. Values
+that do not fit the configured `lox_timestamp_t`, and unsupported format
+versions, are rejected without truncation.
 
 ## Verification Status
 

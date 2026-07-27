@@ -10,7 +10,8 @@ Evidence that exists in this repository:
 - Durability and recovery behavior validated by WAL/recovery tests.
 - Multi-profile/configuration coverage via build-time/profile matrices (see `CMakeLists.txt`).
 - Sanitizer lane on Linux (ASan/UBSan) in CI.
-- Static analysis via cppcheck in CI (non-blocking lanes today).
+- Blocking core cppcheck and clang-tidy analysis in CI; style-only cppcheck
+  remains separately non-blocking.
 - Read-only offline verifier (`lox_verify`) for persisted images (see `docs/OFFLINE_VERIFIER.md`).
 
 ## What is *not* claimed
@@ -21,6 +22,7 @@ No claims are made about:
 - MISRA compliance status
 - tool qualification packages
 - a complete safety case / hazard analysis / threat model
+- physical NOR endurance or brownout validation from the in-RAM ESP32 benchmark
 
 If you need those, you must establish them at the product/program level and treat this library as a component within that process.
 

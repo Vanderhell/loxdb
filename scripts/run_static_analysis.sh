@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 set -euo pipefail
 
-REPORT_DIR="docs/results"
+REPORT_DIR="${ANALYSIS_DIR:-build/static-analysis}"
 mkdir -p "$REPORT_DIR"
 
 echo "=== cppcheck ==="

@@ -433,7 +433,7 @@ static uint32_t lox_ts_stream_val_size(const lox_ts_stream_t *stream) {
 }
 
 static const uint8_t *lox_ts_sample_ptr_const(const lox_ts_stream_t *stream, uint32_t idx) {
-    return stream->buf + (idx * stream->sample_stride);
+    return stream->buf + ((size_t)idx * (size_t)stream->sample_stride);
 }
 
 static lox_err_t lox_write_ts_page(lox_core_t *core, uint32_t bank, uint32_t generation) {
@@ -1559,10 +1559,8 @@ static lox_err_t lox_replay_wal(lox_t *db, bool *out_had_entries, bool *out_head
     stored_crc = lox_get_u32(header + 16u);
     wal_version = lox_get_u32(header + 4u);
     (void)entry_count;
-    if (lox_get_u32(header + 0u) != LOX_WAL_MAGIC) {
-        LOX_LOG("ERROR", "%s", "WAL header corrupt: resetting WAL");
-        *out_header_reset = true;
-    } else if (LOX_CRC32(header, 16u) != stored_crc) {
+    if (lox_get_u32(header + 0u) != LOX_WAL_MAGIC ||
+        LOX_CRC32(header, 16u) != stored_crc) {
         LOX_LOG("ERROR", "%s", "WAL header corrupt: resetting WAL");
         *out_header_reset = true;
     } else if (wal_version != LOX_WAL_VERSION && wal_version != LOX_WAL_VERSION_LEGACY) {

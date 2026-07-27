@@ -24,6 +24,12 @@ Use this when your storage already satisfies core contract requirements:
 - `write_size == 1`
 - stable `read/write/erase/sync` semantics
 
+The core treats a failure before durable mutation starts as deterministic.
+After write/erase/sync may have partially succeeded it returns
+`LOX_ERR_INDETERMINATE`, marks the handle storage-faulted, and blocks further
+mutation/flush/compact calls. Deinitialize and reopen from the same backend to
+recover the last valid durable state; do not retry on the faulted handle.
+
 Flow:
 
 1. Prepare `lox_storage_t` from your platform driver.
@@ -128,5 +134,6 @@ Detailed contract:
 
 1. Validate raw storage hooks (`read/write/erase/sync`) with small smoke test.
 2. Decide direct mode vs backend-open mode.
-3. Verify open/reopen/power-loss behavior with corresponding backend tests.
+3. Verify open/reopen behavior with backend tests, then run separate
+   target-media power-loss testing if the product requires that claim.
 4. Run CI lane including `test_backend_open`, recovery tests, and stress/matrix slices.

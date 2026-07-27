@@ -26,6 +26,11 @@ If none is set, `LOX_PROFILE_CORE_WAL` is selected by default.
 - REL: available when `LOX_ENABLE_REL=1`
 - WAL/recovery path: available when `LOX_ENABLE_WAL=1` and a storage backend is provided
 
+RAM percentages are normalized across enabled engines. Disabled engines receive
+zero percent and zero arena bytes; enabled engines must receive a nonzero share.
+Both default and runtime splits follow this rule, and rounding remainder is
+assigned deterministically.
+
 ## Durable storage contract (current releases)
 
 Validated at `lox_init()` / open path:
@@ -39,10 +44,13 @@ If violated, initialization fails with `LOX_ERR_INVALID`.
 
 Intended behavior:
 
+- 8 KiB main heap budget
 - KV enabled
 - TS disabled
 - REL disabled
 - WAL enabled (power-fail/recovery path remains active)
+- 16 total KV slots, including 2 transaction-staging slots
+- 16-byte maximum key and 64-byte maximum value
 
 Important separation:
 
@@ -68,4 +76,9 @@ The footprint-min size-gate tests are intended to fail CI if the minimal durable
 See:
 - `CMakeLists.txt` (size-gate test definitions)
 - `tests/` (baseline + gate helpers)
+
+The Release gate enforces `.text <= 25000`, `.rdata <= 1600`,
+`.data <= 256`, and `.bss <= 2048` bytes for the canonical executable and
+audits linked objects. These are test gates for that toolchain output, not a
+portable prediction for every linker or target.
 

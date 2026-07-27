@@ -1,91 +1,41 @@
-# Schema Migration Guide
+# Schema Version Transition Guide
 
-This guide explains how relational schema evolution works in `loxdb`.
+> **Important:** `loxdb` does not implement physical schema migration. A
+> version transition is supported only when the old and new schemas have an
+> identical physical row layout.
 
-## 1) Migration contract
+## Supported contract
 
-Relevant API fields:
+Set `lox_schema_t.schema_version` before `lox_schema_seal()`. The sealed
+version is immutable; changing it afterward causes `lox_table_create()` to
+return `LOX_ERR_SCHEMA`.
 
-- `lox_schema_t.schema_version`
-- `lox_cfg_t.on_migrate`
-- `lox_table_create(...)`
+For an existing table:
 
-Behavior when table already exists:
+- the same physical schema and version returns `LOX_OK`;
+- the same physical schema with a different version requires
+  `lox_cfg_t.on_migrate`;
+- the callback runs outside the database lock and may transform values only
+  within the existing row layout;
+- a successful callback makes the new version durable before it becomes the
+  in-memory version;
+- a callback error leaves the old version active;
+- recursive version transitions from the callback return `LOX_ERR_SCHEMA`.
 
-1. same version:
-   - `lox_table_create` returns `LOX_OK`
-2. version mismatch and no `on_migrate` callback:
-   - returns `LOX_ERR_SCHEMA`
-3. version mismatch with `on_migrate` callback:
-   - callback is called with `(table_name, old_version, new_version)`
-   - if callback returns `LOX_OK`, new version is persisted
-   - callback error is propagated
+Physical identity includes row count, row size, column count, column order,
+column names, types, sizes, offsets, and index selection. Adding, removing,
+renaming, resizing, reordering, or reindexing columns is unsupported and
+returns `LOX_ERR_SCHEMA` before the callback runs, before WAL is written, and
+before the in-memory version changes.
 
-Version lifecycle rule:
+## Failure handling
 
-- set `schema.schema_version` before calling `lox_schema_seal(...)`
-- after seal, `schema_version` is treated as immutable
-- mutating `schema.schema_version` after seal is rejected by `lox_table_create(...)` with `LOX_ERR_SCHEMA`
+A deterministic rejection or callback failure leaves both the durable and
+in-memory version unchanged. If storage fails after persistence begins,
+`lox_table_create()` returns `LOX_ERR_INDETERMINATE`, faults the handle, and
+does not claim which version is durable. Deinitialize and reopen the database
+to recover the last valid durable state before issuing more mutations.
 
-## 2) Minimal migration callback
-
-```c
-static lox_err_t on_migrate_cb(lox_t *db,
-                                   const char *table_name,
-                                   uint16_t old_version,
-                                   uint16_t new_version) {
-    (void)db;
-    (void)table_name;
-
-    /* TODO: read old rows, transform data, validate invariants. */
-    if (old_version == 1u && new_version == 2u) {
-        return LOX_OK;
-    }
-    return LOX_ERR_SCHEMA;
-}
-```
-
-## 3) Upgrade flow example
-
-1. Build schema v1:
-   - `schema.schema_version = 1`
-   - `lox_schema_init/add/seal`
-   - `lox_table_create(...)`
-2. Reopen DB with `cfg.on_migrate = on_migrate_cb`.
-3. Build schema v2:
-   - `schema.schema_version = 2`
-   - `lox_schema_init/add/seal`
-   - `lox_table_create(...)`
-4. On success:
-   - callback executed once
-   - persisted table schema version updated to v2
-
-## 4) Design recommendations
-
-- Treat migrations as deterministic transformations.
-- Make callbacks idempotent where possible.
-- Validate row-level constraints before returning `LOX_OK`.
-- Keep migration logic narrow (one version step at a time).
-- Fail fast (`LOX_ERR_SCHEMA` or `LOX_ERR_INVALID`) on unsafe transforms.
-
-## 5) Data compatibility patterns
-
-- Add column:
-  - define default value in migration callback for existing rows
-- Rename/reshape column:
-  - copy old value to new field explicitly in callback
-- Drop column:
-  - ensure dependent logic no longer reads dropped field before shipping migration
-
-## 6) Test-backed reference
-
-See:
-
-- `tests/test_migration.c`
-
-Covered scenarios:
-
-- migration callback called on version bump
-- no callback call for matching version
-- version mismatch without callback returns `LOX_ERR_SCHEMA`
-- callback error propagation
+The focused evidence is in `tests/test_migration.c`, including physical-layout
+rejection, callback locking and recursion, WAL ordering, reopen, and injected
+storage failures.

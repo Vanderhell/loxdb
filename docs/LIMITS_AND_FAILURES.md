@@ -6,7 +6,8 @@ Single source of truth for runtime limits, invariants, and expected fail behavio
 ## Hard Invariants
 - RAM budget invariants:
   - total runtime heap is one-shot budget (`LOX_RAM_KB` or `cfg.ram_kb`).
-  - engine split must sum to exactly 100 (`kv_pct + ts_pct + rel_pct`).
+  - percentages for enabled engines must be nonzero and disabled engines must be zero.
+  - default and runtime percentages are normalized across enabled engines to sum to 100.
   - invalid split fails fast with `LOX_ERR_INVALID`.
 - Storage geometry invariants:
   - `erase_size > 0`
@@ -14,11 +15,14 @@ Single source of truth for runtime limits, invariants, and expected fail behavio
   - storage callbacks `read/write/erase/sync` must all be non-null for durable mode.
 - Engine split invariants:
   - defaults from compile-time macros are used when runtime split is not provided.
-  - if any runtime split field is set, all three must be set and valid.
+  - a runtime split may name only enabled engines; it is normalized before arenas are calculated.
+  - all arena bytes are assigned deterministically, including rounding remainder.
 
 ## Preflight Contract
 - Use `lox_preflight(const lox_cfg_t*, lox_preflight_report_t*)` before `lox_init`.
 - `lox_preflight` is deterministic for identical input config.
+- `lox_preflight` and `lox_init` use the same RAM and persistent-storage layout calculator.
+- `storage_required_bytes` is the exact authoritative capacity requirement for that configuration.
 - It reports:
   - effective RAM split and arena bytes,
   - storage feasibility (`storage_required_bytes` vs `storage_capacity_bytes`),
@@ -52,9 +56,22 @@ Single source of truth for runtime limits, invariants, and expected fail behavio
 | LOX_ERR_INVALID | bad config/contract/API misuse | sometimes | fix config/API call order |
 | LOX_ERR_NO_MEM | RAM budget/allocation too small | yes | reduce profile or increase `ram_kb` |
 | LOX_ERR_FULL | bounded structure saturated | yes | compact/clear/reduce pressure |
-| LOX_ERR_STORAGE | I/O error or storage capacity insufficient | yes | validate backend + increase storage budget |
+| LOX_ERR_STORAGE | deterministic storage/configuration failure before mutation begins | yes | validate backend, capacity, and operation |
+| LOX_ERR_INDETERMINATE | storage failed after a mutation may have begun | only by reopen | stop mutating, deinitialize, reopen, and inspect recovered durable state |
 | LOX_ERR_CORRUPT | durable image/page/WAL corruption | depends | recreate/recover image |
 | LOX_ERR_EXISTS | duplicate create/register | yes | treat as idempotent or query first |
+
+## Mutation failure boundary
+
+- Validation, capacity, or admission failures before durable mutation begins are
+  deterministic and do not change logical state.
+- Once a storage write, erase, or sync may have partially succeeded, the
+  operation returns `LOX_ERR_INDETERMINATE`.
+- An indeterminate failure marks the handle storage-faulted. Mutations,
+  `lox_flush()`, and `lox_compact()` remain blocked with
+  `LOX_ERR_INDETERMINATE`; `lox_deinit()` reports the same condition.
+- Reopen the storage with a fresh handle to replay the last valid durable state.
+  Do not retry mutations on the faulted handle.
 
 ## What Core Does Not Do
 - policy orchestration,

@@ -2,13 +2,13 @@
 
 # loxdb
 
-> Predictable-memory database for microcontrollers. KV + time-series + relational, one malloc, WAL recovery.
+> Predictable-memory database for microcontrollers. KV + time-series + relational, bounded core allocation, WAL recovery.
 
 [![CI](https://github.com/Vanderhell/loxdb/actions/workflows/ci.yml/badge.svg)](https://github.com/Vanderhell/loxdb/actions/workflows/ci.yml)
 [![Language: C99](https://img.shields.io/badge/language-C99-blue)](https://en.wikipedia.org/wiki/C99)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform: MCU | Linux | Windows | macOS](https://img.shields.io/badge/platform-MCU%20%7C%20Linux%20%7C%20Windows%20%7C%20macOS-informational)](https://github.com/Vanderhell/loxdb)
-[![Tests](https://img.shields.io/badge/tests-504%20microtests-brightgreen)](docs/TEST_SUITE_SIZE.md)
+[![Tests](https://img.shields.io/badge/tests-571%20microtests-brightgreen)](docs/TEST_SUITE_SIZE.md)
 [![Release](https://img.shields.io/github/v/release/Vanderhell/loxdb)](https://github.com/Vanderhell/loxdb/releases)
 
 ## Release artifacts
@@ -21,10 +21,13 @@
 
 loxdb is a compact embedded database written in C99 for firmware and small edge runtimes.
 It provides one unified API over three engines (KV, time-series, relational) and is designed around predictable memory behavior.
-The library allocates once at `lox_init()` and runs without allocator churn during normal operation.
+On successful initialization, the core makes one main heap allocation and has
+no allocator churn during normal database operations; `lox_deinit()` releases
+that heap. Ports and user callbacks may allocate independently and are outside
+this core guarantee.
 Persistence is optional via a small storage HAL (read/write/erase/sync), with WAL + recovery when enabled.
 
-Test suite size: **504 microtest cases across 48 test files (+1 C++ wrapper test), organized into ~78 CTest entries including RAM-budget sweep matrices.**
+Test suite size: **571 microtest cases across 61 C test files, plus one C++ wrapper test.**
 
 ## Why loxdb? (When to use / when not to)
 
@@ -91,24 +94,18 @@ ctest --preset ci-debug-linux
 - **TS (time-series):** typed telemetry streams (`F32/I32/U32/RAW`) with timestamp range queries and retention policies.
 - **REL (relational):** small fixed-schema tables with one indexed column, designed for predictable memory use.
 
-## Hardware validation
+## Verification scope
 
 Hardware-specific claims are separated from source claims in [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
 
-| Platform | Status | Benchmarks |
-|---|---|---|
-| ESP32-S3 N16R8 (16MB NOR flash, 8MB PSRAM) | VERIFIED WITH DEFINED LIMITS - KV/TS/REL engines, WAL recovery, power-loss scenarios | [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) |
-
-Verified using the ESP32-S3 bench runners under [`bench/`](bench/).
+The published ESP32-S3 measurements use an in-RAM flash-like storage backend.
+They are CPU and logical-backend measurements, not physical NOR, brownout, or
+endurance validation. See [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 
 ## Project status & roadmap
 
 - Current release line: `v1.4.5` (see `CHANGELOG.md`).
 - Verification status is tracked explicitly in [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
-
-## loxdb vs loxdb_pro
-
-This repository is the MIT-licensed OSS edition. A planned commercial edition (`loxdb_pro`) will live in a separate repository as additive modules on top of `loxdb` (it will not replace or relicense the MIT core). See `docs/EDITIONS.md`.
 
 ## Documentation
 

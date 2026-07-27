@@ -23,6 +23,17 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ## [Unreleased]
 
+### Changed
+
+- Aligned documentation with the implemented allocation, WAL, timestamp,
+  mutation-failure, lock, preflight, RAM-split, durable-profile, and
+  schema-version contracts.
+- Made core cppcheck, clang-tidy, and measured line coverage blocking CI gates;
+  added Linux GCC Release and Clang Debug/Release test lanes while preserving
+  the platform Debug and sanitizer matrices.
+- Corrected ESP32 benchmark and evidence wording to identify the in-RAM storage
+  backend and avoid physical-media claims.
+
 ## [1.4.4] - 2026-07-17
 
 ### Changed

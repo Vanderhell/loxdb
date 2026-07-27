@@ -48,11 +48,11 @@ static LOX_UNUSED_FN uint32_t lox_ts_stream_val_size(const lox_ts_stream_t *stre
 }
 
 static LOX_UNUSED_FN uint8_t *lox_ts_sample_ptr(lox_ts_stream_t *stream, uint32_t idx) {
-    return stream->buf + (idx * stream->sample_stride);
+    return stream->buf + ((size_t)idx * (size_t)stream->sample_stride);
 }
 
 static LOX_UNUSED_FN const uint8_t *lox_ts_sample_ptr_const(const lox_ts_stream_t *stream, uint32_t idx) {
-    return stream->buf + (idx * stream->sample_stride);
+    return stream->buf + ((size_t)idx * (size_t)stream->sample_stride);
 }
 
 static LOX_UNUSED_FN void lox_ts_read_sample(const lox_ts_stream_t *stream, uint32_t idx, lox_ts_sample_t *out) {
@@ -80,12 +80,12 @@ static LOX_UNUSED_FN void lox_ts_copy_sample_slot(const lox_ts_stream_t *stream,
 
 typedef struct {
     lox_ts_stream_t *stream;
+    uint8_t *new_buf;
     uint32_t stride;
     uint32_t min_bytes;
     uint32_t alloc_bytes;
     uint32_t capacity;
     uint32_t rem_num;
-    uint8_t *new_buf;
     uint32_t keep_count;
 } lox_ts_layout_item_t;
 

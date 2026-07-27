@@ -21,11 +21,11 @@ Other technical notes:
 
 Internal/process documents live in `docs/internal/`.
 
-## Distribution (planned)
+## Distribution
 
 Publishing is maintainer-driven and release packaging is verified through the
 CI/release install-and-consumer gates:
 
-- PlatformIO Registry (`library.json`)
-- Arduino Library Manager (`library.properties`)
+- PlatformIO package metadata (`library.json`)
+- Arduino library metadata (`library.properties`)
 - CMake install + `find_package(loxdb)` via installed config files (see `CMakeLists.txt` and `cmake/loxdbConfig.cmake.in`)

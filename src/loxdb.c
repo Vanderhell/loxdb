@@ -537,12 +537,10 @@ static void lox_fill_wal_admission(const lox_core_t *core,
                 would_compact = 1u;
                 used_after = 0u;
             }
-            if (used_after > (size_t)UINT32_MAX) {
-                would_compact = 1u;
-            } else {
+            if (used_after <= (size_t)UINT32_MAX) {
                 fill = lox_fill_pct_u32((uint32_t)used_after, total);
             }
-            if (fill >= threshold) {
+            if (used_after > (size_t)UINT32_MAX || fill >= threshold) {
                 would_compact = 1u;
             }
         }
@@ -647,7 +645,6 @@ cleanup:
     if (lock_created) {
         core->lock_destroy(core->lock_handle);
         core->lock_handle = NULL;
-        lock_created = false;
     }
     free(core->heap);
     memset(db, 0, sizeof(*db));
