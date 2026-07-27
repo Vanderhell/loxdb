@@ -4,6 +4,63 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog and follows semantic versioning intent where possible.
 
+## [Unreleased]
+
+## [1.5.0] - 2026-07-27
+
+### Added
+
+- Added deterministic mutation-admission checks before WAL commit and the
+  `LOX_ERR_INDETERMINATE` result for storage failures whose durability outcome
+  cannot be determined.
+- Added storage-faulted handle behavior after indeterminate mutation failures.
+- Added detailed preflight storage-layout reporting based on the same layout
+  calculation used by initialization.
+- Added focused persistence-format, timestamp-width, mutation-atomicity,
+  schema-transition, allocator, corruption, and failure-injection coverage.
+
+### Changed
+
+- Redesigned WAL mutation persistence as append-only records without per-entry
+  header rewrites; legacy v1.4.5 WAL and snapshot formats remain readable and
+  are upgraded through the supported recovery path.
+- Persisted timestamps and KV expiration values at a fixed 64-bit width while
+  retaining compatibility with legacy 32-bit persisted values.
+- Moved operation scratch/staging use into initialization-owned memory so
+  normal operations perform no allocator calls after successful initialization.
+- Normalized RAM splits for disabled engines and shared the RAM/storage layout
+  calculation between preflight and initialization.
+- Kept `FOOTPRINT_MIN` WAL-enabled and aligned its profile and size gates with
+  that durable contract.
+- Restricted schema-version transitions to physically identical schemas;
+  incompatible layouts fail before callbacks, WAL writes, or version changes.
+- Hardened lock creation, cleanup, callback-outside-lock, and deinitialization
+  lifecycle behavior.
+- Made core cppcheck, clang-tidy, coverage, compiler-matrix, package, profile,
+  and footprint correctness gates blocking where applicable.
+- Synchronized the distributed Arduino benchmark sources with the canonical
+  implementation and added a bundle-integrity gate.
+
+### Fixed
+
+- Corrected GitHub Actions static-analysis artifact paths and made the macOS
+  build avoid the Linux-only GNU linker wrapping test.
+- Corrected WAL corruption regression coverage so it damages a real append
+  record before crash-style recovery, without leaking the abandoned test heap.
+- Rejected exhausted KV slot searches before reading undefined lookup outputs.
+
+### Compatibility
+
+- Existing public enum numeric values are unchanged;
+  `LOX_ERR_INDETERMINATE = -15` is appended after `LOX_ERR_MODIFIED`.
+- Existing C and C++ source consumers remain supported, and CMake package
+  compatibility accepts 1.5 consumers while retaining same-major matching.
+- `lox_t` and `lox_schema_t` opaque storage and alignment remain unchanged and
+  sufficient for the current implementation.
+- `lox_preflight_report_t` gained additive layout fields; consumers using that
+  structure must be recompiled and should not assume binary layout compatibility
+  with a v1.4.5 object.
+
 ## [1.4.5] - 2026-07-17
 
 ### Changed
@@ -20,19 +77,6 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
     aligned to the release version.
   - `README.md` current release line updated for the next tag.
   - `docs/internal/release-notes.md` draft updated for the next release.
-
-## [Unreleased]
-
-### Changed
-
-- Aligned documentation with the implemented allocation, WAL, timestamp,
-  mutation-failure, lock, preflight, RAM-split, durable-profile, and
-  schema-version contracts.
-- Made core cppcheck, clang-tidy, and measured line coverage blocking CI gates;
-  added Linux GCC Release and Clang Debug/Release test lanes while preserving
-  the platform Debug and sanitizer matrices.
-- Corrected ESP32 benchmark and evidence wording to identify the in-RAM storage
-  backend and avoid physical-media claims.
 
 ## [1.4.4] - 2026-07-17
 
@@ -99,8 +143,6 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 - Build/test wiring:
   - registered `test_selfcheck`, `test_wcet_bounds`, and `test_ts_log_retain` in CMake.
   - added dedicated `lox_ts_log_retain` test library target so default TS policy behavior remains unchanged.
-
-## [Unreleased]
 
 ## [1.4.2] - 2026-07-16
 
