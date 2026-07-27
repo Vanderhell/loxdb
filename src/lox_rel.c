@@ -342,6 +342,42 @@ static LOX_UNUSED_FN lox_err_t rel_validate_table_and_handle(lox_t *db, lox_tabl
     return LOX_OK;
 }
 
+static LOX_UNUSED_FN bool rel_physical_schema_equal(const lox_table_t *table,
+                                                    const lox_schema_impl_t *schema) {
+    uint32_t i;
+    size_t index_key_size = 0u;
+
+    if (table == NULL || schema == NULL ||
+        strcmp(table->name, schema->name) != 0 ||
+        table->max_rows != schema->max_rows ||
+        table->col_count != schema->col_count ||
+        table->row_size != schema->row_size ||
+        table->index_col != schema->index_col) {
+        return false;
+    }
+    if (schema->index_col != UINT32_MAX) {
+        if (schema->index_col >= schema->col_count) {
+            return false;
+        }
+        index_key_size = schema->cols[schema->index_col].size;
+    }
+    if (table->index_key_size != index_key_size) {
+        return false;
+    }
+    for (i = 0u; i < schema->col_count; ++i) {
+        const lox_col_desc_t *existing = &table->cols[i];
+        const lox_col_desc_t *proposed = &schema->cols[i];
+        if (strcmp(existing->name, proposed->name) != 0 ||
+            existing->type != proposed->type ||
+            existing->size != proposed->size ||
+            existing->offset != proposed->offset ||
+            existing->is_index != proposed->is_index) {
+            return false;
+        }
+    }
+    return true;
+}
+
 #if LOX_ENABLE_REL
 lox_err_t lox_schema_init(lox_schema_t *schema, const char *name, uint32_t max_rows) {
     lox_schema_impl_t *impl;
@@ -465,7 +501,7 @@ lox_err_t lox_schema_seal(lox_schema_t *schema) {
 
 lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema) {
     lox_core_t *core;
-    lox_schema_impl_t *impl;
+    lox_schema_impl_t *impl = NULL;
     lox_table_t *table;
     lox_table_t *existing;
     uint32_t alive_bytes;
@@ -506,7 +542,16 @@ lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema) {
     wal_mode = rel_wal_mode(core);
     existing = rel_find_table(core, impl->name);
     if (existing != NULL) {
+        if (!rel_physical_schema_equal(existing, impl)) {
+            rc = LOX_ERR_SCHEMA;
+            goto unlock;
+        }
         if (existing->schema_version == impl->schema_version) {
+            rc = LOX_OK;
+            goto unlock;
+        }
+        if (core->wal_replaying) {
+            existing->schema_version = impl->schema_version;
             rc = LOX_OK;
             goto unlock;
         }
@@ -619,21 +664,31 @@ unlock:
             LOX_UNLOCK(db);
             return LOX_ERR_NOT_FOUND;
         }
+        if (existing->schema_version != migrate_old ||
+            !rel_physical_schema_equal(existing, impl)) {
+            LOX_UNLOCK(db);
+            return LOX_ERR_SCHEMA;
+        }
         if (rel_wal_mode(core)) {
             rc = lox_persist_rel_table_create(db, schema);
             if (rc != LOX_OK) {
                 LOX_UNLOCK(db);
                 return rc;
             }
-        }
-        existing->schema_version = migrate_new;
-        if (!rel_wal_mode(core)) {
+            existing->schema_version = migrate_new;
+        } else if (core->storage != NULL) {
+            existing->schema_version = migrate_new;
             rc = lox_storage_flush(db);
+            if (rc != LOX_OK) {
+                existing->schema_version = migrate_old;
+                LOX_UNLOCK(db);
+                return rc;
+            }
         } else {
-            rc = LOX_OK;
+            existing->schema_version = migrate_new;
         }
         LOX_UNLOCK(db);
-        return rc;
+        return LOX_OK;
     }
     return rc;
 }
