@@ -1,5 +1,3 @@
-![loxdb](docs/banner.svg)
-
 # loxdb
 
 > Predictable-memory database for microcontrollers. KV + time-series + relational, bounded core allocation, WAL recovery.
