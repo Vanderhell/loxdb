@@ -64,6 +64,14 @@ MDB_TEST(json_record_encode_decode) {
     ASSERT_EQ(ttl, 77u);
 }
 
+MDB_TEST(json_escape_cstr_escapes_json_metacharacters) {
+    char escaped[64];
+    size_t used = 0u;
+
+    ASSERT_EQ(lox_json_escape_cstr("a\"b\\c\n\t", escaped, sizeof(escaped), &used), LOX_OK);
+    ASSERT_MEM_EQ(escaped, "a\\\"b\\\\c\\u000A\\u0009", used + 1u);
+}
+
 MDB_TEST(json_record_decode_invalid_rejected) {
     char key[32];
     uint8_t value[8];
@@ -78,6 +86,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, json_bool_roundtrip);
     MDB_RUN_TEST(setup_db, teardown_db, json_cstr_roundtrip);
     MDB_RUN_TEST(setup_db, teardown_db, json_record_encode_decode);
+    MDB_RUN_TEST(setup_db, teardown_db, json_escape_cstr_escapes_json_metacharacters);
     MDB_RUN_TEST(setup_db, teardown_db, json_record_decode_invalid_rejected);
     return MDB_RESULT();
 }

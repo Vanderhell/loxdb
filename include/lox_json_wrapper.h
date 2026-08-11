@@ -20,6 +20,9 @@ lox_err_t lox_json_kv_get_bool(lox_t *db, const char *key, bool *out_value);
 lox_err_t lox_json_kv_set_cstr(lox_t *db, const char *key, const char *value, uint32_t ttl);
 lox_err_t lox_json_kv_get_cstr(lox_t *db, const char *key, char *out_buf, size_t out_buf_len, size_t *out_len);
 
+/* Escapes a NUL-terminated string for use inside a JSON string literal. */
+lox_err_t lox_json_escape_cstr(const char *input, char *out, size_t out_len, size_t *out_used);
+
 /* Encodes a record as:
  * {"key":"...","ttl":123,"value_hex":"A1B2..."}
  *

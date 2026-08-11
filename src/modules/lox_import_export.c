@@ -73,6 +73,21 @@ static lox_err_t ie_append_char(char *out, size_t out_len, size_t *pos, char c) 
     return LOX_OK;
 }
 
+static lox_err_t ie_append_escaped(char *out, size_t out_len, size_t *pos, const char *s) {
+    size_t used = 0u;
+    lox_err_t rc;
+
+    if (*pos >= out_len) {
+        return LOX_ERR_OVERFLOW;
+    }
+    rc = lox_json_escape_cstr(s, out + *pos, out_len - *pos, &used);
+    if (rc != LOX_OK) {
+        return rc;
+    }
+    *pos += used;
+    return LOX_OK;
+}
+
 static lox_err_t ie_append_u32(char *out, size_t out_len, size_t *pos, uint32_t v) {
     char buf[16];
     int n = snprintf(buf, sizeof(buf), "%u", (unsigned)v);
@@ -387,7 +402,7 @@ static bool ie_ts_export_cb(const lox_ts_sample_t *sample, void *ctx) {
 
     rc = ie_append(x->out, x->out_len, x->pos, "{\"stream\":\"");
     if (rc != LOX_OK) { x->rc = rc; return false; }
-    rc = ie_append(x->out, x->out_len, x->pos, x->desc->name);
+    rc = ie_append_escaped(x->out, x->out_len, x->pos, x->desc->name);
     if (rc != LOX_OK) { x->rc = rc; return false; }
     rc = ie_append(x->out, x->out_len, x->pos, "\",\"type\":\"");
     if (rc != LOX_OK) { x->rc = rc; return false; }
@@ -420,7 +435,7 @@ static bool ie_rel_export_cb(const void *row_buf, void *ctx) {
 
     rc = ie_append(x->out, x->out_len, x->pos, "{\"table\":\"");
     if (rc != LOX_OK) { x->rc = rc; return false; }
-    rc = ie_append(x->out, x->out_len, x->pos, x->table_name);
+    rc = ie_append_escaped(x->out, x->out_len, x->pos, x->table_name);
     if (rc != LOX_OK) { x->rc = rc; return false; }
     rc = ie_append(x->out, x->out_len, x->pos, "\",\"row_hex\":\"");
     if (rc != LOX_OK) { x->rc = rc; return false; }

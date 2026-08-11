@@ -126,16 +126,16 @@ MDB_TEST(ie_ts_roundtrip_selected_streams) {
     uint32_t skipped = 0u;
     lox_ts_sample_t sample;
 
-    ASSERT_EQ(lox_ts_register(&g_src, "u32s", LOX_TS_U32, 0u), LOX_OK);
+    ASSERT_EQ(lox_ts_register(&g_src, "u\"32", LOX_TS_U32, 0u), LOX_OK);
     ASSERT_EQ(lox_ts_register(&g_src, "raws", LOX_TS_RAW, 3u), LOX_OK);
-    ASSERT_EQ(lox_ts_insert(&g_src, "u32s", 10u, &v1), LOX_OK);
-    ASSERT_EQ(lox_ts_insert(&g_src, "u32s", 20u, &v2), LOX_OK);
+    ASSERT_EQ(lox_ts_insert(&g_src, "u\"32", 10u, &v1), LOX_OK);
+    ASSERT_EQ(lox_ts_insert(&g_src, "u\"32", 20u, &v2), LOX_OK);
     ASSERT_EQ(lox_ts_insert(&g_src, "raws", 30u, rawv), LOX_OK);
 
-    ASSERT_EQ(lox_ts_register(&g_dst, "u32s", LOX_TS_U32, 0u), LOX_OK);
+    ASSERT_EQ(lox_ts_register(&g_dst, "u\"32", LOX_TS_U32, 0u), LOX_OK);
     ASSERT_EQ(lox_ts_register(&g_dst, "raws", LOX_TS_RAW, 3u), LOX_OK);
 
-    streams[0].name = "u32s";
+    streams[0].name = "u\"32";
     streams[0].type = LOX_TS_U32;
     streams[0].raw_size = 0u;
     streams[1].name = "raws";
@@ -150,7 +150,7 @@ MDB_TEST(ie_ts_roundtrip_selected_streams) {
     ASSERT_EQ(imported, 3u);
     ASSERT_EQ(skipped, 0u);
 
-    ASSERT_EQ(lox_ts_last(&g_dst, "u32s", &sample), LOX_OK);
+    ASSERT_EQ(lox_ts_last(&g_dst, "u\"32", &sample), LOX_OK);
     ASSERT_EQ(sample.ts, 20u);
     ASSERT_EQ(sample.v.u32, 22u);
     ASSERT_EQ(lox_ts_last(&g_dst, "raws", &sample), LOX_OK);
