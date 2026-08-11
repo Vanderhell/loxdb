@@ -434,7 +434,8 @@ Storage/capacity behavior:
 
 Timestamp and TTL persistence:
 
-- `lox_timestamp_t` follows `LOX_TIMESTAMP_TYPE` (default `uint32_t`).
+- `lox_timestamp_t` follows `LOX_TIMESTAMP_TYPE` (default `uint32_t`), which
+  must be an unsigned integer type no wider than 64 bits.
 - TTL addition rejects overflow for the configured timestamp width.
 - Current snapshot and WAL formats serialize TS timestamps as unsigned 64-bit
   values, independent of the configured in-memory timestamp width.
