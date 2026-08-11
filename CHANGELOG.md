@@ -23,6 +23,11 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 - Hardened import/export field parsing so quoted field names embedded in JSON
   string values cannot be treated as object fields.
 
+### Changed
+
+- Updated embedded-oriented quick-start examples to keep the database handle
+  in static storage rather than consuming an application stack frame.
+
 ### Tests
 
 - Added immediate crash/reopen coverage for no-WAL time-series and relational

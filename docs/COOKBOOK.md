@@ -8,7 +8,7 @@ Short recipes for common integration paths.
 #include "lox.h"
 
 int main(void) {
-    lox_t db;
+    static lox_t db; /* The handle can be several KiB in embedded profiles. */
     lox_cfg_t cfg = {0};
 
     cfg.ram_kb = 32u;

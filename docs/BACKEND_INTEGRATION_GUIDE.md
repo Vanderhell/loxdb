@@ -54,7 +54,7 @@ Flow:
 #include "lox.h"
 #include "lox_backend_open.h"
 
-lox_t db;
+static lox_t db; /* Prefer static storage for embedded stack budgets. */
 lox_cfg_t cfg = {0};
 lox_backend_open_session_t session;
 lox_storage_t raw_storage;       /* filled by your platform */

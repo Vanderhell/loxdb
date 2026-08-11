@@ -45,7 +45,7 @@ Test suite size: **571 microtest cases across 61 C test files, plus one C++ wrap
 #include "lox_port_ram.h"
 
 int main(void) {
-    lox_t db;
+    static lox_t db; /* Keep the potentially multi-KiB handle off small stacks. */
     lox_storage_t storage;
     lox_cfg_t cfg = {0};
 
