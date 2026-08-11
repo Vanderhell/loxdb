@@ -140,6 +140,16 @@ static void crash_drop_db(void) {
 static void noop(void) {
 }
 
+static void create_no_wal_table(lox_table_t **out_table) {
+    lox_schema_t schema;
+
+    ASSERT_EQ(lox_schema_init(&schema, "records", 8u), LOX_OK);
+    ASSERT_EQ(lox_schema_add(&schema, "id", LOX_COL_U32, sizeof(uint32_t), true), LOX_OK);
+    ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
+    ASSERT_EQ(lox_table_create(&g_db, &schema), LOX_OK);
+    ASSERT_EQ(lox_table_get(&g_db, "records", out_table), LOX_OK);
+}
+
 MDB_TEST(no_wal_preflight_and_exact_capacity_match_init) {
     lox_preflight_report_t report;
     lox_cfg_t cfg = make_cfg();
@@ -245,9 +255,76 @@ MDB_TEST(no_wal_interrupted_snapshot_keeps_previous_bank) {
     ASSERT_EQ(lox_deinit(&g_db), LOX_OK);
 }
 
+MDB_TEST(no_wal_ts_mutations_survive_immediate_crash) {
+    lox_preflight_report_t report;
+    lox_ts_sample_t sample;
+    uint32_t value = 42u;
+
+    prepare_virgin_media(&report);
+    g_storage.capacity = report.storage_required_bytes;
+    ASSERT_EQ(open_db(), LOX_OK);
+    ASSERT_EQ(lox_ts_register(&g_db, "temp", LOX_TS_U32, 0u), LOX_OK);
+    ASSERT_EQ(lox_ts_insert(&g_db, "temp", 100u, &value), LOX_OK);
+    crash_drop_db();
+
+    ASSERT_EQ(open_db(), LOX_OK);
+    ASSERT_EQ(lox_ts_last(&g_db, "temp", &sample), LOX_OK);
+    ASSERT_EQ(sample.ts, 100u);
+    ASSERT_EQ(sample.v.u32, value);
+    ASSERT_EQ(lox_ts_clear(&g_db, "temp"), LOX_OK);
+    crash_drop_db();
+
+    ASSERT_EQ(open_db(), LOX_OK);
+    ASSERT_EQ(lox_ts_last(&g_db, "temp", &sample), LOX_ERR_NOT_FOUND);
+    ASSERT_EQ(lox_deinit(&g_db), LOX_OK);
+}
+
+MDB_TEST(no_wal_rel_mutations_survive_immediate_crash) {
+    lox_preflight_report_t report;
+    lox_table_t *table;
+    uint32_t id = 7u;
+    uint32_t count = 0u;
+    uint32_t deleted = 0u;
+
+    prepare_virgin_media(&report);
+    g_storage.capacity = report.storage_required_bytes;
+    ASSERT_EQ(open_db(), LOX_OK);
+    create_no_wal_table(&table);
+    crash_drop_db();
+
+    ASSERT_EQ(open_db(), LOX_OK);
+    ASSERT_EQ(lox_table_get(&g_db, "records", &table), LOX_OK);
+    ASSERT_EQ(lox_rel_insert(&g_db, table, &id), LOX_OK);
+    crash_drop_db();
+
+    ASSERT_EQ(open_db(), LOX_OK);
+    ASSERT_EQ(lox_table_get(&g_db, "records", &table), LOX_OK);
+    ASSERT_EQ(lox_rel_count(table, &count), LOX_OK);
+    ASSERT_EQ(count, 1u);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, &deleted), LOX_OK);
+    ASSERT_EQ(deleted, 1u);
+    crash_drop_db();
+
+    ASSERT_EQ(open_db(), LOX_OK);
+    ASSERT_EQ(lox_table_get(&g_db, "records", &table), LOX_OK);
+    ASSERT_EQ(lox_rel_count(table, &count), LOX_OK);
+    ASSERT_EQ(count, 0u);
+    ASSERT_EQ(lox_rel_insert(&g_db, table, &id), LOX_OK);
+    ASSERT_EQ(lox_rel_clear(&g_db, table), LOX_OK);
+    crash_drop_db();
+
+    ASSERT_EQ(open_db(), LOX_OK);
+    ASSERT_EQ(lox_table_get(&g_db, "records", &table), LOX_OK);
+    ASSERT_EQ(lox_rel_count(table, &count), LOX_OK);
+    ASSERT_EQ(count, 0u);
+    ASSERT_EQ(lox_deinit(&g_db), LOX_OK);
+}
+
 int main(void) {
     MDB_RUN_TEST(noop, noop, no_wal_preflight_and_exact_capacity_match_init);
     MDB_RUN_TEST(noop, noop, no_wal_stats_admission_and_snapshot_persistence_are_zero_wal);
     MDB_RUN_TEST(noop, noop, no_wal_interrupted_snapshot_keeps_previous_bank);
+    MDB_RUN_TEST(noop, noop, no_wal_ts_mutations_survive_immediate_crash);
+    MDB_RUN_TEST(noop, noop, no_wal_rel_mutations_survive_immediate_crash);
     return MDB_RESULT();
 }

@@ -632,6 +632,7 @@ lox_err_t lox_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const v
     lox_ts_stream_t *stream;
     lox_ts_sample_t sample;
     lox_err_t rc = LOX_OK;
+    bool wal_mode;
 
     if (db == NULL || val == NULL) {
         return LOX_ERR_INVALID;
@@ -661,6 +662,9 @@ lox_err_t lox_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const v
         goto unlock;
     }
 
+    wal_mode = core->wal_enabled && core->storage != NULL &&
+               !core->storage_loading && !core->wal_replaying;
+
 #if LOX_TS_OVERFLOW_POLICY == LOX_TS_POLICY_REJECT
     if (stream->count == stream->capacity) {
         LOX_LOG("WARN",
@@ -681,7 +685,13 @@ lox_err_t lox_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const v
     memset(&sample, 0, sizeof(sample));
     sample.ts = ts;
     lox_ts_set_value(stream, &sample, val);
-    rc = lox_persist_ts_insert(db, name, ts, val, (stream->type == LOX_TS_RAW) ? stream->raw_size : 4u);
+    if (wal_mode) {
+        rc = lox_persist_ts_insert(db,
+                                   name,
+                                   ts,
+                                   val,
+                                   (stream->type == LOX_TS_RAW) ? stream->raw_size : 4u);
+    }
     if (rc == LOX_OK) {
 #if LOX_TS_OVERFLOW_POLICY == LOX_TS_POLICY_DOWNSAMPLE
         if (stream->count == stream->capacity) {
@@ -699,6 +709,10 @@ lox_err_t lox_ts_insert(lox_t *db, const char *name, lox_timestamp_t ts, const v
 #endif
         lox_ts_rb_insert(stream, &sample);
         core->ts.mutation_seq++;
+        if (!wal_mode) {
+            /* No-WAL durability requires the snapshot to contain the new sample. */
+            rc = lox_storage_flush(db);
+        }
     }
 
 unlock:

@@ -6,6 +6,17 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ## [Unreleased]
 
+### Fixed
+
+- Corrected no-WAL time-series and relational mutation ordering so successful
+  inserts and deletes are included in the synchronized dual-bank snapshot
+  before the operation returns.
+
+### Tests
+
+- Added immediate crash/reopen coverage for no-WAL time-series and relational
+  table, insert, delete, and clear mutations.
+
 ## [1.5.1] - 2026-07-27
 
 ### Fixed
