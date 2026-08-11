@@ -245,45 +245,51 @@ static lox_err_t ie_parse_json_hex_string(const char **p, uint8_t *out, size_t o
     return LOX_OK;
 }
 
-static lox_err_t ie_parse_object_field_string(const char *obj, const char *field_name, char *out, size_t out_len) {
-    char needle[64];
+static const char *ie_find_object_field_value(const char *obj, const char *field_name) {
+    size_t field_len;
     const char *p;
-    if (strlen(field_name) + 4u >= sizeof(needle)) return LOX_ERR_INVALID;
-    snprintf(needle, sizeof(needle), "\"%s\"", field_name);
-    p = strstr(obj, needle);
+
+    if (obj == NULL || field_name == NULL) return NULL;
+    field_len = strlen(field_name);
+    p = obj;
+    while (*p != '\0') {
+        const char *start;
+        const char *end;
+        const char *after;
+
+        if (*p++ != '"') continue;
+        start = p;
+        while (*p != '\0' && *p != '"') {
+            if (*p == '\\' && p[1] != '\0') ++p;
+            ++p;
+        }
+        if (*p != '"') return NULL;
+        end = p++;
+        after = p;
+        ie_skip_ws(&after);
+        if (*after == ':' && (size_t)(end - start) == field_len &&
+            memcmp(start, field_name, field_len) == 0) {
+            return after + 1u;
+        }
+    }
+    return NULL;
+}
+
+static lox_err_t ie_parse_object_field_string(const char *obj, const char *field_name, char *out, size_t out_len) {
+    const char *p = ie_find_object_field_value(obj, field_name);
     if (p == NULL) return LOX_ERR_NOT_FOUND;
-    p += strlen(needle);
-    ie_skip_ws(&p);
-    if (*p != ':') return LOX_ERR_INVALID;
-    p++;
     return ie_parse_json_string(&p, out, out_len);
 }
 
 static lox_err_t ie_parse_object_field_u32(const char *obj, const char *field_name, uint32_t *out) {
-    char needle[64];
-    const char *p;
-    if (strlen(field_name) + 4u >= sizeof(needle)) return LOX_ERR_INVALID;
-    snprintf(needle, sizeof(needle), "\"%s\"", field_name);
-    p = strstr(obj, needle);
+    const char *p = ie_find_object_field_value(obj, field_name);
     if (p == NULL) return LOX_ERR_NOT_FOUND;
-    p += strlen(needle);
-    ie_skip_ws(&p);
-    if (*p != ':') return LOX_ERR_INVALID;
-    p++;
     return ie_parse_json_u32(&p, out);
 }
 
 static lox_err_t ie_parse_object_field_hex(const char *obj, const char *field_name, uint8_t *out, size_t out_len, size_t *out_used) {
-    char needle[64];
-    const char *p;
-    if (strlen(field_name) + 4u >= sizeof(needle)) return LOX_ERR_INVALID;
-    snprintf(needle, sizeof(needle), "\"%s\"", field_name);
-    p = strstr(obj, needle);
+    const char *p = ie_find_object_field_value(obj, field_name);
     if (p == NULL) return LOX_ERR_NOT_FOUND;
-    p += strlen(needle);
-    ie_skip_ws(&p);
-    if (*p != ':') return LOX_ERR_INVALID;
-    p++;
     return ie_parse_json_hex_string(&p, out, out_len, out_used);
 }
 

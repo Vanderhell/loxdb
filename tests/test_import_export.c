@@ -158,6 +158,21 @@ MDB_TEST(ie_ts_roundtrip_selected_streams) {
     ASSERT_MEM_EQ(sample.v.raw, rawv, 3u);
 }
 
+MDB_TEST(ie_ts_field_names_inside_string_values_are_not_fields) {
+    const char json[] =
+        "{\"format\":\"loxdb.ts.v1\",\"items\":[{\"stream\":\"s\",\"type\":\"u32\","
+        "\"value_hex\":\"00\\\"ts\\\":1\"}]}";
+    lox_ie_ts_stream_desc_t stream;
+    uint32_t imported = 0u;
+    uint32_t skipped = 0u;
+
+    ASSERT_EQ(lox_ts_register(&g_dst, "s", LOX_TS_U32, 0u), LOX_OK);
+    stream.name = "s";
+    stream.type = LOX_TS_U32;
+    stream.raw_size = 0u;
+    ASSERT_EQ(lox_ie_import_ts_json(&g_dst, json, &stream, 1u, NULL, &imported, &skipped), LOX_ERR_NOT_FOUND);
+}
+
 MDB_TEST(ie_rel_roundtrip_selected_tables) {
     lox_ie_rel_table_desc_t tables[1];
     lox_table_t *src_t = NULL;
@@ -198,6 +213,7 @@ int main(void) {
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_import_respects_overwrite_flag);
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_import_invalid_payload_rejected);
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_ts_roundtrip_selected_streams);
+    MDB_RUN_TEST(setup_pair, teardown_pair, ie_ts_field_names_inside_string_values_are_not_fields);
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_rel_roundtrip_selected_tables);
     return MDB_RESULT();
 }

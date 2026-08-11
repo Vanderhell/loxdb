@@ -20,6 +20,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
   capability advertised to the core.
 - Escaped time-series stream and relational table names consistently in JSON
   import/export output.
+- Hardened import/export field parsing so quoted field names embedded in JSON
+  string values cannot be treated as object fields.
 
 ### Tests
 
