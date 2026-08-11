@@ -8,14 +8,14 @@
 #define LOX_LOCK(db)                                                                               \
     do {                                                                                               \
         lox_core_t *lox_lock_core__ = lox_core((db));                                     \
-        if (lox_lock_core__->lock != NULL) {                                                       \
+        if (lox_lock_core__->magic == LOX_MAGIC && lox_lock_core__->lock != NULL) {               \
             lox_lock_core__->lock(lox_lock_core__->lock_handle);                               \
         }                                                                                              \
     } while (0)
 #define LOX_UNLOCK(db)                                                                             \
     do {                                                                                               \
         lox_core_t *lox_lock_core__ = lox_core((db));                                     \
-        if (lox_lock_core__->unlock != NULL) {                                                     \
+        if (lox_lock_core__->magic == LOX_MAGIC && lox_lock_core__->unlock != NULL) {             \
             lox_lock_core__->unlock(lox_lock_core__->lock_handle);                             \
         }                                                                                              \
     } while (0)

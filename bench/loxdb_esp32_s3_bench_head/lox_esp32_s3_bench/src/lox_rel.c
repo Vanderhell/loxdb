@@ -790,6 +790,7 @@ lox_err_t lox_rel_insert(lox_t *db, lox_table_t *table, const void *row_buf) {
     lox_err_t err;
     uint32_t row_idx;
     lox_err_t rc = LOX_OK;
+    bool wal_mode;
 
     if (db == NULL) {
         return LOX_ERR_INVALID;
@@ -826,9 +827,16 @@ lox_err_t lox_rel_insert(lox_t *db, lox_table_t *table, const void *row_buf) {
         goto unlock;
     }
 
-    rc = lox_persist_rel_insert(db, table, row_buf);
+    wal_mode = rel_wal_mode(lox_core(db));
+    if (wal_mode) {
+        rc = lox_persist_rel_insert(db, table, row_buf);
+    }
     if (rc == LOX_OK) {
         rel_apply_insert_row(table, row_idx, row_buf);
+        if (!wal_mode) {
+            /* No-WAL durability requires the snapshot to contain the inserted row. */
+            rc = lox_storage_flush(db);
+        }
     }
 
 unlock:
@@ -971,6 +979,7 @@ lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, 
     uint32_t m;
     lox_err_t err;
     lox_err_t rc = LOX_OK;
+    bool wal_mode;
 
     if (db == NULL) {
         return LOX_ERR_INVALID;
@@ -1012,9 +1021,12 @@ lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, 
         goto unlock;
     }
 
-    rc = lox_persist_rel_delete(db, table, search_val);
-    if (rc != LOX_OK) {
-        goto unlock;
+    wal_mode = rel_wal_mode(lox_core(db));
+    if (wal_mode) {
+        rc = lox_persist_rel_delete(db, table, search_val);
+        if (rc != LOX_OK) {
+            goto unlock;
+        }
     }
 
     for (m = 0u; m < match_count; ++m) {
@@ -1027,6 +1039,10 @@ lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, 
     }
     if (out_deleted != NULL) {
         *out_deleted = deleted;
+    }
+    if (!wal_mode) {
+        /* No-WAL durability requires the snapshot to contain the deleted rows. */
+        rc = lox_storage_flush(db);
     }
 
 unlock:
@@ -1089,13 +1105,34 @@ unlock:
 }
 
 lox_err_t lox_rel_count(const lox_table_t *table, uint32_t *out_count) {
+    lox_core_t *core;
+
     if (table == NULL || out_count == NULL) {
         return LOX_ERR_INVALID;
     }
+    core = table->owner;
+    if (core == NULL || core->magic != LOX_MAGIC) {
+        return LOX_ERR_INVALID;
+    }
+#if LOX_THREAD_SAFE
+    if (core->lock != NULL) {
+        core->lock(core->lock_handle);
+    }
+#endif
     if (!table->registered) {
+#if LOX_THREAD_SAFE
+        if (core->unlock != NULL) {
+            core->unlock(core->lock_handle);
+        }
+#endif
         return LOX_ERR_INVALID;
     }
     *out_count = table->live_count;
+#if LOX_THREAD_SAFE
+    if (core->unlock != NULL) {
+        core->unlock(core->lock_handle);
+    }
+#endif
     return LOX_OK;
 }
 

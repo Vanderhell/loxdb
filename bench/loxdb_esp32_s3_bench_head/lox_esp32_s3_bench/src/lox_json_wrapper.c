@@ -58,6 +58,22 @@ static lox_err_t json_append_escaped(char *out, size_t out_len, size_t *pos, con
     return LOX_OK;
 }
 
+lox_err_t lox_json_escape_cstr(const char *input, char *out, size_t out_len, size_t *out_used) {
+    size_t pos = 0u;
+    lox_err_t rc;
+
+    if (input == NULL || out == NULL || out_len == 0u || out_used == NULL) {
+        return LOX_ERR_INVALID;
+    }
+    rc = json_append_escaped(out, out_len - 1u, &pos, input);
+    if (rc != LOX_OK) {
+        return rc;
+    }
+    out[pos] = '\0';
+    *out_used = pos;
+    return LOX_OK;
+}
+
 static lox_err_t json_append_hex(char *out, size_t out_len, size_t *pos, const uint8_t *buf, size_t len) {
     static const char hx[] = "0123456789ABCDEF";
     size_t i;

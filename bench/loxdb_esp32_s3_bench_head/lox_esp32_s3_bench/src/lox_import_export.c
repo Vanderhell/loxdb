@@ -73,6 +73,21 @@ static lox_err_t ie_append_char(char *out, size_t out_len, size_t *pos, char c) 
     return LOX_OK;
 }
 
+static lox_err_t ie_append_escaped(char *out, size_t out_len, size_t *pos, const char *s) {
+    size_t used = 0u;
+    lox_err_t rc;
+
+    if (*pos >= out_len) {
+        return LOX_ERR_OVERFLOW;
+    }
+    rc = lox_json_escape_cstr(s, out + *pos, out_len - *pos, &used);
+    if (rc != LOX_OK) {
+        return rc;
+    }
+    *pos += used;
+    return LOX_OK;
+}
+
 static lox_err_t ie_append_u32(char *out, size_t out_len, size_t *pos, uint32_t v) {
     char buf[16];
     int n = snprintf(buf, sizeof(buf), "%u", (unsigned)v);
@@ -230,45 +245,51 @@ static lox_err_t ie_parse_json_hex_string(const char **p, uint8_t *out, size_t o
     return LOX_OK;
 }
 
-static lox_err_t ie_parse_object_field_string(const char *obj, const char *field_name, char *out, size_t out_len) {
-    char needle[64];
+static const char *ie_find_object_field_value(const char *obj, const char *field_name) {
+    size_t field_len;
     const char *p;
-    if (strlen(field_name) + 4u >= sizeof(needle)) return LOX_ERR_INVALID;
-    snprintf(needle, sizeof(needle), "\"%s\"", field_name);
-    p = strstr(obj, needle);
+
+    if (obj == NULL || field_name == NULL) return NULL;
+    field_len = strlen(field_name);
+    p = obj;
+    while (*p != '\0') {
+        const char *start;
+        const char *end;
+        const char *after;
+
+        if (*p++ != '"') continue;
+        start = p;
+        while (*p != '\0' && *p != '"') {
+            if (*p == '\\' && p[1] != '\0') ++p;
+            ++p;
+        }
+        if (*p != '"') return NULL;
+        end = p++;
+        after = p;
+        ie_skip_ws(&after);
+        if (*after == ':' && (size_t)(end - start) == field_len &&
+            memcmp(start, field_name, field_len) == 0) {
+            return after + 1u;
+        }
+    }
+    return NULL;
+}
+
+static lox_err_t ie_parse_object_field_string(const char *obj, const char *field_name, char *out, size_t out_len) {
+    const char *p = ie_find_object_field_value(obj, field_name);
     if (p == NULL) return LOX_ERR_NOT_FOUND;
-    p += strlen(needle);
-    ie_skip_ws(&p);
-    if (*p != ':') return LOX_ERR_INVALID;
-    p++;
     return ie_parse_json_string(&p, out, out_len);
 }
 
 static lox_err_t ie_parse_object_field_u32(const char *obj, const char *field_name, uint32_t *out) {
-    char needle[64];
-    const char *p;
-    if (strlen(field_name) + 4u >= sizeof(needle)) return LOX_ERR_INVALID;
-    snprintf(needle, sizeof(needle), "\"%s\"", field_name);
-    p = strstr(obj, needle);
+    const char *p = ie_find_object_field_value(obj, field_name);
     if (p == NULL) return LOX_ERR_NOT_FOUND;
-    p += strlen(needle);
-    ie_skip_ws(&p);
-    if (*p != ':') return LOX_ERR_INVALID;
-    p++;
     return ie_parse_json_u32(&p, out);
 }
 
 static lox_err_t ie_parse_object_field_hex(const char *obj, const char *field_name, uint8_t *out, size_t out_len, size_t *out_used) {
-    char needle[64];
-    const char *p;
-    if (strlen(field_name) + 4u >= sizeof(needle)) return LOX_ERR_INVALID;
-    snprintf(needle, sizeof(needle), "\"%s\"", field_name);
-    p = strstr(obj, needle);
+    const char *p = ie_find_object_field_value(obj, field_name);
     if (p == NULL) return LOX_ERR_NOT_FOUND;
-    p += strlen(needle);
-    ie_skip_ws(&p);
-    if (*p != ':') return LOX_ERR_INVALID;
-    p++;
     return ie_parse_json_hex_string(&p, out, out_len, out_used);
 }
 
@@ -387,7 +408,7 @@ static bool ie_ts_export_cb(const lox_ts_sample_t *sample, void *ctx) {
 
     rc = ie_append(x->out, x->out_len, x->pos, "{\"stream\":\"");
     if (rc != LOX_OK) { x->rc = rc; return false; }
-    rc = ie_append(x->out, x->out_len, x->pos, x->desc->name);
+    rc = ie_append_escaped(x->out, x->out_len, x->pos, x->desc->name);
     if (rc != LOX_OK) { x->rc = rc; return false; }
     rc = ie_append(x->out, x->out_len, x->pos, "\",\"type\":\"");
     if (rc != LOX_OK) { x->rc = rc; return false; }
@@ -420,7 +441,7 @@ static bool ie_rel_export_cb(const void *row_buf, void *ctx) {
 
     rc = ie_append(x->out, x->out_len, x->pos, "{\"table\":\"");
     if (rc != LOX_OK) { x->rc = rc; return false; }
-    rc = ie_append(x->out, x->out_len, x->pos, x->table_name);
+    rc = ie_append_escaped(x->out, x->out_len, x->pos, x->table_name);
     if (rc != LOX_OK) { x->rc = rc; return false; }
     rc = ie_append(x->out, x->out_len, x->pos, "\",\"row_hex\":\"");
     if (rc != LOX_OK) { x->rc = rc; return false; }

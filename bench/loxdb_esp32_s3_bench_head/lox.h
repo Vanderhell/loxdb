@@ -252,6 +252,8 @@ LOX_STATIC_ASSERT(ram_kb_max, LOX_RAM_KB <= 4096u);
 LOX_STATIC_ASSERT(txn_stage_lt_kv_keys, LOX_TXN_STAGE_KEYS < LOX_KV_MAX_KEYS);
 
 typedef LOX_TIMESTAMP_TYPE lox_timestamp_t;
+LOX_STATIC_ASSERT(timestamp_is_unsigned, ((lox_timestamp_t)-1) > (lox_timestamp_t)0);
+LOX_STATIC_ASSERT(timestamp_width_fits_u64, sizeof(lox_timestamp_t) <= sizeof(uint64_t));
 
 #ifndef LOX_HANDLE_SIZE
 #define LOX_HANDLE_SIZE 8192u
