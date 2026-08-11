@@ -13,6 +13,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
   before the operation returns.
 - Synchronized relational row-count reads in thread-safe builds and prevented
   invalid handles from dispatching configured lock callbacks.
+- Corrected the POSIX storage adapter so file descriptor zero is retained and
+  closed like every other valid descriptor.
 
 ### Tests
 

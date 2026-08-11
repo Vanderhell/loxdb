@@ -11,6 +11,7 @@ static size_t g_file_size = 0u;
 static long long g_seek_pos = 0;
 static int g_open_calls = 0;
 static int g_close_calls = 0;
+static int g_open_fd = 17;
 static int g_sync_calls = 0;
 static int g_read_eintr_once = 0;
 static int g_write_eintr_once = 0;
@@ -44,6 +45,7 @@ static void reset_fake_file(void) {
     g_seek_pos = 0;
     g_open_calls = 0;
     g_close_calls = 0;
+    g_open_fd = 17;
     g_sync_calls = 0;
     g_read_eintr_once = 0;
     g_write_eintr_once = 0;
@@ -63,7 +65,7 @@ static int test_open(const char *filename, int oflag, ...) {
     (void)oflag;
     g_open_calls++;
     g_seek_pos = 0;
-    return 17;
+    return g_open_fd;
 }
 
 static int test_sopen_s(int *pfh, const char *filename, int oflag, int shflag, int pmode) {
@@ -76,7 +78,7 @@ static int test_sopen_s(int *pfh, const char *filename, int oflag, int shflag, i
     }
     g_open_calls++;
     g_seek_pos = 0;
-    *pfh = 17;
+    *pfh = g_open_fd;
     return 0;
 }
 
@@ -209,8 +211,26 @@ MDB_TEST(posix_init_sync_failure_cleans_up_storage) {
     ASSERT_EQ(storage.ctx == NULL, 1);
 }
 
+MDB_TEST(posix_descriptor_zero_is_a_valid_open_file) {
+    lox_storage_t storage;
+    uint8_t value = 0xA5u;
+    uint8_t out = 0u;
+
+    reset_fake_file();
+    g_open_fd = 0;
+    ASSERT_EQ(lox_port_posix_init(&storage, "phase04-posix-fd0.bin", 256u), LOX_OK);
+    ASSERT_EQ(storage.write(storage.ctx, 0u, &value, sizeof(value)), LOX_OK);
+    ASSERT_EQ(storage.read(storage.ctx, 0u, &out, sizeof(out)), LOX_OK);
+    ASSERT_EQ(out, value);
+    lox_port_posix_simulate_power_loss(&storage);
+    ASSERT_EQ(g_close_calls, 1);
+    lox_port_posix_deinit(&storage);
+    ASSERT_EQ(g_close_calls, 1);
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_empty, teardown_empty, posix_short_io_and_eintr_are_retried);
     MDB_RUN_TEST(setup_empty, teardown_empty, posix_init_sync_failure_cleans_up_storage);
+    MDB_RUN_TEST(setup_empty, teardown_empty, posix_descriptor_zero_is_a_valid_open_file);
     return MDB_RESULT();
 }

@@ -5,7 +5,7 @@
 #include "lox.h"
 
 typedef struct {
-    void *file;
+    int fd;
     char path[260];
     uint32_t capacity;
     uint32_t erase_size;

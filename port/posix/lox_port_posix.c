@@ -58,10 +58,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int posix_fd(void *ctx) {
-    return (int)(intptr_t)((lox_port_posix_ctx_t *)ctx)->file;
-}
-
 static lox_err_t lox_port_posix_seek_fd(int fd, uint32_t offset) {
 #if defined(_WIN32)
     return (LOX_POSIX_LSEEK(fd, (long long)offset, SEEK_SET) >= 0) ? LOX_OK : LOX_ERR_STORAGE;
@@ -150,7 +146,7 @@ static lox_err_t lox_port_posix_read(void *ctx, uint32_t offset, void *buf, size
         return LOX_ERR_STORAGE;
     }
 
-    fd = posix_fd(ctx);
+    fd = posix->fd;
     if (fd < 0 || lox_port_posix_seek_fd(fd, offset) != LOX_OK) {
         return LOX_ERR_STORAGE;
     }
@@ -168,7 +164,7 @@ static lox_err_t lox_port_posix_write(void *ctx, uint32_t offset, const void *bu
         return LOX_ERR_STORAGE;
     }
 
-    fd = posix_fd(ctx);
+    fd = posix->fd;
     if (fd < 0 || lox_port_posix_seek_fd(fd, offset) != LOX_OK) {
         return LOX_ERR_STORAGE;
     }
@@ -194,7 +190,7 @@ static lox_err_t lox_port_posix_erase(void *ctx, uint32_t offset) {
     }
     memset(ff, 0xFF, posix->erase_size);
     block_start = (offset / posix->erase_size) * posix->erase_size;
-    fd = posix_fd(ctx);
+    fd = posix->fd;
     if (fd < 0 || lox_port_posix_seek_fd(fd, block_start) != LOX_OK ||
         lox_port_posix_full_write(fd, ff, posix->erase_size) != LOX_OK) {
         free(ff);
@@ -209,7 +205,7 @@ static lox_err_t lox_port_posix_sync(void *ctx) {
     if (posix == NULL) {
         return LOX_ERR_STORAGE;
     }
-    return lox_port_posix_sync_fd(posix_fd(ctx));
+    return posix->fd < 0 ? LOX_ERR_STORAGE : lox_port_posix_sync_fd(posix->fd);
 }
 
 lox_err_t lox_port_posix_init(lox_storage_t *storage, const char *path, uint32_t capacity) {
@@ -230,6 +226,7 @@ lox_err_t lox_port_posix_init(lox_storage_t *storage, const char *path, uint32_t
         return LOX_ERR_NO_MEM;
     }
     memset(ctx, 0, sizeof(*ctx));
+    ctx->fd = -1;
     if (strlen(path) >= sizeof(ctx->path)) {
         free(ctx);
         return LOX_ERR_INVALID;
@@ -285,7 +282,7 @@ lox_err_t lox_port_posix_init(lox_storage_t *storage, const char *path, uint32_t
         return LOX_ERR_STORAGE;
     }
 
-    ctx->file = (void *)(intptr_t)fd;
+    ctx->fd = fd;
     storage->read = lox_port_posix_read;
     storage->write = lox_port_posix_write;
     storage->erase = lox_port_posix_erase;
@@ -305,8 +302,8 @@ void lox_port_posix_deinit(lox_storage_t *storage) {
     }
 
     ctx = (lox_port_posix_ctx_t *)storage->ctx;
-    if (ctx->file != NULL) {
-        LOX_POSIX_CLOSE(posix_fd(ctx));
+    if (ctx->fd >= 0) {
+        LOX_POSIX_CLOSE(ctx->fd);
     }
     free(ctx);
     memset(storage, 0, sizeof(*storage));
@@ -319,10 +316,10 @@ void lox_port_posix_simulate_power_loss(lox_storage_t *storage) {
     }
 
     ctx = (lox_port_posix_ctx_t *)storage->ctx;
-    if (ctx->file != NULL) {
-        (void)LOX_POSIX_CLOSE(posix_fd(ctx));
+    if (ctx->fd >= 0) {
+        (void)LOX_POSIX_CLOSE(ctx->fd);
     }
-    ctx->file = NULL;
+    ctx->fd = -1;
 }
 
 void lox_port_posix_remove(const char *path) {
