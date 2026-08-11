@@ -106,7 +106,7 @@ MDB_TEST(managed_adapter_mount_probe_fails_when_sync_fails) {
     ASSERT_EQ(g_raw.sync_calls, 1);
 }
 
-MDB_TEST(managed_adapter_relaxed_expectations_allow_non_byte_write) {
+MDB_TEST(managed_adapter_relaxed_expectations_do_not_claim_byte_writes) {
     lox_storage_t invalid = g_raw_storage;
     lox_backend_managed_expectations_t relaxed;
     invalid.write_size = 8u;
@@ -114,7 +114,7 @@ MDB_TEST(managed_adapter_relaxed_expectations_allow_non_byte_write) {
     relaxed.require_byte_write = 0u;
     relaxed.require_sync_probe_on_mount = 0u;
     ASSERT_EQ(lox_backend_managed_adapter_init_with_expectations(&g_adapted_storage, &g_adapter_ctx, &invalid, &relaxed),
-              LOX_OK);
+              LOX_ERR_INVALID);
     ASSERT_EQ(g_raw.sync_calls, 0);
 }
 
@@ -122,6 +122,6 @@ int main(void) {
     MDB_RUN_TEST(setup_storage, teardown_storage, managed_adapter_passthrough_io);
     MDB_RUN_TEST(setup_storage, teardown_storage, managed_adapter_rejects_non_byte_raw_write_size);
     MDB_RUN_TEST(setup_storage, teardown_storage, managed_adapter_mount_probe_fails_when_sync_fails);
-    MDB_RUN_TEST(setup_storage, teardown_storage, managed_adapter_relaxed_expectations_allow_non_byte_write);
+    MDB_RUN_TEST(setup_storage, teardown_storage, managed_adapter_relaxed_expectations_do_not_claim_byte_writes);
     return MDB_RESULT();
 }

@@ -75,7 +75,9 @@ lox_err_t lox_backend_managed_adapter_init_with_expectations(
     if (raw_storage->capacity == 0u || raw_storage->erase_size == 0u) {
         return LOX_ERR_INVALID;
     }
-    if (expectations->require_byte_write != 0u && raw_storage->write_size != 1u) {
+    /* This adapter forwards writes unchanged and therefore cannot emulate
+     * byte writes for an aligned raw backend. */
+    if (raw_storage->write_size != 1u) {
         return LOX_ERR_INVALID;
     }
     if (expectations->require_sync_probe_on_mount != 0u) {

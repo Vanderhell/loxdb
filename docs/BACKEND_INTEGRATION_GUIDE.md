@@ -114,7 +114,9 @@ Reference glue example:
 ## 4) Which optional adapter path to use
 
 - Aligned-write media: use aligned adapter path (RMW/byte-write shim).
-- Managed media with durable sync semantics: managed adapter path.
+- Managed media with durable sync semantics and native byte writes: managed
+  adapter path. A managed adapter does not emulate `write_size > 1`; compose
+  the aligned adapter first for that geometry.
 - Filesystem/block-like path with non-durable flush semantics: filesystem adapter policy path.
 
 Detailed contract:
