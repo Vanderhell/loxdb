@@ -32,6 +32,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 - Added immediate crash/reopen coverage for no-WAL time-series and relational
   table, insert, delete, and clear mutations.
+- Added no-WAL snapshot sync-failure coverage for faulted-handle and reopen
+  recovery behavior.
 
 ## [1.5.1] - 2026-07-27
 

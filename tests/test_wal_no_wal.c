@@ -21,6 +21,7 @@ typedef struct {
     uint32_t wal_magic_writes;
     uint32_t invalid_erases;
     uint32_t fail_write;
+    uint32_t fail_sync;
     lox_storage_layout_t layout;
 } no_wal_media_t;
 
@@ -85,7 +86,13 @@ static lox_err_t media_erase(void *ctx, uint32_t offset) {
 }
 
 static lox_err_t media_sync(void *ctx) {
-    return ctx != NULL ? LOX_OK : LOX_ERR_INVALID;
+    no_wal_media_t *media = (no_wal_media_t *)ctx;
+    if (media == NULL) return LOX_ERR_INVALID;
+    if (media->fail_sync != 0u) {
+        media->fail_sync = 0u;
+        return LOX_ERR_STORAGE;
+    }
+    return LOX_OK;
 }
 
 static void bind_storage(uint32_t capacity) {
@@ -279,6 +286,25 @@ MDB_TEST(no_wal_ts_mutations_survive_immediate_crash) {
     ASSERT_EQ(lox_deinit(&g_db), LOX_OK);
 }
 
+MDB_TEST(no_wal_snapshot_sync_failure_faults_handle_and_preserves_previous_bank) {
+    lox_preflight_report_t report;
+    lox_ts_sample_t sample;
+    uint32_t value = 42u;
+
+    prepare_virgin_media(&report);
+    g_storage.capacity = report.storage_required_bytes;
+    ASSERT_EQ(open_db(), LOX_OK);
+    ASSERT_EQ(lox_ts_register(&g_db, "temp", LOX_TS_U32, 0u), LOX_OK);
+    g_media.fail_sync = 1u;
+    ASSERT_EQ(lox_ts_insert(&g_db, "temp", 100u, &value), LOX_ERR_INDETERMINATE);
+    ASSERT_EQ(lox_ts_insert(&g_db, "temp", 101u, &value), LOX_ERR_INDETERMINATE);
+    crash_drop_db();
+
+    ASSERT_EQ(open_db(), LOX_OK);
+    ASSERT_EQ(lox_ts_last(&g_db, "temp", &sample), LOX_ERR_NOT_FOUND);
+    ASSERT_EQ(lox_deinit(&g_db), LOX_OK);
+}
+
 MDB_TEST(no_wal_rel_mutations_survive_immediate_crash) {
     lox_preflight_report_t report;
     lox_table_t *table;
@@ -325,6 +351,7 @@ int main(void) {
     MDB_RUN_TEST(noop, noop, no_wal_stats_admission_and_snapshot_persistence_are_zero_wal);
     MDB_RUN_TEST(noop, noop, no_wal_interrupted_snapshot_keeps_previous_bank);
     MDB_RUN_TEST(noop, noop, no_wal_ts_mutations_survive_immediate_crash);
+    MDB_RUN_TEST(noop, noop, no_wal_snapshot_sync_failure_faults_handle_and_preserves_previous_bank);
     MDB_RUN_TEST(noop, noop, no_wal_rel_mutations_survive_immediate_crash);
     return MDB_RESULT();
 }
