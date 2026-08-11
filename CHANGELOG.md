@@ -11,6 +11,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 - Corrected no-WAL time-series and relational mutation ordering so successful
   inserts and deletes are included in the synchronized dual-bank snapshot
   before the operation returns.
+- Synchronized relational row-count reads in thread-safe builds and prevented
+  invalid handles from dispatching configured lock callbacks.
 
 ### Tests
 

@@ -1105,13 +1105,34 @@ unlock:
 }
 
 lox_err_t lox_rel_count(const lox_table_t *table, uint32_t *out_count) {
+    lox_core_t *core;
+
     if (table == NULL || out_count == NULL) {
         return LOX_ERR_INVALID;
     }
+    core = table->owner;
+    if (core == NULL || core->magic != LOX_MAGIC) {
+        return LOX_ERR_INVALID;
+    }
+#if LOX_THREAD_SAFE
+    if (core->lock != NULL) {
+        core->lock(core->lock_handle);
+    }
+#endif
     if (!table->registered) {
+#if LOX_THREAD_SAFE
+        if (core->unlock != NULL) {
+            core->unlock(core->lock_handle);
+        }
+#endif
         return LOX_ERR_INVALID;
     }
     *out_count = table->live_count;
+#if LOX_THREAD_SAFE
+    if (core->unlock != NULL) {
+        core->unlock(core->lock_handle);
+    }
+#endif
     return LOX_OK;
 }
 

@@ -297,6 +297,37 @@ MDB_TEST(test_lock_called_on_compact) {
     ASSERT_EQ(g_unlock_count, 1u);
 }
 
+MDB_TEST(test_rel_count_acquires_owner_lock) {
+    lox_schema_t schema;
+    lox_table_t *table = NULL;
+    uint32_t count = 0u;
+
+    ASSERT_EQ(lox_schema_init(&schema, "count", 2u), LOX_OK);
+    ASSERT_EQ(lox_schema_add(&schema, "id", LOX_COL_U32, sizeof(uint32_t), true), LOX_OK);
+    ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
+    ASSERT_EQ(lox_table_create(&g_db, &schema), LOX_OK);
+    ASSERT_EQ(lox_table_get(&g_db, "count", &table), LOX_OK);
+    g_lock_count = 0u;
+    g_unlock_count = 0u;
+
+    ASSERT_EQ(lox_rel_count(table, &count), LOX_OK);
+    ASSERT_EQ(count, 0u);
+    ASSERT_EQ(g_lock_count, 1u);
+    ASSERT_EQ(g_unlock_count, 1u);
+}
+
+MDB_TEST(test_zeroed_handle_does_not_dispatch_lock_callback) {
+    lox_t db;
+    uint8_t value = 0u;
+
+    memset(&db, 0, sizeof(db));
+    g_lock_count = 0u;
+    g_unlock_count = 0u;
+    ASSERT_EQ(lox_kv_get(&db, "missing", &value, sizeof(value), NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(g_lock_count, 0u);
+    ASSERT_EQ(g_unlock_count, 0u);
+}
+
 static bool kv_reenter_cb(const char *key, const void *val, size_t val_len, uint32_t ttl_remaining, void *ctx) {
     uint8_t out = 0u;
     (void)key;
@@ -376,6 +407,8 @@ int main(void) {
     MDB_RUN_TEST(setup_empty, teardown_empty, test_engine_init_failure_destroys_lock_once);
     MDB_RUN_TEST(setup_empty, teardown_empty, test_deinit_failure_invalidates_handle);
     MDB_RUN_TEST(setup_db, teardown_db, test_lock_called_on_compact);
+    MDB_RUN_TEST(setup_db, teardown_db, test_rel_count_acquires_owner_lock);
+    MDB_RUN_TEST(setup_db, teardown_db, test_zeroed_handle_does_not_dispatch_lock_callback);
     MDB_RUN_TEST(setup_db, teardown_db, test_kv_iter_callback_reentry_no_recursive_lock);
     MDB_RUN_TEST(setup_db, teardown_db, test_ts_query_callback_reentry_no_recursive_lock);
     MDB_RUN_TEST(setup_db, teardown_db, test_rel_iter_callback_reentry_no_recursive_lock);
