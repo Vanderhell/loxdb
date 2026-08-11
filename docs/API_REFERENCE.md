@@ -85,6 +85,11 @@ width, and retain compatibility with legacy 32-bit values. Reopen returns
 `lox_timestamp_t`; this width mismatch is not reported as corruption and is
 never truncated. Unsupported format versions remain a distinct error.
 
+Persistent compatibility is currently restricted to hosts with the same native
+byte order: WAL, page, and superblock integer fields use the host byte order.
+Moving media between little-endian and big-endian hosts is unsupported until a
+future versioned format migration defines canonical byte order.
+
 ## Verification Status
 
 - Installed consumer usage is gated by detached build tests in this repository.
