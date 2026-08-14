@@ -941,7 +941,7 @@ static void print_help(void) {
   MDB_CONSOLE.println("  reopen    - reopen DB without wipe");
 }
 
-static void prompt(void) { MDB_CONSOLE.print("loxdb-bench> "); }
+static void print_console_marker(void) { MDB_CONSOLE.print("loxdb-bench> "); }
 
 static void reset_db_and_open(bool wipe) {
   lox_err_t d = lox_deinit(&g_db);
@@ -1062,7 +1062,7 @@ void setup(void) {
   MDB_CONSOLE.println("Tests do NOT run automatically at power-on.");
   print_config();
   print_help();
-  prompt();
+  print_console_marker();
 }
 
 void loop(void) {
@@ -1075,7 +1075,7 @@ void loop(void) {
       line[line_len] = '\0';
       execute_command(line);
       line_len = 0u;
-      prompt();
+      print_console_marker();
       continue;
     }
     if (line_len < (sizeof(line) - 1u)) line[line_len++] = ch;

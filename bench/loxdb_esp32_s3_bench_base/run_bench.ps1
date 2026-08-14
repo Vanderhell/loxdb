@@ -99,14 +99,14 @@ try {
     $serial.Open()
     Start-Sleep -Milliseconds 800
 
-    # Wake prompt if already running.
+    # Wake the console if it is already running.
     $serial.WriteLine("")
 
     $buf = ""
     $ready = Read-UntilPattern -Serial $serial -Pattern "loxdb-bench>" -TimeoutSec $OpenTimeoutSec -Buffer ([ref]$buf)
     $fullLog += $buf
     if (-not $ready) {
-        throw "Prompt 'loxdb-bench>' not detected on $Port within $OpenTimeoutSec s."
+        throw "Console marker 'loxdb-bench>' not detected on $Port within $OpenTimeoutSec s."
     }
 
     foreach ($cmd in $commands) {
@@ -120,21 +120,21 @@ try {
                 throw "Benchmark command '$cmd' did not finish within $RunTimeoutSec s."
             }
             if ($matched -eq "loxdb-bench>" -and $buf -notmatch [regex]::Escape("=== loxdb ESP32-S3 benchmark end ===")) {
-                throw "Benchmark command '$cmd' returned to prompt without benchmark end marker."
+                throw "Benchmark command '$cmd' returned to the console marker without benchmark end marker."
             }
             if ($buf -notmatch [regex]::Escape("loxdb-bench>")) {
                 $buf = ""
-                $promptBack = Read-UntilPattern -Serial $serial -Pattern "loxdb-bench>" -TimeoutSec 20 -Buffer ([ref]$buf)
+                $markerBack = Read-UntilPattern -Serial $serial -Pattern "loxdb-bench>" -TimeoutSec 20 -Buffer ([ref]$buf)
                 $fullLog += $buf
-                if (-not $promptBack) {
-                    throw "Prompt not returned after '$cmd'."
+                if (-not $markerBack) {
+                    throw "Console marker not returned after '$cmd'."
                 }
             }
         } else {
             $okBack = Read-UntilPattern -Serial $serial -Pattern "loxdb-bench>" -TimeoutSec 30 -Buffer ([ref]$buf)
             $fullLog += $buf
             if (-not $okBack) {
-                throw "Command '$cmd' did not return to prompt."
+                throw "Command '$cmd' did not return to the console marker."
             }
         }
     }

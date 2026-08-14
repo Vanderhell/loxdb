@@ -81,8 +81,8 @@ $admissionLine = $null
 $admittedProfileLine = $null
 $sdReady = "[OK] loxdb SD stress bench ready"
 $fatal = "[FATAL]"
-$wrongBenchPrompts = @("loxdb-bench>", "microdb-bench>")
-$readyPatterns = @($sdReady, $fatal) + $wrongBenchPrompts
+$wrongBenchMarkers = @("loxdb-bench>", "microdb-bench>")
+$readyPatterns = @($sdReady, $fatal) + $wrongBenchMarkers
 
 try {
     Write-Host "Opening $Port @ $Baud..."
@@ -102,7 +102,7 @@ try {
     if ($matched -eq $fatal) {
         throw "Device reported [FATAL] during startup."
     }
-    if ($wrongBenchPrompts -contains $matched) {
+    if ($wrongBenchMarkers -contains $matched) {
         throw "Detected terminal bench firmware ($matched). Flash bench/loxdb_esp32_s3_sd_stress_bench/loxdb_esp32_s3_sd_stress_bench.ino to $Port and retry."
     }
 
