@@ -125,8 +125,8 @@ static void populate_all_engines(lox_t *db, uint32_t ttl) {
     ASSERT_EQ(lox_ts_register(db, "temp", LOX_TS_F32, 0u), LOX_OK);
     ASSERT_EQ(lox_ts_insert(db, "temp", 123u, &temp), LOX_OK);
     make_rel_table(db, &table);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(db, table, row), LOX_OK);
 }
 
@@ -143,7 +143,7 @@ static void assert_all_engines_present(lox_t *db) {
     ASSERT_EQ(sample.ts, 123u);
     ASSERT_EQ(sample.v.f32 == 12.5f, 1);
     ASSERT_EQ(lox_table_get(db, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(db, table, "id", &id, row), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(db, table, "id", &id, sizeof(id), row, sizeof(row), NULL), LOX_OK);
 }
 
 static bool collect_rel_ids(const void *row_buf, void *ctx) {
@@ -184,8 +184,8 @@ MDB_TEST(integration_flush_between_operations) {
     ASSERT_EQ(lox_ts_insert(&g_db, "f", 10u, &temp), LOX_OK);
     ASSERT_EQ(lox_flush(&g_db), LOX_OK);
     make_rel_table(&g_db, &table);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     ASSERT_EQ(lox_flush(&g_db), LOX_OK);
     reopen_db(LOX_RAM_KB);
@@ -248,16 +248,16 @@ MDB_TEST(integration_delete_then_reload) {
     uint8_t age = 8u;
 
     make_rel_table(&g_db, &table);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_kv_set(&g_db, "gone", &kv, 1u, 0u), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     ASSERT_EQ(lox_kv_del(&g_db, "gone"), LOX_OK);
-    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, NULL), LOX_OK);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), NULL), LOX_OK);
     reopen_db(LOX_RAM_KB);
     ASSERT_EQ(lox_kv_exists(&g_db, "gone"), LOX_ERR_NOT_FOUND);
     ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, row), LOX_ERR_NOT_FOUND);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, sizeof(id), row, sizeof(row), NULL), LOX_ERR_NOT_FOUND);
 }
 
 MDB_TEST(integration_rel_order_persists_with_other_engines) {
@@ -271,8 +271,8 @@ MDB_TEST(integration_rel_order_persists_with_other_engines) {
     ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);
     for (id = 12u; id <= 14u; ++id) {
         memset(row, 0, sizeof(row));
-        ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-        ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
         ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     }
     reopen_db(LOX_RAM_KB);
@@ -433,7 +433,7 @@ MDB_TEST(integration_rel_find_after_reload) {
     populate_all_engines(&g_db, 0u);
     reopen_db(LOX_RAM_KB);
     ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, row), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, sizeof(id), row, sizeof(row), NULL), LOX_OK);
 }
 
 MDB_TEST(integration_flush_after_reload_keeps_data) {
@@ -490,11 +490,11 @@ MDB_TEST(integration_rel_disabled_returns_err_disabled) {
     ASSERT_EQ(lox_schema_seal(&schema), LOX_ERR_DISABLED);
     ASSERT_EQ(lox_table_create(&g_db, &schema), LOX_ERR_DISABLED);
     ASSERT_EQ(lox_table_get(&g_db, "x", &table), LOX_ERR_DISABLED);
-    ASSERT_EQ(lox_row_set(table, row, "id", row), LOX_ERR_DISABLED);
-    ASSERT_EQ(lox_row_get(table, row, "id", row, NULL), LOX_ERR_DISABLED);
+    ASSERT_EQ(lox_row_set(table, row, "id", row, sizeof(row)), LOX_ERR_DISABLED);
+    ASSERT_EQ(lox_row_get(table, row, "id", row, sizeof(row), NULL), LOX_ERR_DISABLED);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_ERR_DISABLED);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", row, row), LOX_ERR_DISABLED);
-    ASSERT_EQ(lox_rel_delete(&g_db, table, row, &count), LOX_ERR_DISABLED);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", row, sizeof(row), row, sizeof(row), NULL), LOX_ERR_DISABLED);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, row, sizeof(row), &count), LOX_ERR_DISABLED);
     ASSERT_EQ(lox_rel_count(table, &count), LOX_ERR_DISABLED);
     ASSERT_EQ(lox_rel_clear(&g_db, table), LOX_ERR_DISABLED);
 }

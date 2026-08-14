@@ -522,9 +522,15 @@ typedef bool (*lox_rel_iter_cb_t)(const void *row_buf, void *ctx);
 ### Relational operations
 
 - `lox_rel_insert(db, table, row_buf)`
-- `lox_rel_find(db, table, search_val, cb, ctx)`
-- `lox_rel_find_by(db, table, col_name, search_val, out_buf)`
-- `lox_rel_delete(db, table, search_val, out_deleted)`
+- `lox_rel_find(db, table, search_val, search_len, cb, ctx)`
+- `lox_rel_find_by(db, table, col_name, search_val, search_len, out_buf, out_capacity, out_len)`
+- `lox_rel_delete(db, table, search_val, search_len, out_deleted)`
+
+All caller-owned relational values are bounded explicitly. STR lengths exclude
+the NUL terminator and may describe non-terminated input; they must leave room
+for LOXDB to store a terminator. BLOB and scalar lengths must equal their schema
+width. Output row/column copies return `LOX_ERR_OVERFLOW` without a partial
+write when the supplied capacity is too small.
 - `lox_rel_iter(db, table, cb, ctx)`
 - `lox_rel_count(table, out_count)`
 - `lox_rel_clear(db, table)`

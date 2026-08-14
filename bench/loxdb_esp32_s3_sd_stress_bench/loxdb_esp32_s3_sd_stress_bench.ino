@@ -895,15 +895,15 @@ static void op_rel(void) {
   uint16_t flags = (uint16_t)(rng_next() & 0x3FFu);
   uint64_t ts64 = (((uint64_t)rng_next()) << 32u) | (uint64_t)rng_next();
   memset(row, 0, sizeof(row));
-  if (lox_row_set(rel, row, "id", &g_rel_next_id) != LOX_OK) return;
-  if (lox_row_set(rel, row, "v", &v) != LOX_OK) return;
+    if (lox_row_set(rel, row, "id", &g_rel_next_id, sizeof(g_rel_next_id)) != LOX_OK) return;
+    if (lox_row_set(rel, row, "v", &v, sizeof(v)) != LOX_OK) return;
   if (ti % 2u == 0u) {
-    if (lox_row_set(rel, row, "temp", &temp) != LOX_OK) return;
+    if (lox_row_set(rel, row, "temp", &temp, sizeof(temp)) != LOX_OK) return;
   } else {
-    if (lox_row_set(rel, row, "flags", &flags) != LOX_OK) return;
+    if (lox_row_set(rel, row, "flags", &flags, sizeof(flags)) != LOX_OK) return;
   }
   if (ti % 3u == 0u) {
-    if (lox_row_set(rel, row, "ts", &ts64) != LOX_OK) return;
+    if (lox_row_set(rel, row, "ts", &ts64, sizeof(ts64)) != LOX_OK) return;
   }
   {
     lox_err_t rc = lox_rel_insert(&g_db, rel, row);

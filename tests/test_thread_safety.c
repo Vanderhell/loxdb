@@ -369,7 +369,7 @@ static bool rel_reenter_cb(const void *row_buf, void *ctx) {
     uint8_t out[64] = { 0 };
     uint32_t id = 1u;
     (void)row_buf;
-    (void)lox_rel_find_by(&g_db, *table_ptr, "id", &id, out);
+    (void)lox_rel_find_by(&g_db, *table_ptr, "id", &id, sizeof(id), out, sizeof(out), NULL);
     return true;
 }
 
@@ -386,8 +386,8 @@ MDB_TEST(test_rel_iter_callback_reentry_no_recursive_lock) {
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(lox_table_create(&g_db, &schema), LOX_OK);
     ASSERT_EQ(lox_table_get(&g_db, "t", &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
 
     g_reentrant_lock = 0u;

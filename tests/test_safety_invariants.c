@@ -224,8 +224,8 @@ MDB_TEST(invariant_all_apis_reject_null_handle) {
     ASSERT_EQ(lox_ts_query(NULL, "s", 0u, 1u, ts_query_noop, NULL), LOX_ERR_INVALID);
     ASSERT_EQ(lox_ts_clear(NULL, "s"), LOX_ERR_INVALID);
     ASSERT_EQ(lox_rel_insert(NULL, NULL, &b), LOX_ERR_INVALID);
-    ASSERT_EQ(lox_rel_find(NULL, NULL, &b, rel_iter_noop, NULL), LOX_ERR_INVALID);
-    ASSERT_EQ(lox_rel_delete(NULL, NULL, &b, &deleted), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find(NULL, NULL, &b, sizeof(b), rel_iter_noop, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_delete(NULL, NULL, &b, sizeof(b), &deleted), LOX_ERR_INVALID);
     ASSERT_EQ(lox_rel_iter(NULL, NULL, rel_iter_noop, NULL), LOX_ERR_INVALID);
     ASSERT_EQ(lox_rel_clear(NULL, NULL), LOX_ERR_INVALID);
     ASSERT_EQ(lox_rel_count(NULL, &rel_count), LOX_ERR_INVALID);

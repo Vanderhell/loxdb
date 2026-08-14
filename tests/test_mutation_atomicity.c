@@ -153,7 +153,7 @@ MDB_TEST(deterministic_failures_do_not_touch_backend) {
 
     make_table(&g_db, "rows", 1u, &table);
     memset(row, 'x', sizeof(row));
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
     reset_trace();
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_ERR_SCHEMA);
     ASSERT_EQ(g_media.writes + g_media.erases + g_media.syncs, 0u);
@@ -209,8 +209,8 @@ MDB_TEST(ts_rel_and_transaction_failures_are_indeterminate) {
 
     ASSERT_EQ(lox_ts_register(&g_db, "s", LOX_TS_U32, 0u), LOX_OK);
     make_table(&g_db, "r", 4u, &table);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "tag", "ok"), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "tag", "ok", sizeof("ok") - 1u), LOX_OK);
     reset_trace();
     g_media.fail_kind = FAIL_WRITE;
     g_media.fail_call = 1u;

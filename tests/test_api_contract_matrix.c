@@ -166,50 +166,50 @@ MDB_TEST(rel_table_get_null_out_invalid) { ASSERT_EQ(lox_table_get(&g_db, "t", N
 MDB_TEST(rel_row_set_null_table_invalid) {
     uint8_t row[8] = {0};
     uint8_t v = 1u;
-    ASSERT_EQ(lox_row_set(NULL, row, "id", &v), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_row_set(NULL, row, "id", &v, sizeof(v)), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_row_set_null_row_invalid) {
     lox_table_t *t = NULL;
     uint8_t v = 1u;
     make_rel_table(&t);
-    ASSERT_EQ(lox_row_set(t, NULL, "id", &v), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_row_set(t, NULL, "id", &v, sizeof(v)), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_row_set_null_col_invalid) {
     lox_table_t *t = NULL;
     uint8_t row[64] = {0};
     uint8_t v = 1u;
     make_rel_table(&t);
-    ASSERT_EQ(lox_row_set(t, row, NULL, &v), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_row_set(t, row, NULL, &v, sizeof(v)), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_row_set_null_val_invalid) {
     lox_table_t *t = NULL;
     uint8_t row[64] = {0};
     make_rel_table(&t);
-    ASSERT_EQ(lox_row_set(t, row, "id", NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_row_set(t, row, "id", NULL, 0u), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_row_get_null_table_invalid) {
     uint8_t row[8] = {0};
     uint8_t out = 0u;
-    ASSERT_EQ(lox_row_get(NULL, row, "id", &out, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_row_get(NULL, row, "id", &out, sizeof(out), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_row_get_null_row_invalid) {
     lox_table_t *t = NULL;
     uint8_t out = 0u;
     make_rel_table(&t);
-    ASSERT_EQ(lox_row_get(t, NULL, "id", &out, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_row_get(t, NULL, "id", &out, sizeof(out), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_row_get_null_col_invalid) {
     lox_table_t *t = NULL;
     uint8_t row[64] = {0};
     uint8_t out = 0u;
     make_rel_table(&t);
-    ASSERT_EQ(lox_row_get(t, row, NULL, &out, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_row_get(t, row, NULL, &out, sizeof(out), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_row_get_null_out_invalid) {
     lox_table_t *t = NULL;
     uint8_t row[64] = {0};
     make_rel_table(&t);
-    ASSERT_EQ(lox_row_get(t, row, "id", NULL, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_row_get(t, row, "id", NULL, sizeof(NULL), NULL), LOX_ERR_INVALID);
 }
 
 /* REL runtime null db */
@@ -219,16 +219,16 @@ MDB_TEST(rel_insert_null_db_invalid) {
 }
 MDB_TEST(rel_find_null_db_invalid) {
     uint32_t id = 1u;
-    ASSERT_EQ(lox_rel_find(NULL, NULL, &id, (lox_rel_iter_cb_t)1, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find(NULL, NULL, &id, sizeof(id), (lox_rel_iter_cb_t)1, NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_find_by_null_db_invalid) {
     uint32_t id = 1u;
     uint8_t row[8] = {0};
-    ASSERT_EQ(lox_rel_find_by(NULL, NULL, "id", &id, row), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find_by(NULL, NULL, "id", &id, sizeof(id), row, sizeof(row), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_delete_null_db_invalid) {
     uint32_t id = 1u;
-    ASSERT_EQ(lox_rel_delete(NULL, NULL, &id, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_delete(NULL, NULL, &id, sizeof(id), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_iter_null_db_invalid) { ASSERT_EQ(lox_rel_iter(NULL, NULL, (lox_rel_iter_cb_t)1, NULL), LOX_ERR_INVALID); }
 MDB_TEST(rel_clear_null_db_invalid) { ASSERT_EQ(lox_rel_clear(NULL, NULL), LOX_ERR_INVALID); }
@@ -245,51 +245,51 @@ MDB_TEST(rel_insert_null_row_invalid) {
 }
 MDB_TEST(rel_find_null_table_invalid) {
     uint32_t id = 1u;
-    ASSERT_EQ(lox_rel_find(&g_db, NULL, &id, (lox_rel_iter_cb_t)1, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find(&g_db, NULL, &id, sizeof(id), (lox_rel_iter_cb_t)1, NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_find_null_search_invalid) {
     lox_table_t *t = NULL;
     make_rel_table(&t);
-    ASSERT_EQ(lox_rel_find(&g_db, t, NULL, (lox_rel_iter_cb_t)1, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find(&g_db, t, NULL, 0u, (lox_rel_iter_cb_t)1, NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_find_null_cb_invalid) {
     lox_table_t *t = NULL;
     uint32_t id = 1u;
     make_rel_table(&t);
-    ASSERT_EQ(lox_rel_find(&g_db, t, &id, NULL, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find(&g_db, t, &id, sizeof(id), NULL, NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_find_by_null_table_invalid) {
     uint32_t id = 1u;
     uint8_t out[64] = {0};
-    ASSERT_EQ(lox_rel_find_by(&g_db, NULL, "id", &id, out), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find_by(&g_db, NULL, "id", &id, sizeof(id), out, sizeof(out), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_find_by_null_col_invalid) {
     lox_table_t *t = NULL;
     uint32_t id = 1u;
     uint8_t out[64] = {0};
     make_rel_table(&t);
-    ASSERT_EQ(lox_rel_find_by(&g_db, t, NULL, &id, out), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find_by(&g_db, t, NULL, &id, sizeof(id), out, sizeof(out), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_find_by_null_search_invalid) {
     lox_table_t *t = NULL;
     uint8_t out[64] = {0};
     make_rel_table(&t);
-    ASSERT_EQ(lox_rel_find_by(&g_db, t, "id", NULL, out), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find_by(&g_db, t, "id", NULL, 0u, out, sizeof(out), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_find_by_null_out_invalid) {
     lox_table_t *t = NULL;
     uint32_t id = 1u;
     make_rel_table(&t);
-    ASSERT_EQ(lox_rel_find_by(&g_db, t, "id", &id, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find_by(&g_db, t, "id", &id, sizeof(id), NULL, sizeof(NULL), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_delete_null_table_invalid) {
     uint32_t id = 1u;
-    ASSERT_EQ(lox_rel_delete(&g_db, NULL, &id, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_delete(&g_db, NULL, &id, sizeof(id), NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_delete_null_search_invalid) {
     lox_table_t *t = NULL;
     make_rel_table(&t);
-    ASSERT_EQ(lox_rel_delete(&g_db, t, NULL, NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_delete(&g_db, t, NULL, 0u, NULL), LOX_ERR_INVALID);
 }
 MDB_TEST(rel_iter_null_table_invalid) { ASSERT_EQ(lox_rel_iter(&g_db, NULL, (lox_rel_iter_cb_t)1, NULL), LOX_ERR_INVALID); }
 MDB_TEST(rel_iter_null_cb_invalid) {

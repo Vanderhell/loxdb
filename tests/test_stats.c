@@ -182,10 +182,10 @@ MDB_TEST(test_split_stats_api_kv_ts_rel) {
     ASSERT_EQ(lox_schema_seal(&s), LOX_OK);
     ASSERT_EQ(lox_table_create(&g_db, &s), LOX_OK);
     ASSERT_EQ(lox_table_get(&g_db, "devices", &t), LOX_OK);
-    ASSERT_EQ(lox_row_set(t, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(t, row, "state", &state), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "state", &state, sizeof(state)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, t, row), LOX_OK);
-    ASSERT_EQ(lox_rel_delete(&g_db, t, &id, &deleted), LOX_OK);
+    ASSERT_EQ(lox_rel_delete(&g_db, t, &id, sizeof(id), &deleted), LOX_OK);
     ASSERT_EQ(deleted, 1u);
     ASSERT_EQ(lox_get_rel_stats(&g_db, &rls), LOX_OK);
     ASSERT_EQ(rls.table_count, 1u);
@@ -244,8 +244,8 @@ MDB_TEST(test_admission_api_kv_ts_rel) {
     ASSERT_EQ(lox_schema_seal(&s), LOX_OK);
     ASSERT_EQ(lox_table_create(&g_db, &s), LOX_OK);
     ASSERT_EQ(lox_table_get(&g_db, "pre_rel", &t), LOX_OK);
-    ASSERT_EQ(lox_row_set(t, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(t, row, "state", &state), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "state", &state, sizeof(state)), LOX_OK);
     ASSERT_EQ(lox_admit_rel_insert(&g_db, "pre_rel", lox_table_row_size(t), &a), LOX_OK);
     ASSERT_EQ(a.status, LOX_OK);
 }
@@ -267,8 +267,8 @@ MDB_TEST(test_admission_rel_would_compact_clears_deterministic_budget) {
     ASSERT_EQ(lox_schema_seal(&s), LOX_OK);
     ASSERT_EQ(lox_table_create(&g_db, &s), LOX_OK);
     ASSERT_EQ(lox_table_get(&g_db, "pre_rel_wc", &t), LOX_OK);
-    ASSERT_EQ(lox_row_set(t, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(t, row, "state", &state), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "state", &state, sizeof(state)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, t, row), LOX_OK);
 
     memset(&a, 0, sizeof(a));

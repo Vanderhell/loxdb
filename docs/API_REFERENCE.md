@@ -63,6 +63,22 @@ an append-only mutation record.
 - `lox_row_set`, `lox_row_get`
 - `lox_rel_insert`, `lox_rel_find`, `lox_rel_find_by`, `lox_rel_delete`, `lox_rel_iter`, `lox_rel_count`, `lox_rel_clear`
 
+Relational caller buffers use explicit lengths and capacities. For
+`LOX_COL_STR`, input lengths count bytes before the terminating NUL; the input
+itself need not be NUL-terminated, and the length must be smaller than the
+fixed schema width so LOXDB can append the terminator. BLOB and scalar inputs
+must exactly match the schema width. Indexed lookup and delete keys follow the
+same rules and are normalized into an internal fixed-width key before use.
+
+`lox_row_get(..., out, out_capacity, out_len)` and
+`lox_rel_find_by(..., out_buf, out_capacity, out_len)` report the required
+column or row size through `out_len`. If the capacity is too small they return
+`LOX_ERR_OVERFLOW` without modifying the destination.
+
+Migration from versions before this change requires adding `val_len` to
+`lox_row_set`, `search_len` to indexed find/delete operations, and explicit
+output capacities to row getters and `lox_rel_find_by`.
+
 Schema-version transitions require identical physical schemas. Any column add,
 remove, rename, resize, reorder, or reindex returns `LOX_ERR_SCHEMA`.
 

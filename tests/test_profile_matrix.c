@@ -122,7 +122,7 @@ static bool rel_reenter_cb(const void *row_buf, void *ctx) {
     uint8_t out[64] = { 0 };
     uint32_t id = 1u;
     (void)row_buf;
-    if (lox_rel_find_by(&g_db, table, "id", &id, out) != LOX_OK) {
+    if (lox_rel_find_by(&g_db, table, "id", &id, sizeof(id), out, sizeof(out), NULL) != LOX_OK) {
         g_cb_error = LOX_ERR_INVALID;
     }
     return true;
@@ -156,8 +156,8 @@ MDB_TEST(test_profile_contract_end_to_end) {
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(lox_table_create(&g_db, &schema), LOX_OK);
     ASSERT_EQ(lox_table_get(&g_db, "t", &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
 
     ASSERT_EQ(lox_txn_begin(&g_db), LOX_OK);
@@ -171,7 +171,7 @@ MDB_TEST(test_profile_contract_end_to_end) {
     ASSERT_EQ(lox_ts_last(&g_db, "s", &sample), LOX_OK);
     ASSERT_EQ(sample.v.u32, 22u);
     ASSERT_EQ(lox_table_get(&g_db, "t", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, row), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, sizeof(id), row, sizeof(row), NULL), LOX_OK);
 
     ASSERT_EQ(lox_compact(&g_db), LOX_OK);
 

@@ -334,7 +334,7 @@ static int verify_model(const model_t *m) {
 
     for (i = 0u; i < MODEL_REL_IDS; ++i) {
         if (m->rel_present[i]) {
-            lox_err_t rc = lox_rel_find_by(&g_db, t, "id", &i, row);
+            lox_err_t rc = lox_rel_find_by(&g_db, t, "id", &i, sizeof(i), row, sizeof(row), NULL);
             if (rc != LOX_OK) return fail_loxdb("verify lox_rel_find_by(soak_rel.id)", rc, 0);
         }
     }
@@ -436,9 +436,9 @@ int main(int argc, char **argv) {
             uint32_t id = rnd_next() % MODEL_REL_IDS;
             uint8_t row[64] = {0};
             uint8_t rv = (uint8_t)(id & 0xFFu);
-            lox_err_t rc = lox_row_set(t, row, "id", &id);
+            lox_err_t rc = lox_row_set(t, row, "id", &id, sizeof(id));
             if (rc != LOX_OK) return fail_loxdb("lox_row_set(loop,id)", rc, 1);
-            rc = lox_row_set(t, row, "v", &rv);
+            rc = lox_row_set(t, row, "v", &rv, sizeof(rv));
             if (rc != LOX_OK) return fail_loxdb("lox_row_set(loop,v)", rc, 1);
             if (!model.rel_present[id]) {
                 rc = retry_rel_insert_pressure(t, row);
@@ -456,7 +456,7 @@ int main(int argc, char **argv) {
         } else {
             uint32_t id = rnd_next() % MODEL_REL_IDS;
             uint32_t deleted = 0u;
-            lox_err_t rc = lox_rel_delete(&g_db, t, &id, &deleted);
+            lox_err_t rc = lox_rel_delete(&g_db, t, &id, sizeof(id), &deleted);
             if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
                 if (!handle_backpressure()) return 1;
                 continue;

@@ -155,7 +155,7 @@ static void verify_state(const model_t *m) {
 
     for (i = 0u; i < REL_MODEL_IDS; ++i) {
         if (m->rel_present[i]) {
-            ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &i, row), LOX_OK);
+            ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &i, sizeof(i), row, sizeof(row), NULL), LOX_OK);
         }
     }
 }
@@ -216,16 +216,16 @@ static void do_random_operation(model_t *m, uint32_t op_index) {
 
         if (op == 4u) {
             if (!m->rel_present[id]) {
-                ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-                ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+                ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+                ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
                 ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
                 m->rel_present[id] = true;
                 m->rel_count++;
             } else {
-                ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, row), LOX_OK);
+                ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, sizeof(id), row, sizeof(row), NULL), LOX_OK);
             }
         } else {
-            ASSERT_EQ(lox_rel_delete(&g_db, table, &id, &deleted), LOX_OK);
+            ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), &deleted), LOX_OK);
             if (m->rel_present[id]) {
                 ASSERT_EQ(deleted, 1u);
                 m->rel_present[id] = false;
@@ -294,7 +294,7 @@ MDB_TEST(contract_calls_before_init_are_invalid) {
     ASSERT_EQ(lox_ts_last(&db, "s", &s), LOX_ERR_INVALID);
     ASSERT_EQ(lox_table_get(&db, "users", &table), LOX_ERR_INVALID);
     ASSERT_EQ(lox_rel_insert(&db, table, &b), LOX_ERR_INVALID);
-    ASSERT_EQ(lox_rel_delete(&db, table, &b, &deleted), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_delete(&db, table, &b, sizeof(b), &deleted), LOX_ERR_INVALID);
     ASSERT_EQ(lox_table_create(&db, &schema), LOX_ERR_INVALID);
     ASSERT_EQ(lox_txn_begin(&db), LOX_ERR_INVALID);
 }

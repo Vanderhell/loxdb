@@ -130,8 +130,8 @@ MDB_TEST(large_ram_rel_more_rows) {
     ASSERT_EQ(lox_table_get(&g_db, "scale_rel", &table), LOX_OK);
     for (i = 0u; i < 10000u; ++i) {
         float val = (float)i;
-        ASSERT_EQ(lox_row_set(table, row, "id", &i), LOX_OK);
-        ASSERT_EQ(lox_row_set(table, row, "val", &val), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "id", &i, sizeof(i)), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "val", &val, sizeof(val)), LOX_OK);
         if (lox_rel_insert(&g_db, table, row) != LOX_OK) {
             break;
         }

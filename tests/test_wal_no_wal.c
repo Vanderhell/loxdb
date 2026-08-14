@@ -327,7 +327,7 @@ MDB_TEST(no_wal_rel_mutations_survive_immediate_crash) {
     ASSERT_EQ(lox_table_get(&g_db, "records", &table), LOX_OK);
     ASSERT_EQ(lox_rel_count(table, &count), LOX_OK);
     ASSERT_EQ(count, 1u);
-    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, &deleted), LOX_OK);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), &deleted), LOX_OK);
     ASSERT_EQ(deleted, 1u);
     crash_drop_db();
 

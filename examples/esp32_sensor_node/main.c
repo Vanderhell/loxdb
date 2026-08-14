@@ -100,10 +100,10 @@ void app_main(void) {
         alarm.sensor_id = 1u;
         alarm.value = temp;
         alarm.severity = 2u;
-        (void)lox_row_set(alarm_table, &alarm, "when", &alarm.when);
-        (void)lox_row_set(alarm_table, &alarm, "sensor_id", &alarm.sensor_id);
-        (void)lox_row_set(alarm_table, &alarm, "value", &alarm.value);
-        (void)lox_row_set(alarm_table, &alarm, "severity", &alarm.severity);
+        (void)lox_row_set(alarm_table, &alarm, "when", &alarm.when, sizeof(alarm.when));
+        (void)lox_row_set(alarm_table, &alarm, "sensor_id", &alarm.sensor_id, sizeof(alarm.sensor_id));
+        (void)lox_row_set(alarm_table, &alarm, "value", &alarm.value, sizeof(alarm.value));
+        (void)lox_row_set(alarm_table, &alarm, "severity", &alarm.severity, sizeof(alarm.severity));
         (void)lox_rel_insert(&g_db, alarm_table, &alarm);
     }
 

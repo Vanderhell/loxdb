@@ -273,14 +273,14 @@ static int age_workload(uint32_t age_ops, uint32_t cycle_count) {
             id = i % 220u;
             v8 = (uint8_t)(id & 0xFFu);
             memset(row, 0, sizeof(row));
-            rc = lox_row_set(t, row, "id", &id);
+            rc = lox_row_set(t, row, "id", &id, sizeof(id));
             if (rc != LOX_OK) return fail_loxdb("lox_row_set(age,id)", rc, 0);
-            rc = lox_row_set(t, row, "v", &v8);
+            rc = lox_row_set(t, row, "v", &v8, sizeof(v8));
             if (rc != LOX_OK) return fail_loxdb("lox_row_set(age,v)", rc, 0);
             (void)lox_rel_insert(&g_db, t, row);
         } else {
             id = i % 220u;
-            (void)lox_rel_delete(&g_db, t, &id, NULL);
+            (void)lox_rel_delete(&g_db, t, &id, sizeof(id), NULL);
         }
         if ((i % 128u) == 0u) {
             rc = lox_flush(&g_db);
@@ -387,12 +387,12 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
         uint32_t id = id_seed + i;
         uint8_t v = (uint8_t)(id & 0xFFu);
         memset(row, 0, sizeof(row));
-        rc = lox_row_set(t, row, "id", &id);
+        rc = lox_row_set(t, row, "id", &id, sizeof(id));
         if (rc != LOX_OK) {
             out->fail_count++;
             return fail_loxdb("lox_row_set(measure,id)", rc, 0);
         }
-        rc = lox_row_set(t, row, "v", &v);
+        rc = lox_row_set(t, row, "v", &v, sizeof(v));
         if (rc != LOX_OK) {
             out->fail_count++;
             return fail_loxdb("lox_row_set(measure,v)", rc, 0);
@@ -421,7 +421,7 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
     for (i = 0u; i < cfg->measure_ops && !saturated; ++i) {
         uint32_t id = id_seed + i;
         t0 = now_us();
-        rc = lox_rel_delete(&g_db, t, &id, NULL);
+        rc = lox_rel_delete(&g_db, t, &id, sizeof(id), NULL);
         if (rc != LOX_OK) {
             if (rc == LOX_ERR_STORAGE || rc == LOX_ERR_FULL) {
                 saturated = 1;

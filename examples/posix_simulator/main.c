@@ -40,8 +40,8 @@ static bool print_sensor_row(const void *row_buf, void *ctx) {
     uint32_t id = 0u;
     char name[16] = { 0 };
 
-    (void)lox_row_get(table, row_buf, "id", &id, NULL);
-    (void)lox_row_get(table, row_buf, "name", name, NULL);
+    (void)lox_row_get(table, row_buf, "id", &id, sizeof(id), NULL);
+    (void)lox_row_get(table, row_buf, "name", name, sizeof(name), NULL);
     printf("REL id=%u name=%s\n", id, name);
     return true;
 }
@@ -135,8 +135,8 @@ int main(void) {
         memset(&row, 0, sizeof(row));
         row.id = i + 1u;
         snprintf(row.name, sizeof(row.name), "sensor_%u", i + 1u);
-        (void)lox_row_set(table, &row, "id", &row.id);
-        (void)lox_row_set(table, &row, "name", row.name);
+        (void)lox_row_set(table, &row, "id", &row.id, sizeof(row.id));
+        (void)lox_row_set(table, &row, "name", row.name, sizeof(row.name));
         (void)lox_rel_insert(&db, table, &row);
     }
 

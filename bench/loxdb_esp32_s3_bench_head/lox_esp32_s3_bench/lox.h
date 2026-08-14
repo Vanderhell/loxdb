@@ -591,13 +591,15 @@ lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema);
 lox_err_t lox_table_get(lox_t *db, const char *name, lox_table_t **out_table);
 /* Pure metadata helper; no db handle, no internal DB lock. */
 size_t lox_table_row_size(const lox_table_t *table);
-/* Row buffer formatter/parser helpers; no db handle, no internal DB lock. */
-lox_err_t lox_row_set(const lox_table_t *table, void *row_buf, const char *col_name, const void *val);
-lox_err_t lox_row_get(const lox_table_t *table, const void *row_buf, const char *col_name, void *out, size_t *out_len);
+/* Row buffer helpers; no db handle or internal lock. STR lengths exclude the
+ * terminator; BLOB/scalar lengths must exactly match the schema column size.
+ * Getters never partially write and report the required size through out_len. */
+lox_err_t lox_row_set(const lox_table_t *table, void *row_buf, const char *col_name, const void *val, size_t val_len);
+lox_err_t lox_row_get(const lox_table_t *table, const void *row_buf, const char *col_name, void *out, size_t out_capacity, size_t *out_len);
 lox_err_t lox_rel_insert(lox_t *db, lox_table_t *table, const void *row_buf);
-lox_err_t lox_rel_find(lox_t *db, lox_table_t *table, const void *search_val, lox_rel_iter_cb_t cb, void *ctx);
-lox_err_t lox_rel_find_by(lox_t *db, lox_table_t *table, const char *col_name, const void *search_val, void *out_buf);
-lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, uint32_t *out_deleted);
+lox_err_t lox_rel_find(lox_t *db, lox_table_t *table, const void *search_val, size_t search_len, lox_rel_iter_cb_t cb, void *ctx);
+lox_err_t lox_rel_find_by(lox_t *db, lox_table_t *table, const char *col_name, const void *search_val, size_t search_len, void *out_buf, size_t out_capacity, size_t *out_len);
+lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, size_t search_len, uint32_t *out_deleted);
 lox_err_t lox_rel_iter(lox_t *db, lox_table_t *table, lox_rel_iter_cb_t cb, void *ctx);
 /* Table metadata query helper; no db handle, no internal DB lock. */
 lox_err_t lox_rel_count(const lox_table_t *table, uint32_t *out_count);

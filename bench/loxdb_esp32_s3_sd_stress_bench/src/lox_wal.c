@@ -46,10 +46,12 @@ static lox_err_t lox_rel_insert_stub(lox_t *db, lox_table_t *table, const void *
     (void)row_buf;
     return LOX_ERR_DISABLED;
 }
-static lox_err_t lox_rel_delete_stub(lox_t *db, lox_table_t *table, const void *search_val, uint32_t *out_deleted) {
+static lox_err_t lox_rel_delete_stub(lox_t *db, lox_table_t *table, const void *search_val,
+                                     size_t search_len, uint32_t *out_deleted) {
     (void)db;
     (void)table;
     (void)search_val;
+    (void)search_len;
     (void)out_deleted;
     return LOX_ERR_DISABLED;
 }
@@ -1506,7 +1508,7 @@ static lox_err_t lox_apply_wal_entry(lox_t *db,
             if (lox_table_get(db, table_name, &table) != LOX_OK || table->index_key_size == 0u) {
                 return LOX_ERR_CORRUPT;
             }
-            (void)lox_rel_delete(db, table, data + 1u + name_len, NULL);
+        (void)lox_rel_delete(db, table, data + 1u + name_len, table->index_key_size, NULL);
             return LOX_OK;
         }
         if (op == LOX_WAL_OP_CLEAR) {

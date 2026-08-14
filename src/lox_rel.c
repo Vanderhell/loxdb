@@ -319,6 +319,28 @@ static LOX_UNUSED_FN lox_err_t rel_validate_str_value(const char *str, size_t ma
     return LOX_ERR_SCHEMA;
 }
 
+static LOX_UNUSED_FN lox_err_t rel_normalize_value(const lox_col_desc_t *col,
+                                                    const void *val,
+                                                    size_t val_len,
+                                                    uint8_t *normalized) {
+    if (col == NULL || val == NULL || normalized == NULL) {
+        return LOX_ERR_INVALID;
+    }
+    memset(normalized, 0, col->size);
+    if (col->type == LOX_COL_STR) {
+        if (col->size == 0u || val_len >= col->size) {
+            return LOX_ERR_OVERFLOW;
+        }
+        memcpy(normalized, val, val_len);
+        return LOX_OK;
+    }
+    if (val_len != col->size) {
+        return LOX_ERR_SCHEMA;
+    }
+    memcpy(normalized, val, val_len);
+    return LOX_OK;
+}
+
 static LOX_UNUSED_FN lox_err_t rel_validate_row(const lox_table_t *table, const void *row_buf) {
     uint32_t i;
     for (i = 0u; i < table->col_count; ++i) {
@@ -738,8 +760,10 @@ size_t lox_table_row_size(const lox_table_t *table) {
     return table->row_size;
 }
 
-lox_err_t lox_row_set(const lox_table_t *table, void *row_buf, const char *col_name, const void *val) {
+lox_err_t lox_row_set(const lox_table_t *table, void *row_buf, const char *col_name, const void *val, size_t val_len) {
     const lox_col_desc_t *col;
+    uint8_t normalized[LOX_REL_ROW_SCRATCH_MAX];
+    lox_err_t rc;
 
     if (table == NULL || row_buf == NULL || col_name == NULL || val == NULL) {
         return LOX_ERR_INVALID;
@@ -750,16 +774,14 @@ lox_err_t lox_row_set(const lox_table_t *table, void *row_buf, const char *col_n
         return LOX_ERR_NOT_FOUND;
     }
 
-    if (col->type == LOX_COL_STR) {
-        if (rel_validate_str_value((const char *)val, col->size) != LOX_OK) {
-            return LOX_ERR_SCHEMA;
-        }
-        memset((uint8_t *)row_buf + col->offset, 0, col->size);
-        memcpy((uint8_t *)row_buf + col->offset, val, strlen((const char *)val) + 1u);
-        return LOX_OK;
+    if (col->size > sizeof(normalized)) {
+        return LOX_ERR_OVERFLOW;
     }
-
-    memcpy((uint8_t *)row_buf + col->offset, val, col->size);
+    rc = rel_normalize_value(col, val, val_len, normalized);
+    if (rc != LOX_OK) {
+        return rc;
+    }
+    memcpy((uint8_t *)row_buf + col->offset, normalized, col->size);
     return LOX_OK;
 }
 
@@ -767,6 +789,7 @@ lox_err_t lox_row_get(const lox_table_t *table,
                               const void *row_buf,
                               const char *col_name,
                               void *out,
+                              size_t out_capacity,
                               size_t *out_len) {
     const lox_col_desc_t *col;
 
@@ -779,10 +802,13 @@ lox_err_t lox_row_get(const lox_table_t *table,
         return LOX_ERR_NOT_FOUND;
     }
 
-    memcpy(out, (const uint8_t *)row_buf + col->offset, col->size);
     if (out_len != NULL) {
         *out_len = col->size;
     }
+    if (out_capacity < col->size) {
+        return LOX_ERR_OVERFLOW;
+    }
+    memcpy(out, (const uint8_t *)row_buf + col->offset, col->size);
     return LOX_OK;
 }
 
@@ -847,12 +873,15 @@ unlock:
 lox_err_t lox_rel_find(lox_t *db,
                                lox_table_t *table,
                                const void *search_val,
+                               size_t search_len,
                                lox_rel_iter_cb_t cb,
                                void *ctx) {
     uint32_t idx;
     uint32_t snapshot_mutation_seq;
     lox_err_t err;
     lox_err_t rc = LOX_OK;
+    uint8_t search_key[LOX_REL_INDEX_KEY_MAX];
+    const lox_col_desc_t *index_col;
 
     if (db == NULL) {
         return LOX_ERR_INVALID;
@@ -871,8 +900,13 @@ lox_err_t lox_rel_find(lox_t *db,
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    index_col = rel_index_col(table);
+    rc = rel_normalize_value(index_col, search_val, search_len, search_key);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
-    idx = rel_index_find_first(table, search_val);
+    idx = rel_index_find_first(table, search_key);
     snapshot_mutation_seq = table->mutation_seq;
     if (idx == UINT32_MAX) {
         rc = LOX_OK;
@@ -880,7 +914,7 @@ lox_err_t lox_rel_find(lox_t *db,
     }
 
     while (idx < table->index_count &&
-           rel_key_cmp(table->index[idx].key_bytes, search_val, table->index_key_size) == 0) {
+           rel_key_cmp(table->index[idx].key_bytes, search_key, table->index_key_size) == 0) {
         uint8_t row_copy[LOX_REL_ROW_SCRATCH_MAX];
         uint32_t row_idx = table->index[idx].row_idx;
         if (table->row_size > sizeof(row_copy)) {
@@ -916,12 +950,16 @@ lox_err_t lox_rel_find_by(lox_t *db,
                                   lox_table_t *table,
                                   const char *col_name,
                                   const void *search_val,
-                                  void *out_buf) {
+                                  size_t search_len,
+                                  void *out_buf,
+                                  size_t out_capacity,
+                                  size_t *out_len) {
     const lox_col_desc_t *col;
     uint32_t i;
     lox_err_t err;
 
     lox_err_t rc = LOX_OK;
+    uint8_t normalized[LOX_REL_ROW_SCRATCH_MAX];
 
     if (db == NULL) {
         return LOX_ERR_INVALID;
@@ -942,6 +980,21 @@ lox_err_t lox_rel_find_by(lox_t *db,
         rc = LOX_ERR_NOT_FOUND;
         goto unlock;
     }
+    if (out_len != NULL) {
+        *out_len = table->row_size;
+    }
+    if (out_capacity < table->row_size) {
+        rc = LOX_ERR_OVERFLOW;
+        goto unlock;
+    }
+    if (col->size > sizeof(normalized)) {
+        rc = LOX_ERR_OVERFLOW;
+        goto unlock;
+    }
+    rc = rel_normalize_value(col, search_val, search_len, normalized);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
     for (i = 0; i < table->order_count; ++i) {
         uint32_t row_idx = table->order[i];
@@ -952,11 +1005,7 @@ lox_err_t lox_rel_find_by(lox_t *db,
             continue;
         }
 
-        if (col->type == LOX_COL_STR) {
-            match = strncmp((const char *)(row + col->offset), (const char *)search_val, col->size) == 0;
-        } else {
-            match = memcmp(row + col->offset, search_val, col->size) == 0;
-        }
+        match = memcmp(row + col->offset, normalized, col->size) == 0;
 
         if (match) {
             memcpy(out_buf, row, table->row_size);
@@ -972,7 +1021,7 @@ unlock:
     return rc;
 }
 
-lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, uint32_t *out_deleted) {
+lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, size_t search_len, uint32_t *out_deleted) {
     uint32_t deleted = 0u;
     uint32_t idx;
     uint32_t match_count = 0u;
@@ -980,6 +1029,8 @@ lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, 
     lox_err_t err;
     lox_err_t rc = LOX_OK;
     bool wal_mode;
+    uint8_t search_key[LOX_REL_INDEX_KEY_MAX];
+    const lox_col_desc_t *index_col;
 
     if (db == NULL) {
         return LOX_ERR_INVALID;
@@ -1004,11 +1055,16 @@ lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, 
         rc = LOX_ERR_INVALID;
         goto unlock;
     }
+    index_col = rel_index_col(table);
+    rc = rel_normalize_value(index_col, search_val, search_len, search_key);
+    if (rc != LOX_OK) {
+        goto unlock;
+    }
 
-    idx = rel_index_find_first(table, search_val);
+    idx = rel_index_find_first(table, search_key);
     while (idx != UINT32_MAX &&
            idx < table->index_count &&
-           rel_key_cmp(table->index[idx].key_bytes, search_val, table->index_key_size) == 0) {
+           rel_key_cmp(table->index[idx].key_bytes, search_key, table->index_key_size) == 0) {
         match_count++;
         idx++;
     }
@@ -1023,14 +1079,14 @@ lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, 
 
     wal_mode = rel_wal_mode(lox_core(db));
     if (wal_mode) {
-        rc = lox_persist_rel_delete(db, table, search_val);
+        rc = lox_persist_rel_delete(db, table, search_key);
         if (rc != LOX_OK) {
             goto unlock;
         }
     }
 
     for (m = 0u; m < match_count; ++m) {
-        idx = rel_index_find_first(table, search_val);
+        idx = rel_index_find_first(table, search_key);
         if (idx == UINT32_MAX) {
             break;
         }
@@ -1226,11 +1282,12 @@ size_t lox_table_row_size(const lox_table_t *table) {
     return 0u;
 }
 
-lox_err_t lox_row_set(const lox_table_t *table, void *row_buf, const char *col_name, const void *val) {
+lox_err_t lox_row_set(const lox_table_t *table, void *row_buf, const char *col_name, const void *val, size_t val_len) {
     (void)table;
     (void)row_buf;
     (void)col_name;
     (void)val;
+    (void)val_len;
     return LOX_ERR_DISABLED;
 }
 
@@ -1238,11 +1295,13 @@ lox_err_t lox_row_get(const lox_table_t *table,
                               const void *row_buf,
                               const char *col_name,
                               void *out,
+                              size_t out_capacity,
                               size_t *out_len) {
     (void)table;
     (void)row_buf;
     (void)col_name;
     (void)out;
+    (void)out_capacity;
     (void)out_len;
     return LOX_ERR_DISABLED;
 }
@@ -1257,11 +1316,13 @@ lox_err_t lox_rel_insert(lox_t *db, lox_table_t *table, const void *row_buf) {
 lox_err_t lox_rel_find(lox_t *db,
                                lox_table_t *table,
                                const void *search_val,
+                               size_t search_len,
                                lox_rel_iter_cb_t cb,
                                void *ctx) {
     (void)db;
     (void)table;
     (void)search_val;
+    (void)search_len;
     (void)cb;
     (void)ctx;
     return LOX_ERR_DISABLED;
@@ -1271,19 +1332,26 @@ lox_err_t lox_rel_find_by(lox_t *db,
                                   lox_table_t *table,
                                   const char *col_name,
                                   const void *search_val,
-                                  void *out_buf) {
+                                  size_t search_len,
+                                  void *out_buf,
+                                  size_t out_capacity,
+                                  size_t *out_len) {
     (void)db;
     (void)table;
     (void)col_name;
     (void)search_val;
+    (void)search_len;
     (void)out_buf;
+    (void)out_capacity;
+    (void)out_len;
     return LOX_ERR_DISABLED;
 }
 
-lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, uint32_t *out_deleted) {
+lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, size_t search_len, uint32_t *out_deleted) {
     (void)db;
     (void)table;
     (void)search_val;
+    (void)search_len;
     (void)out_deleted;
     return LOX_ERR_DISABLED;
 }

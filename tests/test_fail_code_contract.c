@@ -114,13 +114,13 @@ MDB_TEST(contract_full_rel_insert_returns_full) {
     ASSERT_EQ(lox_table_get(&g_db, "full_t", &t), LOX_OK);
 
     id = 1u;
-    ASSERT_EQ(lox_row_set(t, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(t, row, "v", &v), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "v", &v, sizeof(v)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, t, row), LOX_OK);
 
     id = 2u;
-    ASSERT_EQ(lox_row_set(t, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(t, row, "v", &v), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(t, row, "v", &v, sizeof(v)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, t, row), LOX_ERR_FULL);
 }
 

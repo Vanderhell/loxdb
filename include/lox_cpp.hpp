@@ -333,31 +333,43 @@ public:
         return lox_table_row_size(table);
     }
 
-    lox_err_t rel_row_set(const lox_table_t *table, void *row_buf, const char *col_name, const void *val) {
-        return lox_row_set(table, row_buf, col_name, val);
+    lox_err_t rel_row_set(const lox_table_t *table, void *row_buf, const char *col_name, const void *val, size_t val_len) {
+        return lox_row_set(table, row_buf, col_name, val, val_len);
     }
 
     lox_err_t rel_row_get(const lox_table_t *table,
                               const void *row_buf,
                               const char *col_name,
                               void *out,
+                              size_t out_capacity,
                               size_t *out_len) {
-        return lox_row_get(table, row_buf, col_name, out, out_len);
+        return lox_row_get(table, row_buf, col_name, out, out_capacity, out_len);
     }
 
     template <typename T>
     lox_err_t rel_row_set_pod(const lox_table_t *table, void *row_buf, const char *col_name, const T &value) {
         static_assert(std::is_trivially_copyable<T>::value, "rel_row_set_pod requires trivially copyable T");
-        return rel_row_set(table, row_buf, col_name, &value);
+        return rel_row_set(table, row_buf, col_name, &value, sizeof(T));
     }
 
     template <typename T>
     lox_err_t rel_row_get_pod(const lox_table_t *table, const void *row_buf, const char *col_name, T *out_value) {
         static_assert(std::is_trivially_copyable<T>::value, "rel_row_get_pod requires trivially copyable T");
+        T value{};
+        size_t value_len = 0u;
+        lox_err_t rc;
         if (out_value == nullptr) {
             return LOX_ERR_INVALID;
         }
-        return rel_row_get(table, row_buf, col_name, out_value, nullptr);
+        rc = rel_row_get(table, row_buf, col_name, &value, sizeof(T), &value_len);
+        if (rc != LOX_OK) {
+            return rc;
+        }
+        if (value_len != sizeof(T)) {
+            return LOX_ERR_SCHEMA;
+        }
+        *out_value = value;
+        return LOX_OK;
     }
 
     lox_err_t rel_insert(lox_table_t *table, const void *row_buf) {
@@ -367,25 +379,26 @@ public:
         return lox_rel_insert(&db_, table, row_buf);
     }
 
-    lox_err_t rel_find(lox_table_t *table, const void *search_val, lox_rel_iter_cb_t cb, void *ctx) {
+    lox_err_t rel_find(lox_table_t *table, const void *search_val, size_t search_len, lox_rel_iter_cb_t cb, void *ctx) {
         if (!initialized_) {
             return LOX_ERR_INVALID;
         }
-        return lox_rel_find(&db_, table, search_val, cb, ctx);
+        return lox_rel_find(&db_, table, search_val, search_len, cb, ctx);
     }
 
-    lox_err_t rel_find_by(lox_table_t *table, const char *col_name, const void *search_val, void *out_buf) {
+    lox_err_t rel_find_by(lox_table_t *table, const char *col_name, const void *search_val, size_t search_len,
+                          void *out_buf, size_t out_capacity, size_t *out_len = nullptr) {
         if (!initialized_) {
             return LOX_ERR_INVALID;
         }
-        return lox_rel_find_by(&db_, table, col_name, search_val, out_buf);
+        return lox_rel_find_by(&db_, table, col_name, search_val, search_len, out_buf, out_capacity, out_len);
     }
 
-    lox_err_t rel_delete(lox_table_t *table, const void *search_val, uint32_t *out_deleted) {
+    lox_err_t rel_delete(lox_table_t *table, const void *search_val, size_t search_len, uint32_t *out_deleted) {
         if (!initialized_) {
             return LOX_ERR_INVALID;
         }
-        return lox_rel_delete(&db_, table, search_val, out_deleted);
+        return lox_rel_delete(&db_, table, search_val, search_len, out_deleted);
     }
 
     lox_err_t rel_iter(lox_table_t *table, lox_rel_iter_cb_t cb, void *ctx) {

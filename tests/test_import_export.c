@@ -189,8 +189,8 @@ MDB_TEST(ie_rel_roundtrip_selected_tables) {
 
     ASSERT_EQ(make_rel_table(&g_src, "r1", 16u, &src_t), LOX_OK);
     ASSERT_EQ(make_rel_table(&g_dst, "r1", 16u, &dst_t), LOX_OK);
-    ASSERT_EQ(lox_row_set(src_t, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(src_t, row, "v", &v), LOX_OK);
+    ASSERT_EQ(lox_row_set(src_t, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(src_t, row, "v", &v, sizeof(v)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_src, src_t, row), LOX_OK);
 
     tables[0].name = "r1";
@@ -204,7 +204,7 @@ MDB_TEST(ie_rel_roundtrip_selected_tables) {
     ASSERT_EQ(imported, 1u);
     ASSERT_EQ(skipped, 0u);
 
-    ASSERT_EQ(lox_rel_find_by(&g_dst, dst_t, "id", &id, out), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(&g_dst, dst_t, "id", &id, sizeof(id), out, sizeof(out), NULL), LOX_OK);
     ASSERT_EQ(memcmp(out, row, tables[0].row_size), 0);
 }
 

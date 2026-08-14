@@ -345,13 +345,13 @@ MDB_TEST(cpp_wrapper_rel_create_insert_find_count) {
     row_size = g_db.rel_table_row_size(table);
     ASSERT_EQ(row_size <= sizeof(row), 1);
     ASSERT_EQ(row_size <= sizeof(out_row), 1);
-    ASSERT_EQ(g_db.rel_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(g_db.rel_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(g_db.rel_insert(table, row), LOX_OK);
     ASSERT_EQ(g_db.rel_count(table, &count), LOX_OK);
     ASSERT_EQ(count, 1u);
-    ASSERT_EQ(g_db.rel_find_by(table, "id", &id, out_row), LOX_OK);
-    ASSERT_EQ(g_db.rel_row_get(table, out_row, "age", &age_out, &age_len), LOX_OK);
+    ASSERT_EQ(g_db.rel_find_by(table, "id", &id, sizeof(id), out_row, sizeof(out_row)), LOX_OK);
+    ASSERT_EQ(g_db.rel_row_get(table, out_row, "age", &age_out, sizeof(age_out), &age_len), LOX_OK);
     ASSERT_EQ(age_len, 1u);
     ASSERT_EQ(age_out, age);
 }
@@ -380,11 +380,11 @@ MDB_TEST(cpp_wrapper_rel_iter_delete_clear_and_admit) {
     row_size = g_db.rel_table_row_size(table);
     ASSERT_EQ(row_size <= sizeof(row), 1);
 
-    ASSERT_EQ(g_db.rel_row_set(table, row, "id", &id1), LOX_OK);
-    ASSERT_EQ(g_db.rel_row_set(table, row, "state", &state), LOX_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "id", &id1, sizeof(id1)), LOX_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "state", &state, sizeof(state)), LOX_OK);
     ASSERT_EQ(g_db.rel_insert(table, row), LOX_OK);
-    ASSERT_EQ(g_db.rel_row_set(table, row, "id", &id2), LOX_OK);
-    ASSERT_EQ(g_db.rel_row_set(table, row, "state", &state), LOX_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "id", &id2, sizeof(id2)), LOX_OK);
+    ASSERT_EQ(g_db.rel_row_set(table, row, "state", &state, sizeof(state)), LOX_OK);
     ASSERT_EQ(g_db.rel_insert(table, row), LOX_OK);
 
     it.count = 0u;
@@ -396,7 +396,7 @@ MDB_TEST(cpp_wrapper_rel_iter_delete_clear_and_admit) {
     ASSERT_EQ(a.status, LOX_OK);
 #endif
 
-    ASSERT_EQ(g_db.rel_delete(table, &id1, &deleted), LOX_OK);
+    ASSERT_EQ(g_db.rel_delete(table, &id1, sizeof(id1), &deleted), LOX_OK);
     ASSERT_EQ(deleted, 1u);
     ASSERT_EQ(g_db.rel_count(table, &count), LOX_OK);
     ASSERT_EQ(count, 1u);
@@ -424,7 +424,7 @@ MDB_TEST(cpp_wrapper_rel_pod_row_helpers_roundtrip) {
     ASSERT_EQ(g_db.rel_row_set_pod(table, row, "id", id), LOX_OK);
     ASSERT_EQ(g_db.rel_row_set_pod(table, row, "age", age), LOX_OK);
     ASSERT_EQ(g_db.rel_insert(table, row), LOX_OK);
-    ASSERT_EQ(g_db.rel_find_by(table, "id", &id, out_row), LOX_OK);
+    ASSERT_EQ(g_db.rel_find_by(table, "id", &id, sizeof(id), out_row, sizeof(out_row)), LOX_OK);
     ASSERT_EQ(g_db.rel_row_get_pod(table, out_row, "id", &id_out), LOX_OK);
     ASSERT_EQ(g_db.rel_row_get_pod(table, out_row, "age", &age_out), LOX_OK);
     ASSERT_EQ(id_out, id);
@@ -444,6 +444,24 @@ MDB_TEST(cpp_wrapper_rel_pod_row_helpers_null_invalid) {
     ASSERT_EQ(g_db.rel_table_get("pod_null", &table), LOX_OK);
     ASSERT_EQ(g_db.rel_row_set_pod(table, row, "id", id), LOX_OK);
     ASSERT_EQ(g_db.rel_row_get_pod<uint32_t>(table, row, "id", nullptr), LOX_ERR_INVALID);
+}
+
+MDB_TEST(cpp_wrapper_rel_pod_row_helpers_size_mismatch) {
+    lox_schema_t schema;
+    lox_table_t *table = nullptr;
+    uint8_t row[128] = { 0 };
+    uint32_t id = 1u;
+    uint64_t wrong = 0u;
+
+    ASSERT_EQ(g_db.rel_schema_init(&schema, "pod_size", 1u), LOX_OK);
+    ASSERT_EQ(g_db.rel_schema_add(&schema, "id", LOX_COL_U32, sizeof(uint32_t), true), LOX_OK);
+    ASSERT_EQ(g_db.rel_schema_seal(&schema), LOX_OK);
+    ASSERT_EQ(g_db.rel_table_create(&schema), LOX_OK);
+    ASSERT_EQ(g_db.rel_table_get("pod_size", &table), LOX_OK);
+    ASSERT_EQ(g_db.rel_row_set_pod(table, row, "id", wrong), LOX_ERR_SCHEMA);
+    ASSERT_EQ(g_db.rel_row_set_pod(table, row, "id", id), LOX_OK);
+    ASSERT_EQ(g_db.rel_row_get_pod(table, row, "id", &wrong), LOX_ERR_SCHEMA);
+    ASSERT_EQ(wrong, 0u);
 }
 
 MDB_TEST(cpp_wrapper_txn_reports_invalid_before_init) {
@@ -508,7 +526,7 @@ MDB_TEST(cpp_wrapper_realdata_typed_flow) {
     ASSERT_EQ(g_db.rel_row_set_pod<uint32_t>(table, row, "id", id), LOX_OK);
     ASSERT_EQ(g_db.rel_row_set_pod<uint8_t>(table, row, "severity", sev), LOX_OK);
     ASSERT_EQ(g_db.rel_insert(table, row), LOX_OK);
-    ASSERT_EQ(g_db.rel_find_by(table, "id", &id, out_row), LOX_OK);
+    ASSERT_EQ(g_db.rel_find_by(table, "id", &id, sizeof(id), out_row, sizeof(out_row)), LOX_OK);
     ASSERT_EQ(g_db.rel_row_get_pod<uint32_t>(table, out_row, "id", &id_out), LOX_OK);
     ASSERT_EQ(g_db.rel_row_get_pod<uint8_t>(table, out_row, "severity", &sev_out), LOX_OK);
     ASSERT_EQ(id_out, id);
@@ -543,6 +561,7 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_iter_delete_clear_and_admit);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_pod_row_helpers_roundtrip);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_pod_row_helpers_null_invalid);
+    MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_rel_pod_row_helpers_size_mismatch);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_txn_commit_persists_kv);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_txn_rollback_discards_kv);
     MDB_RUN_TEST(setup_db, teardown_db, cpp_wrapper_realdata_typed_flow);

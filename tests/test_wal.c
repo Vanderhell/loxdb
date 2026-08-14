@@ -258,8 +258,8 @@ MDB_TEST(wal_entry_written_after_rel_insert) {
     uint32_t second;
 
     make_rel_table(&g_db, &table);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     ASSERT_EQ(read_u32(&g_storage, 8u), 0u);
     second = next_entry_offset(&g_storage, wal_data_offset());
@@ -297,12 +297,12 @@ MDB_TEST(wal_power_loss_after_rel_insert_replays) {
     uint8_t age = 11u;
 
     make_rel_table(&g_db, &table);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     reopen_after_power_loss(&g_db, &g_storage);
     ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, out), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, sizeof(id), out, sizeof(out), NULL), LOX_OK);
 }
 
 MDB_TEST(wal_crc_corruption_discards_tail) {
@@ -403,15 +403,15 @@ MDB_TEST(wal_multiple_engines_replay_correctly) {
     make_rel_table(&g_db, &table);
     ASSERT_EQ(lox_kv_set(&g_db, "mix", &kv, 1u, 0u), LOX_OK);
     ASSERT_EQ(lox_ts_insert(&g_db, "u32", 77u, &ts), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     reopen_after_power_loss(&g_db, &g_storage);
     ASSERT_EQ(lox_kv_get(&g_db, "mix", &kv, 1u, NULL), LOX_OK);
     ASSERT_EQ(lox_ts_last(&g_db, "u32", &sample), LOX_OK);
     ASSERT_EQ(sample.v.u32, 7u);
     ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, out), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, sizeof(id), out, sizeof(out), NULL), LOX_OK);
 }
 
 MDB_TEST(wal_kv_delete_replayed) {
@@ -430,13 +430,13 @@ MDB_TEST(wal_rel_delete_replayed) {
     rel_ids_t ids = { 0 };
 
     make_rel_table(&g_db, &table);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
-    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, NULL), LOX_OK);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), NULL), LOX_OK);
     reopen_after_power_loss(&g_db, &g_storage);
     ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find(&g_db, table, &id, rel_collect_ids, &ids), LOX_OK);
+    ASSERT_EQ(lox_rel_find(&g_db, table, &id, sizeof(id), rel_collect_ids, &ids), LOX_OK);
     ASSERT_EQ(ids.count, 0u);
 }
 
@@ -453,24 +453,24 @@ MDB_TEST(wal_rel_delete_multirow_replayed_atomically) {
     uint32_t out_id = 0u;
 
     make_rel_table(&g_db, &table);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     age = 3u;
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &other_id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &other_age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &other_id, sizeof(other_id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &other_age, sizeof(other_age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
 
-    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, &deleted), LOX_OK);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), &deleted), LOX_OK);
     ASSERT_EQ(deleted, 2u);
     reopen_after_power_loss(&g_db, &g_storage);
     ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find(&g_db, table, &id, rel_collect_ids, &ids), LOX_OK);
+    ASSERT_EQ(lox_rel_find(&g_db, table, &id, sizeof(id), rel_collect_ids, &ids), LOX_OK);
     ASSERT_EQ(ids.count, 0u);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &other_id, out), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, out, "id", &out_id, NULL), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &other_id, sizeof(other_id), out, sizeof(out), NULL), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, out, "id", &out_id, sizeof(out_id), NULL), LOX_OK);
     ASSERT_EQ(out_id, other_id);
 }
 
@@ -524,15 +524,15 @@ MDB_TEST(wal_clean_reinit_after_deinit_persists_all) {
     make_rel_table(&g_db, &table);
     ASSERT_EQ(lox_kv_set(&g_db, "keep", &kv, 1u, 0u), LOX_OK);
     ASSERT_EQ(lox_ts_insert(&g_db, "f", 12u, &tsv), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     reopen_after_clean_shutdown(&g_db, &g_storage);
     ASSERT_EQ(lox_kv_get(&g_db, "keep", &kv, 1u, NULL), LOX_OK);
     ASSERT_EQ(lox_ts_last(&g_db, "f", &sample), LOX_OK);
     ASSERT_EQ(sample.v.f32 == 2.0f, 1);
     ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, rel_out), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, sizeof(id), rel_out, sizeof(rel_out), NULL), LOX_OK);
 }
 
 MDB_TEST(wal_kv_ttl_persisted_after_reload) {
@@ -611,8 +611,8 @@ MDB_TEST(wal_rel_iter_persists_insertion_order_after_reload) {
 
     make_rel_table(&g_db, &table);
     for (id = 1u; id <= 3u; ++id) {
-        ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-        ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
         ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     }
     reopen_after_clean_shutdown(&g_db, &g_storage);

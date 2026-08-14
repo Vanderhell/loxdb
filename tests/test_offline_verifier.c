@@ -324,7 +324,7 @@ static void create_valid_image(const char *path, uint32_t capacity) {
     ASSERT_EQ(lox_table_create(&db, &schema), LOX_OK);
     ASSERT_EQ(lox_table_get(&db, "users", &table), LOX_OK);
     u = 10u;
-    ASSERT_EQ(lox_row_set(table, row, "id", &u), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &u, sizeof(u)), LOX_OK);
     row[4] = 33u;
     ASSERT_EQ(lox_rel_insert(&db, table, row), LOX_OK);
 

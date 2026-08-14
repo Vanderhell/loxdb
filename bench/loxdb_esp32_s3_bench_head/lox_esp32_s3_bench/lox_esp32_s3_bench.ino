@@ -571,8 +571,8 @@ static bool run_rel_bench(void) {
     uint32_t t0 = micros();
     memset(row, 0, sizeof(row));
     temp_c = (uint16_t)(200u + (i % 50u));
-    if (lox_row_set(table, row, "id", &i) != LOX_OK) return false;
-    if (lox_row_set(table, row, "temp", &temp_c) != LOX_OK) return false;
+    if (lox_row_set(table, row, "id", &i, sizeof(i)) != LOX_OK) return false;
+    if (lox_row_set(table, row, "temp", &temp_c, sizeof(temp_c)) != LOX_OK) return false;
     if (lox_rel_insert(&g_db, table, row) != LOX_OK) return false;
     maybe_apply_write_control(i);
     {
@@ -596,7 +596,7 @@ static bool run_rel_bench(void) {
   g_rel_found = false;
   {
     uint32_t t0 = micros();
-    if (lox_rel_find(&g_db, table, &find_id, rel_find_cb, &find_id) != LOX_OK) return false;
+    if (lox_rel_find(&g_db, table, &find_id, sizeof(find_id), rel_find_cb, &find_id) != LOX_OK) return false;
     g_lat[0] = micros() - t0;
   }
   emit_metric("rel_find(index)", 1u, g_lat[0], lox_table_row_size(table), g_lat, 1u, 1u, heap_free_8bit(), heap_free_8bit());
@@ -976,13 +976,13 @@ static bool run_real_data_suite(void) {
   RD_CHECK_REAL("rel_table_get", lox_table_get(&g_db, "event_log", &table));
   RD_CHECK_REAL("rel_clear", lox_rel_clear(&g_db, table));
   memset(row, 0, sizeof(row));
-  RD_CHECK_REAL("rel_row_set/id", lox_row_set(table, row, "id", &v_1));
-  RD_CHECK_REAL("rel_row_set/sev", lox_row_set(table, row, "severity", &sev_3));
+    RD_CHECK_REAL("rel_row_set/id", lox_row_set(table, row, "id", &v_1, sizeof(v_1)));
+    RD_CHECK_REAL("rel_row_set/sev", lox_row_set(table, row, "severity", &sev_3, sizeof(sev_3)));
   RD_CHECK_REAL("rel_insert", lox_rel_insert(&g_db, table, row));
-  RD_CHECK_REAL("rel_find_by/id", lox_rel_find_by(&g_db, table, "id", &v_1, out_row));
+    RD_CHECK_REAL("rel_find_by/id", lox_rel_find_by(&g_db, table, "id", &v_1, sizeof(v_1), out_row, sizeof(out_row), NULL));
   RD_CHECK_REAL("rel_count", lox_rel_count(table, &rel_count));
   RD_EXPECT_REAL("assert/rel_count", rel_count == 1u);
-  RD_CHECK_REAL("rel_delete/id", lox_rel_delete(&g_db, table, &v_1, &deleted));
+    RD_CHECK_REAL("rel_delete/id", lox_rel_delete(&g_db, table, &v_1, sizeof(v_1), &deleted));
   RD_EXPECT_REAL("assert/rel_delete", deleted == 1u);
   RD_CHECK_REAL("admit_rel_insert", lox_admit_rel_insert(&g_db, "event_log", lox_table_row_size(table), &adm));
 

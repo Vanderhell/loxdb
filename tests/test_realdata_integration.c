@@ -101,7 +101,7 @@ static bool rel_sev3_iter_cb(const void *row_buf, void *ctx) {
     rel_iter_ctx_t *c = (rel_iter_ctx_t *)ctx;
     uint8_t sev = 0u;
     size_t out_len = 0u;
-    if (lox_row_get(c->table, row_buf, "severity", &sev, &out_len) != LOX_OK) return false;
+    if (lox_row_get(c->table, row_buf, "severity", &sev, sizeof(sev), &out_len) != LOX_OK) return false;
     if (sev == 3u) c->sev3_count++;
     return true;
 }
@@ -436,23 +436,23 @@ static bool scenario_c_rel_events(void) {
 
     for (i = 0u; i < (sizeof(events) / sizeof(events[0])); ++i) {
         memset(row, 0, sizeof(row));
-        RD_CHECK("rel/row_set/id", lox_row_set(g_event_table, row, "id", &events[i].id));
-        RD_CHECK("rel/row_set/timestamp", lox_row_set(g_event_table, row, "timestamp", &events[i].ts));
-        RD_CHECK("rel/row_set/source", lox_row_set(g_event_table, row, "source", &events[i].src));
-        RD_CHECK("rel/row_set/severity", lox_row_set(g_event_table, row, "severity", &events[i].sev));
-        RD_CHECK("rel/row_set/code", lox_row_set(g_event_table, row, "code", &events[i].code));
-        RD_CHECK("rel/row_set/message", lox_row_set(g_event_table, row, "message", events[i].msg));
+        RD_CHECK("rel/row_set/id", lox_row_set(g_event_table, row, "id", &events[i].id, sizeof(events[i].id)));
+        RD_CHECK("rel/row_set/timestamp", lox_row_set(g_event_table, row, "timestamp", &events[i].ts, sizeof(events[i].ts)));
+        RD_CHECK("rel/row_set/source", lox_row_set(g_event_table, row, "source", &events[i].src, sizeof(events[i].src)));
+        RD_CHECK("rel/row_set/severity", lox_row_set(g_event_table, row, "severity", &events[i].sev, sizeof(events[i].sev)));
+        RD_CHECK("rel/row_set/code", lox_row_set(g_event_table, row, "code", &events[i].code, sizeof(events[i].code)));
+        RD_CHECK("rel/row_set/message", lox_row_set(g_event_table, row, "message", events[i].msg, sizeof(events[i].msg)));
         RD_CHECK("rel/insert", lox_rel_insert(&g_db, g_event_table, row));
     }
 
     RD_CHECK("rel/count", lox_rel_count(g_event_table, &count_rows));
     RD_EXPECT("assert/rel.count20", count_rows == 20u);
 
-    RD_CHECK("rel/find_by/id10", lox_rel_find_by(&g_db, g_event_table, "id", &id, out_row));
+    RD_CHECK("rel/find_by/id10", lox_rel_find_by(&g_db, g_event_table, "id", &id, sizeof(id), out_row, sizeof(out_row), NULL));
     {
         char msg[16] = {0};
         size_t msg_len = 0u;
-        RD_CHECK("rel/row_get/message", lox_row_get(g_event_table, out_row, "message", msg, &msg_len));
+        RD_CHECK("rel/row_get/message", lox_row_get(g_event_table, out_row, "message", msg, sizeof(msg), &msg_len));
         RD_EXPECT("assert/rel.id10.watchdog", strncmp(msg, "watchdog", 8u) == 0);
     }
 
@@ -465,17 +465,17 @@ static bool scenario_c_rel_events(void) {
         RD_EXPECT("assert/rel.sev3.count", sev3_count == 3u);
     }
 
-    RD_CHECK("rel/delete/id10", lox_rel_delete(&g_db, g_event_table, &id, &deleted));
+    RD_CHECK("rel/delete/id10", lox_rel_delete(&g_db, g_event_table, &id, sizeof(id), &deleted));
     RD_EXPECT("assert/rel.delete1", deleted == 1u);
     RD_CHECK("rel/count/after_delete", lox_rel_count(g_event_table, &count_rows));
     RD_EXPECT("assert/rel.count19", count_rows == 19u);
     {
-        lox_err_t rc = lox_rel_find_by(&g_db, g_event_table, "id", &id, out_row);
+        lox_err_t rc = lox_rel_find_by(&g_db, g_event_table, "id", &id, sizeof(id), out_row, sizeof(out_row), NULL);
         rd_log("[%-40s] rc=%s", "rel/find_by/id10.after_delete", lox_err_to_string(rc));
         RD_EXPECT("assert/rel.id10.not_found", rc == LOX_ERR_NOT_FOUND);
     }
 
-    RD_CHECK("rel/delete/id99", lox_rel_delete(&g_db, g_event_table, &id_missing, &deleted));
+    RD_CHECK("rel/delete/id99", lox_rel_delete(&g_db, g_event_table, &id_missing, sizeof(id_missing), &deleted));
     RD_EXPECT("assert/rel.delete0", deleted == 0u);
 
     RD_CHECK("admit_rel_insert", lox_admit_rel_insert(&g_db, "event_log", lox_table_row_size(g_event_table), &adm));
@@ -494,7 +494,7 @@ static bool scenario_c_rel_events(void) {
     RD_EXPECT("assert/rel.db2.count", count_rows == 19u);
     {
         uint32_t id7 = 7u;
-        RD_CHECK("rel/find_by/db2/id7", lox_rel_find_by(&g_db2, g_event_table2, "id", &id7, out_row));
+        RD_CHECK("rel/find_by/db2/id7", lox_rel_find_by(&g_db2, g_event_table2, "id", &id7, sizeof(id7), out_row, sizeof(out_row), NULL));
     }
 
     {

@@ -188,7 +188,7 @@ static void verify_model(const model_t *model) {
 
     for (i = 0u; i < MODEL_REL_IDS; ++i) {
         if (model->rel_present[i] != 0u) {
-            ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &i, row), LOX_OK);
+            ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &i, sizeof(i), row, sizeof(row), NULL), LOX_OK);
         }
     }
 }
@@ -267,15 +267,15 @@ static void run_managed_stress_workload(uint32_t iterations, uint32_t reopen_per
             uint8_t age = (uint8_t)(20u + (id % 50u));
             if (op == 3u) {
                 if (model.rel_present[id] == 0u) {
-                    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-                    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+                    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+                    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
                     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
                     model.rel_present[id] = 1u;
                     model.rel_count++;
                 }
             } else {
                 uint32_t deleted = 0u;
-                ASSERT_EQ(lox_rel_delete(&g_db, table, &id, &deleted), LOX_OK);
+                ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), &deleted), LOX_OK);
                 if (model.rel_present[id] != 0u) {
                     ASSERT_EQ(deleted, 1u);
                     model.rel_present[id] = 0u;

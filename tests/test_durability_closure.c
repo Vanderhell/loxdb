@@ -188,8 +188,8 @@ static void seed_mixed_state(void) {
     ASSERT_EQ(lox_ts_register(&g_db, "stream", LOX_TS_U32, 0u), LOX_OK);
     ASSERT_EQ(lox_ts_insert(&g_db, "stream", 11u, &tsv), LOX_OK);
     create_rel_users(&g_db, &table);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
 }
 
@@ -205,7 +205,7 @@ static void verify_anchor_state(void) {
     ASSERT_EQ(lox_ts_last(&g_db, "stream", &sample), LOX_OK);
     ASSERT_EQ(sample.v.u32, 77u);
     ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, row), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "id", &id, sizeof(id), row, sizeof(row), NULL), LOX_OK);
 }
 
 MDB_TEST(power_cut_after_each_compact_step_keeps_committed_state) {
@@ -398,8 +398,8 @@ MDB_TEST(repeated_crash_reboot_cycles_mixed_workload) {
         key[1] = (char)('0' + (char)(i % 10u));
         ASSERT_EQ(lox_kv_set(&g_db, key, &kv, 1u, 0u), LOX_OK);
         ASSERT_EQ(lox_ts_insert(&g_db, "mix", i + 1u, &tsv), LOX_OK);
-        ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-        ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
         ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
         crash_reopen();
         ASSERT_EQ(lox_table_get(&g_db, "users", &table), LOX_OK);

@@ -175,8 +175,8 @@ MDB_TEST(rel_table_handles_are_bound_to_their_owner_db) {
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(lox_table_create(&g_db_a, &schema), LOX_OK);
     ASSERT_EQ(lox_table_get(&g_db_a, "users", &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &(uint8_t){ 3u }), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &(uint8_t){ 3u }, sizeof(uint8_t)), LOX_OK);
 
     ASSERT_EQ(lox_rel_insert(&g_db_b, table, row), LOX_ERR_INVALID);
     ASSERT_EQ(lox_rel_count(table, &count), LOX_OK);

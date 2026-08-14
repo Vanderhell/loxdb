@@ -296,14 +296,14 @@ static void run_latency_workload(const char *backend_name, uint8_t write_through
             uint8_t v = (uint8_t)(id & 0xFFu);
             ASSERT_EQ(lox_table_get(&g_db, "m", &table), LOX_OK);
             if (op == 3u) {
-                ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-                ASSERT_EQ(lox_row_set(table, row, "v", &v), LOX_OK);
+                ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+                ASSERT_EQ(lox_row_set(table, row, "v", &v, sizeof(v)), LOX_OK);
                 {
                     lox_err_t rc = lox_rel_insert(&g_db, table, row);
                     ASSERT_EQ((rc == LOX_OK || rc == LOX_ERR_EXISTS || rc == LOX_ERR_FULL), 1);
                 }
             } else {
-                ASSERT_EQ((lox_rel_delete(&g_db, table, &id, NULL) == LOX_OK), 1);
+                ASSERT_EQ((lox_rel_delete(&g_db, table, &id, sizeof(id), NULL) == LOX_OK), 1);
             }
         }
 

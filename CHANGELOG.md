@@ -8,6 +8,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ### Fixed
 
+- Hardened relational row and indexed-key APIs against caller-buffer over-read
+  and overwrite by requiring explicit input lengths and output capacities.
 - Corrected no-WAL time-series and relational mutation ordering so successful
   inserts and deletes are included in the synchronized dual-bank snapshot
   before the operation returns.
@@ -25,11 +27,16 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ### Changed
 
+- Updated the public C and C++ relational APIs to carry value/key lengths and
+  destination capacities. This is a source-breaking change; callers must pass
+  STR lengths without the terminator and exact sizes for BLOB/scalar values.
 - Updated embedded-oriented quick-start examples to keep the database handle
   in static storage rather than consuming an application stack frame.
 
 ### Tests
 
+- Added relational buffer-boundary, bounded-string, BLOB/key-length, indexed
+  STR/BLOB, and C++ POD type-size regression coverage.
 - Added immediate crash/reopen coverage for no-WAL time-series and relational
   table, insert, delete, and clear mutations.
 - Added no-WAL snapshot sync-failure coverage for faulted-handle and reopen

@@ -93,7 +93,7 @@ static bool rel_find_mutating_cb(const void *row_buf, void *ctx) {
     (void)row_buf;
     if (!g_rel_mutate_once) {
         g_rel_mutate_once = true;
-        (void)lox_rel_delete(&g_db, mctx->table, &mctx->id, NULL);
+        (void)lox_rel_delete(&g_db, mctx->table, &mctx->id, sizeof(mctx->id), NULL);
     }
     return true;
 }
@@ -260,7 +260,7 @@ MDB_TEST(rel_row_set_unknown_column_not_found) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 16u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "missing", &id), LOX_ERR_NOT_FOUND);
+    ASSERT_EQ(lox_row_set(table, row, "missing", &id, sizeof(id)), LOX_ERR_NOT_FOUND);
 }
 
 MDB_TEST(rel_row_get_unknown_column_not_found) {
@@ -271,7 +271,7 @@ MDB_TEST(rel_row_get_unknown_column_not_found) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 16u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "missing", &out, NULL), LOX_ERR_NOT_FOUND);
+    ASSERT_EQ(lox_row_get(table, row, "missing", &out, sizeof(out), NULL), LOX_ERR_NOT_FOUND);
 }
 
 MDB_TEST(rel_row_roundtrip_unsigned_scalars) {
@@ -290,14 +290,14 @@ MDB_TEST(rel_row_roundtrip_unsigned_scalars) {
     ASSERT_EQ(lox_schema_add(&schema, "u64", LOX_COL_U64, sizeof(uint64_t), false), LOX_OK);
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "u8", &u8), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "u16", &u16), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "u32", &u32), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "u64", &u64), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "u8", &ou8, NULL), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "u16", &ou16, NULL), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "u32", &ou32, NULL), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "u64", &ou64, NULL), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "u8", &u8, sizeof(u8)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "u16", &u16, sizeof(u16)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "u32", &u32, sizeof(u32)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "u64", &u64, sizeof(u64)), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "u8", &ou8, sizeof(ou8), NULL), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "u16", &ou16, sizeof(ou16), NULL), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "u32", &ou32, sizeof(ou32), NULL), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "u64", &ou64, sizeof(ou64), NULL), LOX_OK);
     ASSERT_EQ(ou8, 1u);
     ASSERT_EQ(ou16, 2u);
     ASSERT_EQ(ou32, 3u);
@@ -320,14 +320,14 @@ MDB_TEST(rel_row_roundtrip_signed_scalars) {
     ASSERT_EQ(lox_schema_add(&schema, "i64", LOX_COL_I64, sizeof(int64_t), false), LOX_OK);
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "i8", &i8), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "i16", &i16), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "i32", &i32), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "i64", &i64), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "i8", &oi8, NULL), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "i16", &oi16, NULL), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "i32", &oi32, NULL), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "i64", &oi64, NULL), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "i8", &i8, sizeof(i8)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "i16", &i16, sizeof(i16)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "i32", &i32, sizeof(i32)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "i64", &i64, sizeof(i64)), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "i8", &oi8, sizeof(oi8), NULL), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "i16", &oi16, sizeof(oi16), NULL), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "i32", &oi32, sizeof(oi32), NULL), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "i64", &oi64, sizeof(oi64), NULL), LOX_OK);
     ASSERT_EQ(oi8, -1);
     ASSERT_EQ(oi16, -2);
     ASSERT_EQ(oi32, -3);
@@ -346,10 +346,10 @@ MDB_TEST(rel_row_roundtrip_float_scalars) {
     ASSERT_EQ(lox_schema_add(&schema, "f64", LOX_COL_F64, sizeof(double), false), LOX_OK);
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "f32", &f32), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "f64", &f64), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "f32", &of32, NULL), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "f64", &of64, NULL), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "f32", &f32, sizeof(f32)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "f64", &f64, sizeof(f64)), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "f32", &of32, sizeof(of32), NULL), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "f64", &of64, sizeof(of64), NULL), LOX_OK);
     ASSERT_EQ(of32 == f32, 1);
     ASSERT_EQ(of64 == f64, 1);
 }
@@ -365,8 +365,8 @@ MDB_TEST(rel_row_roundtrip_bool) {
     ASSERT_EQ(lox_schema_add(&schema, "flag", LOX_COL_BOOL, sizeof(bool), false), LOX_OK);
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "flag", &value), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "flag", &out, NULL), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "flag", &value, sizeof(value)), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "flag", &out, sizeof(out), NULL), LOX_OK);
     ASSERT_EQ(out, 1);
 }
 
@@ -380,8 +380,8 @@ MDB_TEST(rel_row_roundtrip_str) {
     ASSERT_EQ(lox_schema_add(&schema, "name", LOX_COL_STR, 8u, false), LOX_OK);
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "name", "bob"), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "name", out, NULL), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "name", "bob", sizeof("bob") - 1u), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "name", out, sizeof(out), NULL), LOX_OK);
     ASSERT_EQ(strcmp(out, "bob"), 0);
 }
 
@@ -396,8 +396,8 @@ MDB_TEST(rel_row_roundtrip_blob) {
     ASSERT_EQ(lox_schema_add(&schema, "blob", LOX_COL_BLOB, 4u, false), LOX_OK);
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "blob", blob), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, row, "blob", out, NULL), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "blob", blob, sizeof(blob)), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "blob", out, sizeof(out), NULL), LOX_OK);
     ASSERT_MEM_EQ(out, blob, 4u);
 }
 
@@ -410,7 +410,91 @@ MDB_TEST(rel_str_overflow_schema) {
     ASSERT_EQ(lox_schema_add(&schema, "name", LOX_COL_STR, 4u, false), LOX_OK);
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "name", "toolong"), LOX_ERR_SCHEMA);
+    ASSERT_EQ(lox_row_set(table, row, "name", "toolong", sizeof("toolong") - 1u), LOX_ERR_OVERFLOW);
+}
+
+MDB_TEST(rel_row_buffer_boundaries) {
+    lox_schema_t schema;
+    lox_table_t *table = NULL;
+    uint8_t row[128] = { 0 };
+    uint32_t value = 0x12345678u;
+    uint8_t exact[sizeof(value)] = { 0 };
+    uint8_t large[sizeof(value) + 2u] = { 0 };
+    uint8_t small[sizeof(value)] = { 0xa5u, 0xa5u, 0xa5u, 0xa5u };
+    size_t out_len = 0u;
+
+    ASSERT_EQ(lox_schema_init(&schema, "bounds", 1u), LOX_OK);
+    ASSERT_EQ(lox_schema_add(&schema, "value", LOX_COL_U32, sizeof(value), false), LOX_OK);
+    ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
+    ASSERT_EQ(make_table(&schema, &table), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "value", &value, sizeof(value)), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "value", exact, sizeof(exact), &out_len), LOX_OK);
+    ASSERT_EQ(out_len, sizeof(value));
+    ASSERT_MEM_EQ(exact, &value, sizeof(value));
+    ASSERT_EQ(lox_row_get(table, row, "value", large, sizeof(large), &out_len), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, row, "value", small, sizeof(value) - 1u, &out_len), LOX_ERR_OVERFLOW);
+    ASSERT_EQ(out_len, sizeof(value));
+    ASSERT_EQ(small[0], 0xa5u);
+    ASSERT_EQ(small[1], 0xa5u);
+    ASSERT_EQ(small[2], 0xa5u);
+    ASSERT_EQ(small[3], 0xa5u);
+    ASSERT_EQ(lox_row_get(table, row, "value", small, 0u, &out_len), LOX_ERR_OVERFLOW);
+    ASSERT_EQ(out_len, sizeof(value));
+}
+
+MDB_TEST(rel_row_bounded_str_and_blob_inputs) {
+    lox_schema_t schema;
+    lox_table_t *table = NULL;
+    uint8_t row[128] = { 0 };
+    const char bounded[3] = { 'b', 'o', 'b' };
+    uint8_t blob[4] = { 1u, 2u, 3u, 4u };
+
+    ASSERT_EQ(lox_schema_init(&schema, "inputs", 1u), LOX_OK);
+    ASSERT_EQ(lox_schema_add(&schema, "name", LOX_COL_STR, 4u, false), LOX_OK);
+    ASSERT_EQ(lox_schema_add(&schema, "blob", LOX_COL_BLOB, sizeof(blob), false), LOX_OK);
+    ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
+    ASSERT_EQ(make_table(&schema, &table), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "name", bounded, sizeof(bounded)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "name", bounded, 4u), LOX_ERR_OVERFLOW);
+    ASSERT_EQ(lox_row_set(table, row, "blob", blob, sizeof(blob)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "blob", blob, sizeof(blob) - 1u), LOX_ERR_SCHEMA);
+    ASSERT_EQ(lox_row_set(table, row, "blob", blob, sizeof(blob) + 1u), LOX_ERR_SCHEMA);
+}
+
+MDB_TEST(rel_index_key_lengths_and_normalization) {
+    lox_schema_t schema;
+    lox_table_t *table = NULL;
+    uint8_t row[128] = { 0 };
+    uint8_t blob[4] = { 1u, 2u, 3u, 4u };
+    uint32_t deleted = 0u;
+    rel_iter_ctx_t ctx = { 0 };
+
+    ASSERT_EQ(lox_schema_init(&schema, "stridx", 1u), LOX_OK);
+    ASSERT_EQ(lox_schema_add(&schema, "name", LOX_COL_STR, 8u, true), LOX_OK);
+    ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
+    ASSERT_EQ(make_table(&schema, &table), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "name", "bob", 3u), LOX_OK);
+    ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
+    ASSERT_EQ(lox_rel_find(&g_db, table, "bob", 3u, rel_collect_id_cb, &ctx), LOX_OK);
+    ASSERT_EQ(ctx.count, 1u);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, "bob", 3u, &deleted), LOX_OK);
+    ASSERT_EQ(deleted, 1u);
+
+    teardown_db();
+    setup_db();
+    memset(row, 0, sizeof(row));
+    memset(&ctx, 0, sizeof(ctx));
+    ASSERT_EQ(lox_schema_init(&schema, "blobidx", 1u), LOX_OK);
+    ASSERT_EQ(lox_schema_add(&schema, "key", LOX_COL_BLOB, sizeof(blob), true), LOX_OK);
+    ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
+    ASSERT_EQ(make_table(&schema, &table), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "key", blob, sizeof(blob)), LOX_OK);
+    ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
+    ASSERT_EQ(lox_rel_find(&g_db, table, blob, sizeof(blob) - 1u, rel_collect_id_cb, &ctx), LOX_ERR_SCHEMA);
+    ASSERT_EQ(lox_rel_find(&g_db, table, blob, sizeof(blob), rel_collect_id_cb, &ctx), LOX_OK);
+    ASSERT_EQ(ctx.count, 1u);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, blob, sizeof(blob), &deleted), LOX_OK);
+    ASSERT_EQ(deleted, 1u);
 }
 
 MDB_TEST(rel_insert_ok) {
@@ -422,8 +506,8 @@ MDB_TEST(rel_insert_ok) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 2u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
 }
 
@@ -436,11 +520,11 @@ MDB_TEST(rel_insert_beyond_max_rows_full) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 1u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     id = 2u;
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_ERR_FULL);
 }
 
@@ -463,10 +547,10 @@ MDB_TEST(rel_find_by_index_returns_rows) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 3u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
-    ASSERT_EQ(lox_rel_find(&g_db, table, &id, rel_collect_id_cb, &ctx), LOX_OK);
+    ASSERT_EQ(lox_rel_find(&g_db, table, &id, sizeof(id), rel_collect_id_cb, &ctx), LOX_OK);
     ASSERT_EQ(ctx.count, 1u);
     ASSERT_EQ(ctx.ids[0], 42u);
 }
@@ -479,7 +563,7 @@ MDB_TEST(rel_find_no_match_cb_never_called) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 2u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find(&g_db, table, &id, rel_collect_id_cb, &ctx), LOX_OK);
+    ASSERT_EQ(lox_rel_find(&g_db, table, &id, sizeof(id), rel_collect_id_cb, &ctx), LOX_OK);
     ASSERT_EQ(ctx.count, 0u);
 }
 
@@ -493,17 +577,17 @@ MDB_TEST(rel_find_mutation_during_callback_returns_modified) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 4u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     age = 4u;
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
 
     g_rel_mutate_once = false;
     ctx.table = table;
     ctx.id = id;
-    ASSERT_EQ(lox_rel_find(&g_db, table, &id, rel_find_mutating_cb, &ctx), LOX_ERR_MODIFIED);
+    ASSERT_EQ(lox_rel_find(&g_db, table, &id, sizeof(id), rel_find_mutating_cb, &ctx), LOX_ERR_MODIFIED);
 }
 
 MDB_TEST(rel_find_without_index_invalid) {
@@ -516,7 +600,7 @@ MDB_TEST(rel_find_without_index_invalid) {
     ASSERT_EQ(lox_schema_add(&schema, "id", LOX_COL_U32, sizeof(uint32_t), false), LOX_OK);
     ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find(&g_db, table, &id, rel_collect_id_cb, &ctx), LOX_ERR_INVALID);
+    ASSERT_EQ(lox_rel_find(&g_db, table, &id, sizeof(id), rel_collect_id_cb, &ctx), LOX_ERR_INVALID);
 }
 
 MDB_TEST(rel_find_by_non_index_correct) {
@@ -530,11 +614,11 @@ MDB_TEST(rel_find_by_non_index_correct) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 2u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "age", &age, out), LOX_OK);
-    ASSERT_EQ(lox_row_get(table, out, "id", &out_id, NULL), LOX_OK);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "age", &age, sizeof(age), out, sizeof(out), NULL), LOX_OK);
+    ASSERT_EQ(lox_row_get(table, out, "id", &out_id, sizeof(out_id), NULL), LOX_OK);
     ASSERT_EQ(out_id, 2u);
 }
 
@@ -546,7 +630,7 @@ MDB_TEST(rel_find_by_no_match) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 2u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_rel_find_by(&g_db, table, "age", &age, out), LOX_ERR_NOT_FOUND);
+    ASSERT_EQ(lox_rel_find_by(&g_db, table, "age", &age, sizeof(age), out, sizeof(out), NULL), LOX_ERR_NOT_FOUND);
 }
 
 MDB_TEST(rel_delete_by_index_removes_rows) {
@@ -560,12 +644,12 @@ MDB_TEST(rel_delete_by_index_removes_rows) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 2u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
-    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, &deleted), LOX_OK);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), &deleted), LOX_OK);
     ASSERT_EQ(deleted, 1u);
-    ASSERT_EQ(lox_rel_find(&g_db, table, &id, rel_collect_id_cb, &ctx), LOX_OK);
+    ASSERT_EQ(lox_rel_find(&g_db, table, &id, sizeof(id), rel_collect_id_cb, &ctx), LOX_OK);
     ASSERT_EQ(ctx.count, 0u);
 }
 
@@ -577,7 +661,7 @@ MDB_TEST(rel_delete_no_match_zero) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 2u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, &deleted), LOX_OK);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), &deleted), LOX_OK);
     ASSERT_EQ(deleted, 0u);
 }
 
@@ -592,8 +676,8 @@ MDB_TEST(rel_iter_visits_rows_in_insertion_order) {
     ASSERT_EQ(make_indexed_schema(&schema, "users", 3u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
     for (id = 1u; id <= 3u; ++id) {
-        ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-        ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
         ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     }
     ASSERT_EQ(lox_rel_iter(&g_db, table, rel_collect_id_cb, &ctx), LOX_OK);
@@ -614,8 +698,8 @@ MDB_TEST(rel_iter_callback_false_stops_early) {
     ASSERT_EQ(make_indexed_schema(&schema, "users", 3u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
     for (id = 1u; id <= 3u; ++id) {
-        ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-        ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+        ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
         ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     }
     ASSERT_EQ(lox_rel_iter(&g_db, table, rel_collect_id_stop_after_two, &ctx), LOX_OK);
@@ -632,11 +716,11 @@ MDB_TEST(rel_iter_detects_concurrent_mutation) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 3u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     id = 2u;
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
 
     g_rel_mutate_once = false;
@@ -655,12 +739,12 @@ MDB_TEST(rel_count_after_insert_delete) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 2u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     ASSERT_EQ(lox_rel_count(table, &count), LOX_OK);
     ASSERT_EQ(count, 1u);
-    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, NULL), LOX_OK);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), NULL), LOX_OK);
     ASSERT_EQ(lox_rel_count(table, &count), LOX_OK);
     ASSERT_EQ(count, 0u);
 }
@@ -675,8 +759,8 @@ MDB_TEST(rel_clear_preserves_table) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 2u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
     ASSERT_EQ(lox_rel_clear(&g_db, table), LOX_OK);
     ASSERT_EQ(lox_rel_count(table, &count), LOX_OK);
@@ -693,10 +777,10 @@ MDB_TEST(rel_delete_updates_bitmap_and_index) {
 
     ASSERT_EQ(make_indexed_schema(&schema, "users", 2u), LOX_OK);
     ASSERT_EQ(make_table(&schema, &table), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "id", &id), LOX_OK);
-    ASSERT_EQ(lox_row_set(table, row, "age", &age), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "id", &id, sizeof(id)), LOX_OK);
+    ASSERT_EQ(lox_row_set(table, row, "age", &age, sizeof(age)), LOX_OK);
     ASSERT_EQ(lox_rel_insert(&g_db, table, row), LOX_OK);
-    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, NULL), LOX_OK);
+    ASSERT_EQ(lox_rel_delete(&g_db, table, &id, sizeof(id), NULL), LOX_OK);
     ASSERT_EQ(table->live_count, 0u);
     ASSERT_EQ(table->index_count, 0u);
     ASSERT_EQ(((table->alive_bitmap[0] & 1u) == 0u), 1);
@@ -730,6 +814,9 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, rel_row_roundtrip_str);
     MDB_RUN_TEST(setup_db, teardown_db, rel_row_roundtrip_blob);
     MDB_RUN_TEST(setup_db, teardown_db, rel_str_overflow_schema);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_buffer_boundaries);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_row_bounded_str_and_blob_inputs);
+    MDB_RUN_TEST(setup_db, teardown_db, rel_index_key_lengths_and_normalization);
     MDB_RUN_TEST(setup_db, teardown_db, rel_insert_ok);
     MDB_RUN_TEST(setup_db, teardown_db, rel_insert_beyond_max_rows_full);
     MDB_RUN_TEST(setup_db, teardown_db, rel_insert_null_row_buf_invalid);
