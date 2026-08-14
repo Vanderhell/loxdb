@@ -674,6 +674,21 @@ endif()
 
 if(LOX_BUILD_TESTS)
     enable_testing()
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        find_package(Python3 COMPONENTS Interpreter QUIET)
+        if(Python3_Interpreter_FOUND)
+            add_test(
+                NAME test_core_stack_usage_gate
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_stack_usage.py
+                    --compiler ${CMAKE_C_COMPILER}
+                    --source-dir ${CMAKE_CURRENT_SOURCE_DIR}
+                    --work-dir ${CMAKE_CURRENT_BINARY_DIR}/stack-usage-gate
+            )
+        else()
+            message(WARNING "Python3 unavailable: core stack-usage regression gate disabled")
+        endif()
+    endif()
     add_test(
         NAME test_benchmark_bundles_current
         COMMAND ${CMAKE_COMMAND}

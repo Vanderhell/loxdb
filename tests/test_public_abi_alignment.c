@@ -40,6 +40,8 @@ LOX_CT_ASSERT(handle_global_alignment, offsetof(lox_handle_holder_t, handle) % s
 LOX_CT_ASSERT(schema_global_alignment, offsetof(lox_schema_holder_t, schema) % sizeof(long double) == 0u);
 LOX_CT_ASSERT(packed_handle_offset, offsetof(packed_lox_handle_holder_t, handle) == 1u);
 LOX_CT_ASSERT(packed_schema_offset, offsetof(packed_lox_schema_holder_t, schema) == 1u);
+LOX_CT_ASSERT(public_handle_size_gate, sizeof(lox_t) <= 8224u);
+LOX_CT_ASSERT(public_schema_size_gate, sizeof(lox_schema_t) <= 912u);
 
 static void init_cfg(lox_cfg_t *cfg) {
     memset(cfg, 0, sizeof(*cfg));

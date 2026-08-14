@@ -35,6 +35,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ### Tests
 
+- Added compiler-generated stack-frame and public handle/schema size regression
+  gates for MCU-relevant core profiles.
 - Extended thread-safety coverage across mutable metadata and admission APIs,
   corrupted handles, callback reentry, mutation detection, and lock balance.
 - Added relational buffer-boundary, bounded-string, BLOB/key-length, indexed
