@@ -441,7 +441,8 @@ static bool scenario_c_rel_events(void) {
         RD_CHECK("rel/row_set/source", lox_row_set(g_event_table, row, "source", &events[i].src, sizeof(events[i].src)));
         RD_CHECK("rel/row_set/severity", lox_row_set(g_event_table, row, "severity", &events[i].sev, sizeof(events[i].sev)));
         RD_CHECK("rel/row_set/code", lox_row_set(g_event_table, row, "code", &events[i].code, sizeof(events[i].code)));
-        RD_CHECK("rel/row_set/message", lox_row_set(g_event_table, row, "message", events[i].msg, sizeof(events[i].msg)));
+        RD_CHECK("rel/row_set/message",
+                 lox_row_set(g_event_table, row, "message", events[i].msg, strlen(events[i].msg)));
         RD_CHECK("rel/insert", lox_rel_insert(&g_db, g_event_table, row));
     }
 
