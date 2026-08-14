@@ -9,6 +9,7 @@ typedef struct {
     uint32_t write_calls;
     uint32_t erase_calls;
     uint32_t sync_calls;
+    uint32_t write_size;
 } raw_ctx_t;
 
 static raw_ctx_t g_raw;
@@ -21,7 +22,7 @@ static lox_err_t raw_read(void *ctx, uint32_t offset, void *buf, size_t len) {
     if (raw == NULL || buf == NULL || ((size_t)offset + len) > sizeof(raw->mem)) {
         return LOX_ERR_STORAGE;
     }
-    if ((offset % 16u) != 0u || (len % 16u) != 0u || len == 0u) {
+    if ((offset % raw->write_size) != 0u || (len % raw->write_size) != 0u || len == 0u) {
         return LOX_ERR_STORAGE;
     }
     memcpy(buf, raw->mem + offset, len);
@@ -33,7 +34,7 @@ static lox_err_t raw_write(void *ctx, uint32_t offset, const void *buf, size_t l
     if (raw == NULL || buf == NULL || ((size_t)offset + len) > sizeof(raw->mem)) {
         return LOX_ERR_STORAGE;
     }
-    if ((offset % 16u) != 0u || (len % 16u) != 0u || len == 0u) {
+    if ((offset % raw->write_size) != 0u || (len % raw->write_size) != 0u || len == 0u) {
         return LOX_ERR_STORAGE;
     }
     memcpy(raw->mem + offset, buf, len);
@@ -68,6 +69,7 @@ static void setup_storage(void) {
     memset(&g_adapted_storage, 0, sizeof(g_adapted_storage));
     memset(&g_adapter_ctx, 0, sizeof(g_adapter_ctx));
     memset(g_raw.mem, 0xFF, sizeof(g_raw.mem));
+    g_raw.write_size = 16u;
 
     g_raw_storage.read = raw_read;
     g_raw_storage.write = raw_write;
@@ -163,6 +165,31 @@ MDB_TEST(aligned_adapter_rejects_erase_not_write_aligned) {
     ASSERT_EQ(lox_backend_aligned_adapter_init(&g_adapted_storage, &g_adapter_ctx, &invalid), LOX_ERR_INVALID);
 }
 
+MDB_TEST(aligned_adapter_write_unit_and_boundary_matrix) {
+    static const uint32_t units[] = {2u, 4u, 8u, 16u};
+    static const uint8_t payload[] = {0xA5u, 0x5Au};
+    size_t i;
+
+    for (i = 0u; i < sizeof(units) / sizeof(units[0]); ++i) {
+        uint8_t out = 0u;
+        g_raw.write_size = units[i];
+        g_raw_storage.write_size = units[i];
+        ASSERT_EQ(lox_backend_aligned_adapter_init(
+                      &g_adapted_storage, &g_adapter_ctx, &g_raw_storage),
+                  LOX_OK);
+        ASSERT_EQ(g_adapted_storage.write(g_adapted_storage.ctx, units[i] - 1u,
+                                           payload, sizeof(payload)),
+                  LOX_OK);
+        ASSERT_EQ(g_adapted_storage.write(g_adapted_storage.ctx, 255u, payload, 1u),
+                  LOX_OK);
+        ASSERT_EQ(g_adapted_storage.read(g_adapted_storage.ctx, 255u, &out, 1u), LOX_OK);
+        ASSERT_EQ(out, payload[0]);
+        ASSERT_EQ(g_adapted_storage.write(g_adapted_storage.ctx, 256u, payload, 0u), LOX_OK);
+        ASSERT_EQ(g_adapted_storage.read(g_adapted_storage.ctx, 256u, &out, 0u), LOX_OK);
+        lox_backend_aligned_adapter_deinit(&g_adapted_storage);
+    }
+}
+
 int main(void) {
     MDB_RUN_TEST(setup_storage, teardown_storage, aligned_adapter_exposes_byte_write_to_core);
     MDB_RUN_TEST(setup_storage, teardown_storage, aligned_adapter_handles_cross_boundary_rmw);
@@ -172,5 +199,6 @@ int main(void) {
     MDB_RUN_TEST(setup_storage, teardown_storage, aligned_adapter_rejects_write_out_of_range);
     MDB_RUN_TEST(setup_storage, teardown_storage, aligned_adapter_rejects_capacity_not_write_aligned);
     MDB_RUN_TEST(setup_storage, teardown_storage, aligned_adapter_rejects_erase_not_write_aligned);
+    MDB_RUN_TEST(setup_storage, teardown_storage, aligned_adapter_write_unit_and_boundary_matrix);
     return MDB_RESULT();
 }

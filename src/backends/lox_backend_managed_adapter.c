@@ -72,7 +72,8 @@ lox_err_t lox_backend_managed_adapter_init_with_expectations(
     if (raw_storage->read == NULL || raw_storage->write == NULL || raw_storage->erase == NULL || raw_storage->sync == NULL) {
         return LOX_ERR_INVALID;
     }
-    if (raw_storage->capacity == 0u || raw_storage->erase_size == 0u) {
+    if (raw_storage->capacity == 0u || raw_storage->erase_size == 0u ||
+        raw_storage->erase_size > raw_storage->capacity) {
         return LOX_ERR_INVALID;
     }
     /* This adapter forwards writes unchanged and therefore cannot emulate

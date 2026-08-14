@@ -35,14 +35,15 @@ static lox_err_t aligned_read(void *ctx, uint32_t offset, void *buf, size_t len)
     end = pos + (uint64_t)len;
     while (pos < end) {
         uint32_t block_base = (uint32_t)((pos / unit) * unit);
-        uint32_t block_end = block_base + unit;
+        uint64_t block_end = (uint64_t)block_base + (uint64_t)unit;
         uint64_t copy_start = pos;
-        uint32_t copy_len = block_end - (uint32_t)copy_start;
+        uint32_t copy_len;
         lox_err_t rc;
 
-        if ((uint64_t)block_end > (uint64_t)raw->capacity) {
+        if (block_end > (uint64_t)raw->capacity) {
             return LOX_ERR_STORAGE;
         }
+        copy_len = (uint32_t)(block_end - copy_start);
         if ((uint64_t)copy_len > (end - copy_start)) {
             copy_len = (uint32_t)(end - copy_start);
         }
@@ -91,14 +92,15 @@ static lox_err_t aligned_write(void *ctx, uint32_t offset, const void *buf, size
     end = pos + (uint64_t)len;
     while (pos < end) {
         uint32_t block_base = (uint32_t)((pos / unit) * unit);
-        uint32_t block_end = block_base + unit;
+        uint64_t block_end = (uint64_t)block_base + (uint64_t)unit;
         uint64_t copy_start = pos;
-        uint32_t copy_len = block_end - (uint32_t)copy_start;
+        uint32_t copy_len;
         lox_err_t rc;
 
-        if ((uint64_t)block_end > (uint64_t)raw->capacity) {
+        if (block_end > (uint64_t)raw->capacity) {
             return LOX_ERR_STORAGE;
         }
+        copy_len = (uint32_t)(block_end - copy_start);
         if ((uint64_t)copy_len > (end - copy_start)) {
             copy_len = (uint32_t)(end - copy_start);
         }
@@ -146,7 +148,8 @@ lox_err_t lox_backend_aligned_adapter_init(lox_storage_t *out_storage,
     if (raw_storage->read == NULL || raw_storage->write == NULL || raw_storage->erase == NULL || raw_storage->sync == NULL) {
         return LOX_ERR_INVALID;
     }
-    if (raw_storage->capacity == 0u || raw_storage->erase_size == 0u || raw_storage->write_size <= 1u) {
+    if (raw_storage->capacity == 0u || raw_storage->erase_size == 0u || raw_storage->write_size <= 1u ||
+        raw_storage->erase_size > raw_storage->capacity) {
         return LOX_ERR_INVALID;
     }
     if ((raw_storage->capacity % raw_storage->write_size) != 0u) {

@@ -13,7 +13,7 @@ int lox_backend_fs_stub_register(void);
 int lox_backend_block_stub_register(void);
 
 typedef struct {
-    uint8_t mem[256];
+    uint8_t mem[4096];
     uint32_t write_calls;
     uint32_t write_size;
     lox_err_t sync_status;

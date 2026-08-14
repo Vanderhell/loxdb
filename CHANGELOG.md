@@ -20,6 +20,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 - Enforced unsigned, at-most-64-bit timestamp types at compile time.
 - Rejected managed storage backends that cannot provide the byte-write
   capability advertised to the core.
+- Rejected filesystem adapter configurations that would advertise unsupported
+  byte writes and hardened aligned-adapter end-of-capacity arithmetic.
 - Escaped time-series stream and relational table names consistently in JSON
   import/export output.
 - Hardened import/export field parsing so quoted field names embedded in JSON

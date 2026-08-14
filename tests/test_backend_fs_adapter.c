@@ -133,14 +133,14 @@ MDB_TEST(fs_adapter_rejects_non_byte_raw_write_size_when_required) {
     ASSERT_EQ(lox_backend_fs_adapter_init(&g_adapted_storage, &g_adapter_ctx, &invalid), LOX_ERR_INVALID);
 }
 
-MDB_TEST(fs_adapter_relaxed_expectations_allow_non_byte_raw_write_size) {
+MDB_TEST(fs_adapter_relaxed_expectations_do_not_claim_byte_writes) {
     lox_storage_t invalid = g_raw_storage;
     lox_backend_fs_expectations_t e;
     invalid.write_size = 8u;
     lox_backend_fs_expectations_default(&e);
     e.require_byte_write = 0u;
     e.require_sync_probe_on_mount = 0u;
-    ASSERT_EQ(lox_backend_fs_adapter_init_with_expectations(&g_adapted_storage, &g_adapter_ctx, &invalid, &e), LOX_OK);
+    ASSERT_EQ(lox_backend_fs_adapter_init_with_expectations(&g_adapted_storage, &g_adapter_ctx, &invalid, &e), LOX_ERR_INVALID);
     ASSERT_EQ(g_raw.sync_calls, 0);
 }
 
@@ -150,6 +150,6 @@ int main(void) {
     MDB_RUN_TEST(setup_storage, teardown_storage, fs_adapter_none_policy_skips_sync_calls);
     MDB_RUN_TEST(setup_storage, teardown_storage, fs_adapter_sync_probe_failure_returns_storage_error);
     MDB_RUN_TEST(setup_storage, teardown_storage, fs_adapter_rejects_non_byte_raw_write_size_when_required);
-    MDB_RUN_TEST(setup_storage, teardown_storage, fs_adapter_relaxed_expectations_allow_non_byte_raw_write_size);
+    MDB_RUN_TEST(setup_storage, teardown_storage, fs_adapter_relaxed_expectations_do_not_claim_byte_writes);
     return MDB_RESULT();
 }

@@ -113,11 +113,18 @@ Reference glue example:
 
 ## 4) Which optional adapter path to use
 
-- Aligned-write media: use aligned adapter path (RMW/byte-write shim).
+- Rewrite-capable aligned block media: use the aligned adapter path
+  (RMW/byte-write shim). It is not a generic raw-NOR shim: the raw driver must
+  permit rewriting a complete program unit without erase. Media limited to
+  one-way bit programming needs a device-specific erase-aware layer below it.
 - Managed media with durable sync semantics and native byte writes: managed
   adapter path. A managed adapter does not emulate `write_size > 1`; compose
   the aligned adapter first for that geometry.
 - Filesystem/block-like path with non-durable flush semantics: filesystem adapter policy path.
+
+The managed and filesystem adapters forward writes unchanged. They reject
+`write_size != 1` even when legacy `require_byte_write` expectations are zero;
+neither adapter may advertise byte-write capability it does not implement.
 
 Detailed contract:
 

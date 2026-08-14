@@ -21,6 +21,8 @@ typedef struct {
 } lox_backend_fs_adapter_ctx_t;
 
 typedef struct {
+    /* Retained for source compatibility. Both values require raw write_size=1;
+     * this forwarding adapter never emulates byte writes. */
     uint8_t require_byte_write;
     uint8_t require_sync_probe_on_mount;
     lox_backend_fs_sync_policy_t sync_policy;
