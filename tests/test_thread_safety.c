@@ -328,6 +328,76 @@ MDB_TEST(test_zeroed_handle_does_not_dispatch_lock_callback) {
     ASSERT_EQ(g_unlock_count, 0u);
 }
 
+MDB_TEST(test_corrupted_handle_does_not_dispatch_lock_callback) {
+    lox_t db;
+    lox_core_t *core;
+    uint8_t value = 0u;
+
+    memset(&db, 0xa5, sizeof(db));
+    core = lox_core(&db);
+    core->magic = 0u;
+    core->lock = mock_lock;
+    core->unlock = mock_unlock;
+    core->lock_handle = &g_lock_count;
+    g_lock_count = 0u;
+    g_unlock_count = 0u;
+    ASSERT_EQ(lox_kv_get(&db, "missing", &value, sizeof(value), NULL), LOX_ERR_INVALID);
+    ASSERT_EQ(g_lock_count, 0u);
+    ASSERT_EQ(g_unlock_count, 0u);
+}
+
+static void assert_one_balanced_lock(void) {
+    ASSERT_EQ(g_lock_count, 1u);
+    ASSERT_EQ(g_unlock_count, 1u);
+    ASSERT_EQ(g_lock_depth, 0u);
+}
+
+static void reset_lock_counts(void) {
+    g_lock_count = 0u;
+    g_unlock_count = 0u;
+    g_lock_depth = 0u;
+}
+
+MDB_TEST(test_mutable_metadata_and_admission_apis_lock) {
+    lox_stats_t stats;
+    lox_db_stats_t db_stats;
+    lox_kv_stats_t kv_stats;
+    lox_ts_stats_t ts_stats;
+    lox_rel_stats_t rel_stats;
+    lox_effective_capacity_t capacity;
+    lox_pressure_t pressure;
+    lox_selfcheck_result_t selfcheck;
+    lox_admission_t admission;
+    lox_schema_t schema;
+    lox_table_t *table = NULL;
+    size_t ts_count = 0u;
+    uint32_t rel_count = 0u;
+
+    ASSERT_EQ(lox_ts_register(&g_db, "meta_ts", LOX_TS_U32, 0u), LOX_OK);
+    ASSERT_EQ(lox_schema_init(&schema, "meta_rel", 2u), LOX_OK);
+    ASSERT_EQ(lox_schema_add(&schema, "id", LOX_COL_U32, sizeof(uint32_t), true), LOX_OK);
+    ASSERT_EQ(lox_schema_seal(&schema), LOX_OK);
+    ASSERT_EQ(lox_table_create(&g_db, &schema), LOX_OK);
+
+#define ASSERT_API_LOCKED(call) do { reset_lock_counts(); ASSERT_EQ((call), LOX_OK); assert_one_balanced_lock(); } while (0)
+    ASSERT_API_LOCKED(lox_stats(&g_db, &stats));
+    ASSERT_API_LOCKED(lox_inspect(&g_db, &stats));
+    ASSERT_API_LOCKED(lox_get_db_stats(&g_db, &db_stats));
+    ASSERT_API_LOCKED(lox_get_kv_stats(&g_db, &kv_stats));
+    ASSERT_API_LOCKED(lox_get_ts_stats(&g_db, &ts_stats));
+    ASSERT_API_LOCKED(lox_get_rel_stats(&g_db, &rel_stats));
+    ASSERT_API_LOCKED(lox_get_effective_capacity(&g_db, &capacity));
+    ASSERT_API_LOCKED(lox_get_pressure(&g_db, &pressure));
+    ASSERT_API_LOCKED(lox_selfcheck(&g_db, &selfcheck));
+    ASSERT_API_LOCKED(lox_admit_kv_set(&g_db, "meta", 1u, &admission));
+    ASSERT_API_LOCKED(lox_admit_ts_insert(&g_db, "meta_ts", sizeof(uint32_t), &admission));
+    ASSERT_API_LOCKED(lox_admit_rel_insert(&g_db, "meta_rel", lox_table_row_size(&lox_core(&g_db)->rel.tables[0]), &admission));
+    ASSERT_API_LOCKED(lox_table_get(&g_db, "meta_rel", &table));
+    ASSERT_API_LOCKED(lox_ts_count(&g_db, "meta_ts", 0u, 10u, &ts_count));
+    ASSERT_API_LOCKED(lox_rel_count(table, &rel_count));
+#undef ASSERT_API_LOCKED
+}
+
 static bool kv_reenter_cb(const char *key, const void *val, size_t val_len, uint32_t ttl_remaining, void *ctx) {
     uint8_t out = 0u;
     (void)key;
@@ -362,6 +432,25 @@ MDB_TEST(test_ts_query_callback_reentry_no_recursive_lock) {
     g_reentrant_lock = 0u;
     ASSERT_EQ(lox_ts_query(&g_db, "rt", 0u, 10u, ts_reenter_cb, NULL), LOX_OK);
     ASSERT_EQ(g_reentrant_lock, 0u);
+}
+
+static bool ts_mutate_cb(const lox_ts_sample_t *sample, void *ctx) {
+    uint32_t value = 2u;
+    (void)sample;
+    (void)ctx;
+    (void)lox_ts_insert(&g_db, "mt", 2u, &value);
+    return true;
+}
+
+MDB_TEST(test_ts_query_mutation_returns_modified_and_balances_lock) {
+    uint32_t value = 1u;
+    ASSERT_EQ(lox_ts_register(&g_db, "mt", LOX_TS_U32, 0u), LOX_OK);
+    ASSERT_EQ(lox_ts_insert(&g_db, "mt", 1u, &value), LOX_OK);
+    reset_lock_counts();
+    ASSERT_EQ(lox_ts_query(&g_db, "mt", 0u, 10u, ts_mutate_cb, NULL), LOX_ERR_MODIFIED);
+    ASSERT_EQ(g_reentrant_lock, 0u);
+    ASSERT_EQ(g_lock_count, g_unlock_count);
+    ASSERT_EQ(g_lock_depth, 0u);
 }
 
 static bool rel_reenter_cb(const void *row_buf, void *ctx) {
@@ -409,8 +498,11 @@ int main(void) {
     MDB_RUN_TEST(setup_db, teardown_db, test_lock_called_on_compact);
     MDB_RUN_TEST(setup_db, teardown_db, test_rel_count_acquires_owner_lock);
     MDB_RUN_TEST(setup_db, teardown_db, test_zeroed_handle_does_not_dispatch_lock_callback);
+    MDB_RUN_TEST(setup_db, teardown_db, test_corrupted_handle_does_not_dispatch_lock_callback);
+    MDB_RUN_TEST(setup_db, teardown_db, test_mutable_metadata_and_admission_apis_lock);
     MDB_RUN_TEST(setup_db, teardown_db, test_kv_iter_callback_reentry_no_recursive_lock);
     MDB_RUN_TEST(setup_db, teardown_db, test_ts_query_callback_reentry_no_recursive_lock);
+    MDB_RUN_TEST(setup_db, teardown_db, test_ts_query_mutation_returns_modified_and_balances_lock);
     MDB_RUN_TEST(setup_db, teardown_db, test_rel_iter_callback_reentry_no_recursive_lock);
     return MDB_RESULT();
 }

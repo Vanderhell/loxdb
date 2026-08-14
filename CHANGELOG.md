@@ -35,6 +35,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ### Tests
 
+- Extended thread-safety coverage across mutable metadata and admission APIs,
+  corrupted handles, callback reentry, mutation detection, and lock balance.
 - Added relational buffer-boundary, bounded-string, BLOB/key-length, indexed
   STR/BLOB, and C++ POD type-size regression coverage.
 - Added immediate crash/reopen coverage for no-WAL time-series and relational

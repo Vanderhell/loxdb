@@ -532,7 +532,9 @@ typedef struct {
 lox_err_t lox_init(lox_t *db, const lox_cfg_t *cfg);
 lox_err_t lox_preflight(const lox_cfg_t *cfg, lox_preflight_report_t *out);
 /* Deinit is a best-effort close: it will invalidate the handle even if the
- * final storage flush fails, and the caller must not reuse the object.
+ * final storage flush fails, and the caller must not reuse the object. Init
+ * and deinit require exclusive lifecycle access and must not overlap any API
+ * call on the same handle.
  */
 lox_err_t lox_deinit(lox_t *db);
 lox_err_t lox_flush(lox_t *db);
@@ -589,9 +591,12 @@ lox_err_t lox_schema_add(lox_schema_t *schema, const char *col_name, lox_col_typ
 lox_err_t lox_schema_seal(lox_schema_t *schema);
 lox_err_t lox_table_create(lox_t *db, lox_schema_t *schema);
 lox_err_t lox_table_get(lox_t *db, const char *name, lox_table_t **out_table);
-/* Pure metadata helper; no db handle, no internal DB lock. */
+/* Immutable table metadata helper; no internal lock. The table pointer is
+ * valid only until owner deinit and must not overlap that lifecycle boundary. */
 size_t lox_table_row_size(const lox_table_t *table);
-/* Row buffer helpers; no db handle or internal lock. STR lengths exclude the
+/* Row buffer helpers; immutable schema metadata and caller-owned buffers only,
+ * with no internal lock. Concurrent use requires distinct or caller-locked row
+ * buffers and must not overlap owner deinit. STR lengths exclude the
  * terminator; BLOB/scalar lengths must exactly match the schema column size.
  * Getters never partially write and report the required size through out_len. */
 lox_err_t lox_row_set(const lox_table_t *table, void *row_buf, const char *col_name, const void *val, size_t val_len);
@@ -601,7 +606,7 @@ lox_err_t lox_rel_find(lox_t *db, lox_table_t *table, const void *search_val, si
 lox_err_t lox_rel_find_by(lox_t *db, lox_table_t *table, const char *col_name, const void *search_val, size_t search_len, void *out_buf, size_t out_capacity, size_t *out_len);
 lox_err_t lox_rel_delete(lox_t *db, lox_table_t *table, const void *search_val, size_t search_len, uint32_t *out_deleted);
 lox_err_t lox_rel_iter(lox_t *db, lox_table_t *table, lox_rel_iter_cb_t cb, void *ctx);
-/* Table metadata query helper; no db handle, no internal DB lock. */
+/* Mutable table metadata query; acquires the owning database lock. */
 lox_err_t lox_rel_count(const lox_table_t *table, uint32_t *out_count);
 lox_err_t lox_rel_clear(lox_t *db, lox_table_t *table);
 
