@@ -105,6 +105,8 @@ Persistent compatibility is currently restricted to hosts with the same native
 byte order: WAL, page, and superblock integer fields use the host byte order.
 Moving media between little-endian and big-endian hosts is unsupported until a
 future versioned format migration defines canonical byte order.
+See [Persistent Byte Order](PERSISTENCE_BYTE_ORDER.md) for the serialized-field
+inventory and the required versioned migration plan.
 
 ## Verification Status
 

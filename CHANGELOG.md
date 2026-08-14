@@ -35,6 +35,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ### Tests
 
+- Added literal-byte regression coverage for the current native-endian media
+  format and documented the complete boundary for a future canonical migration.
 - Added compiler-generated stack-frame and public handle/schema size regression
   gates for MCU-relevant core profiles.
 - Extended thread-safety coverage across mutable metadata and admission APIs,

@@ -320,6 +320,32 @@ MDB_TEST(old_snapshot_and_wal_are_opened_and_upgraded) {
     ASSERT_EQ(get_u32(g_ram->buf + 4u), WAL_VERSION_CURRENT);
 }
 
+MDB_TEST(current_format_uses_native_byte_order_literal_layout) {
+    static const uint8_t little_magic[] = {0x4Cu, 0x42u, 0x44u, 0x4Du};
+    static const uint8_t little_version[] = {0x00u, 0x00u, 0x02u, 0x00u};
+    static const uint8_t little_marker[] = {0x44u, 0x33u, 0x22u, 0x11u};
+    static const uint8_t big_magic[] = {0x4Du, 0x44u, 0x42u, 0x4Cu};
+    static const uint8_t big_version[] = {0x00u, 0x02u, 0x00u, 0x00u};
+    static const uint8_t big_marker[] = {0x11u, 0x22u, 0x33u, 0x44u};
+    uint16_t endian_probe = 1u;
+    uint32_t marker = 0x11223344u;
+    uint8_t marker_bytes[sizeof(marker)];
+    bool little_endian;
+
+    memcpy(marker_bytes, &marker, sizeof(marker_bytes));
+    little_endian = ((const uint8_t *)&endian_probe)[0] == 1u;
+
+    ASSERT_MEM_EQ(g_ram->buf,
+                  little_endian ? little_magic : big_magic,
+                  sizeof(little_magic));
+    ASSERT_MEM_EQ(g_ram->buf + 4u,
+                  little_endian ? little_version : big_version,
+                  sizeof(little_version));
+    ASSERT_MEM_EQ(marker_bytes,
+                  little_endian ? little_marker : big_marker,
+                  sizeof(marker_bytes));
+}
+
 MDB_TEST(expiration_too_wide_for_timestamp_type_fails) {
     construct_media(
         SNAPSHOT_VERSION_CURRENT, WAL_VERSION_CURRENT, 8u, UINT64_MAX, false);
@@ -354,6 +380,7 @@ MDB_TEST(ts_wal_timestamp_boundaries_are_checked) {
 }
 
 int main(void) {
+    MDB_RUN_TEST(open_storage, close_storage, current_format_uses_native_byte_order_literal_layout);
     MDB_RUN_TEST(open_storage, close_storage, old_snapshot_and_wal_are_opened_and_upgraded);
     MDB_RUN_TEST(open_storage, close_storage, expiration_too_wide_for_timestamp_type_fails);
     MDB_RUN_TEST(open_storage, close_storage, ts_snapshot_timestamp_boundaries_are_checked);
