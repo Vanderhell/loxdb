@@ -2,6 +2,7 @@
 #include "lox_json_wrapper.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,8 +96,9 @@ static lox_err_t json_parse_u32(const char **p, uint32_t *out) {
     char *end = NULL;
     json_skip_ws(p);
     if (**p == '\0' || !isdigit((unsigned char)**p)) return LOX_ERR_INVALID;
+    errno = 0;
     v = strtoul(*p, &end, 10);
-    if (end == NULL || end == *p || v > 0xFFFFFFFFul) return LOX_ERR_INVALID;
+    if (end == NULL || end == *p || errno == ERANGE || v > 0xFFFFFFFFul) return LOX_ERR_INVALID;
     *p = end;
     *out = (uint32_t)v;
     return LOX_OK;
@@ -151,6 +153,8 @@ static lox_err_t json_parse_string(const char **p, char *out, size_t out_len) {
                 default:
                     return LOX_ERR_INVALID;
             }
+        } else if ((unsigned char)c < 0x20u) {
+            return LOX_ERR_INVALID;
         }
         if (pos + 1u >= out_len) return LOX_ERR_OVERFLOW;
         out[pos++] = c;
@@ -331,14 +335,17 @@ lox_err_t lox_json_decode_kv_record(const char *json,
         if (*p != ':') return LOX_ERR_INVALID;
         p++;
         if (strcmp(field, "key") == 0) {
+            if (seen_key) return LOX_ERR_INVALID;
             rc = json_parse_string(&p, key_out, key_out_len);
             if (rc != LOX_OK) return rc;
             seen_key = 1u;
         } else if (strcmp(field, "ttl") == 0) {
+            if (seen_ttl) return LOX_ERR_INVALID;
             rc = json_parse_u32(&p, ttl_out);
             if (rc != LOX_OK) return rc;
             seen_ttl = 1u;
         } else if (strcmp(field, "value_hex") == 0) {
+            if (seen_val) return LOX_ERR_INVALID;
             rc = json_parse_hex_string(&p, value_out, value_out_len, value_len_out);
             if (rc != LOX_OK) return rc;
             seen_val = 1u;

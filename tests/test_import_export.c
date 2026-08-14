@@ -115,6 +115,41 @@ MDB_TEST(ie_import_invalid_payload_rejected) {
     ASSERT_EQ(lox_ie_import_kv_json(&g_dst, "{\"format\":\"loxdb.kv.v1\",\"items\":[{\"bad\":1}]}", NULL, &imported, &skipped), LOX_ERR_INVALID);
 }
 
+MDB_TEST(ie_import_rejects_invalid_root_and_duplicate_fields) {
+    static const char *const invalid[] = {
+        "{\"note\":\"\\\"items\\\":[\",\"format\":\"loxdb.kv.v1\"}",
+        "{\"format\":\"wrong\",\"items\":[]}",
+        "{\"items\":[],\"format\":\"loxdb.kv.v1\"}",
+        "{\"format\":\"loxdb.kv.v1\",\"items\":[]",
+        "{\"format\":\"loxdb.kv.v1\",\"items\":[]} trailing",
+        "{\"format\":\"loxdb.kv.v1\",\"items\":[{\"key\":\"a\",\"key\":\"b\",\"ttl\":0,\"value_hex\":\"01\"}]}"
+    };
+    uint32_t imported = 0u;
+    uint32_t skipped = 0u;
+    size_t i;
+
+    for (i = 0u; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        ASSERT_EQ(lox_ie_import_kv_json(&g_dst, invalid[i], NULL, &imported, &skipped),
+                  LOX_ERR_INVALID);
+    }
+}
+
+MDB_TEST(ie_ts_rejects_duplicate_item_fields) {
+    const char json[] =
+        "{\"format\":\"loxdb.ts.v1\",\"items\":[{\"stream\":\"s\","
+        "\"stream\":\"s\",\"type\":\"u32\",\"ts\":1,\"value_hex\":\"01000000\"}]}";
+    lox_ie_ts_stream_desc_t stream;
+    uint32_t imported = 0u;
+    uint32_t skipped = 0u;
+
+    ASSERT_EQ(lox_ts_register(&g_dst, "s", LOX_TS_U32, 0u), LOX_OK);
+    stream.name = "s";
+    stream.type = LOX_TS_U32;
+    stream.raw_size = 0u;
+    ASSERT_EQ(lox_ie_import_ts_json(&g_dst, json, &stream, 1u, NULL, &imported, &skipped),
+              LOX_ERR_INVALID);
+}
+
 MDB_TEST(ie_ts_roundtrip_selected_streams) {
     lox_ie_ts_stream_desc_t streams[2];
     uint32_t v1 = 11u, v2 = 22u;
@@ -212,6 +247,8 @@ int main(void) {
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_export_import_roundtrip);
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_import_respects_overwrite_flag);
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_import_invalid_payload_rejected);
+    MDB_RUN_TEST(setup_pair, teardown_pair, ie_import_rejects_invalid_root_and_duplicate_fields);
+    MDB_RUN_TEST(setup_pair, teardown_pair, ie_ts_rejects_duplicate_item_fields);
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_ts_roundtrip_selected_streams);
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_ts_field_names_inside_string_values_are_not_fields);
     MDB_RUN_TEST(setup_pair, teardown_pair, ie_rel_roundtrip_selected_tables);

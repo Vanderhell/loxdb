@@ -77,8 +77,21 @@ MDB_TEST(json_record_decode_invalid_rejected) {
     uint8_t value[8];
     size_t value_len = 0u;
     uint32_t ttl = 0u;
-    const char *bad = "{\"key\":\"a\",\"ttl\":1,\"value_hex\":\"0GG0\"}";
-    ASSERT_EQ(lox_json_decode_kv_record(bad, key, sizeof(key), value, sizeof(value), &value_len, &ttl), LOX_ERR_INVALID);
+    static const char *const bad[] = {
+        "{\"key\":\"a\",\"ttl\":1,\"value_hex\":\"0GG0\"}",
+        "{\"key\":\"a\",\"ttl\":1,\"value_hex\":\"0\"}",
+        "{\"key\":\"a\\u00\",\"ttl\":1,\"value_hex\":\"00\"}",
+        "{\"key\":\"a\n\",\"ttl\":1,\"value_hex\":\"00\"}",
+        "{\"key\":\"a\",\"ttl\":42949672960,\"value_hex\":\"00\"}",
+        "{\"key\":\"a\",\"key\":\"b\",\"ttl\":1,\"value_hex\":\"00\"}"
+    };
+    size_t i;
+
+    for (i = 0u; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        ASSERT_EQ(lox_json_decode_kv_record(bad[i], key, sizeof(key), value, sizeof(value),
+                                            &value_len, &ttl),
+                  LOX_ERR_INVALID);
+    }
 }
 
 int main(void) {

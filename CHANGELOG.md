@@ -24,6 +24,8 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
   import/export output.
 - Hardened import/export field parsing so quoted field names embedded in JSON
   string values cannot be treated as object fields.
+- Rejected wrong/reordered import roots, duplicate item fields, missing root
+  delimiters, and trailing data in the documented import/export JSON subset.
 
 ### Changed
 

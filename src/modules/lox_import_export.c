@@ -4,6 +4,7 @@
 #include "lox_internal.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -111,13 +112,6 @@ static void ie_skip_ws(const char **p) {
     while (**p != '\0' && isspace((unsigned char)**p)) (*p)++;
 }
 
-static const char *ie_find_items_array(const char *json) {
-    const char *items = strstr(json, "\"items\"");
-    if (items == NULL) return NULL;
-    items = strchr(items, '[');
-    return items;
-}
-
 static const char *ie_find_obj_end(const char *p) {
     int depth = 0;
     int in_string = 0;
@@ -208,6 +202,8 @@ static lox_err_t ie_parse_json_string(const char **p, char *out, size_t out_len)
                 default:
                     return LOX_ERR_INVALID;
             }
+        } else if ((unsigned char)c < 0x20u) {
+            return LOX_ERR_INVALID;
         }
         if (pos + 1u >= out_len) return LOX_ERR_OVERFLOW;
         out[pos++] = c;
@@ -216,13 +212,49 @@ static lox_err_t ie_parse_json_string(const char **p, char *out, size_t out_len)
     return LOX_ERR_INVALID;
 }
 
+static lox_err_t ie_parse_root_prefix(const char *json,
+                                      const char *expected_format,
+                                      const char **out_items) {
+    const char *p = json;
+    char field[16];
+    char format[32];
+    lox_err_t rc;
+
+    ie_skip_ws(&p);
+    if (*p++ != '{') return LOX_ERR_INVALID;
+    rc = ie_parse_json_string(&p, field, sizeof(field));
+    if (rc != LOX_OK || strcmp(field, "format") != 0) return LOX_ERR_INVALID;
+    ie_skip_ws(&p);
+    if (*p++ != ':') return LOX_ERR_INVALID;
+    rc = ie_parse_json_string(&p, format, sizeof(format));
+    if (rc != LOX_OK || strcmp(format, expected_format) != 0) return LOX_ERR_INVALID;
+    ie_skip_ws(&p);
+    if (*p++ != ',') return LOX_ERR_INVALID;
+    rc = ie_parse_json_string(&p, field, sizeof(field));
+    if (rc != LOX_OK || strcmp(field, "items") != 0) return LOX_ERR_INVALID;
+    ie_skip_ws(&p);
+    if (*p++ != ':') return LOX_ERR_INVALID;
+    ie_skip_ws(&p);
+    if (*p != '[') return LOX_ERR_INVALID;
+    *out_items = p + 1u;
+    return LOX_OK;
+}
+
+static lox_err_t ie_finish_root(const char *p) {
+    ie_skip_ws(&p);
+    if (*p++ != '}') return LOX_ERR_INVALID;
+    ie_skip_ws(&p);
+    return *p == '\0' ? LOX_OK : LOX_ERR_INVALID;
+}
+
 static lox_err_t ie_parse_json_u32(const char **p, uint32_t *out) {
     unsigned long v;
     char *end = NULL;
     ie_skip_ws(p);
     if (**p == '\0' || !isdigit((unsigned char)**p)) return LOX_ERR_INVALID;
+    errno = 0;
     v = strtoul(*p, &end, 10);
-    if (end == NULL || end == *p || v > 0xFFFFFFFFul) return LOX_ERR_INVALID;
+    if (end == NULL || end == *p || errno == ERANGE || v > 0xFFFFFFFFul) return LOX_ERR_INVALID;
     *p = end;
     *out = (uint32_t)v;
     return LOX_OK;
@@ -245,11 +277,14 @@ static lox_err_t ie_parse_json_hex_string(const char **p, uint8_t *out, size_t o
     return LOX_OK;
 }
 
-static const char *ie_find_object_field_value(const char *obj, const char *field_name) {
+static lox_err_t ie_find_object_field_value(const char *obj,
+                                            const char *field_name,
+                                            const char **out_value) {
     size_t field_len;
     const char *p;
+    const char *found = NULL;
 
-    if (obj == NULL || field_name == NULL) return NULL;
+    if (obj == NULL || field_name == NULL || out_value == NULL) return LOX_ERR_INVALID;
     field_len = strlen(field_name);
     p = obj;
     while (*p != '\0') {
@@ -263,33 +298,39 @@ static const char *ie_find_object_field_value(const char *obj, const char *field
             if (*p == '\\' && p[1] != '\0') ++p;
             ++p;
         }
-        if (*p != '"') return NULL;
+        if (*p != '"') return LOX_ERR_INVALID;
         end = p++;
         after = p;
         ie_skip_ws(&after);
         if (*after == ':' && (size_t)(end - start) == field_len &&
             memcmp(start, field_name, field_len) == 0) {
-            return after + 1u;
+            if (found != NULL) return LOX_ERR_INVALID;
+            found = after + 1u;
         }
     }
-    return NULL;
+    if (found == NULL) return LOX_ERR_NOT_FOUND;
+    *out_value = found;
+    return LOX_OK;
 }
 
 static lox_err_t ie_parse_object_field_string(const char *obj, const char *field_name, char *out, size_t out_len) {
-    const char *p = ie_find_object_field_value(obj, field_name);
-    if (p == NULL) return LOX_ERR_NOT_FOUND;
+    const char *p;
+    lox_err_t rc = ie_find_object_field_value(obj, field_name, &p);
+    if (rc != LOX_OK) return rc;
     return ie_parse_json_string(&p, out, out_len);
 }
 
 static lox_err_t ie_parse_object_field_u32(const char *obj, const char *field_name, uint32_t *out) {
-    const char *p = ie_find_object_field_value(obj, field_name);
-    if (p == NULL) return LOX_ERR_NOT_FOUND;
+    const char *p;
+    lox_err_t rc = ie_find_object_field_value(obj, field_name, &p);
+    if (rc != LOX_OK) return rc;
     return ie_parse_json_u32(&p, out);
 }
 
 static lox_err_t ie_parse_object_field_hex(const char *obj, const char *field_name, uint8_t *out, size_t out_len, size_t *out_used) {
-    const char *p = ie_find_object_field_value(obj, field_name);
-    if (p == NULL) return LOX_ERR_NOT_FOUND;
+    const char *p;
+    lox_err_t rc = ie_find_object_field_value(obj, field_name, &p);
+    if (rc != LOX_OK) return rc;
     return ie_parse_json_hex_string(&p, out, out_len, out_used);
 }
 
@@ -529,9 +570,7 @@ lox_err_t lox_ie_import_kv_json(lox_t *db,
     uint32_t skipped = 0u;
 
     if (db == NULL || json == NULL || out_imported == NULL || out_skipped == NULL) return LOX_ERR_INVALID;
-    p = ie_find_items_array(json);
-    if (p == NULL || *p != '[') return LOX_ERR_INVALID;
-    p++;
+    if (ie_parse_root_prefix(json, "loxdb.kv.v1", &p) != LOX_OK) return LOX_ERR_INVALID;
 
     for (;;) {
         lox_err_t rc;
@@ -595,12 +634,7 @@ lox_err_t lox_ie_import_kv_json(lox_t *db,
         return LOX_ERR_INVALID;
     }
 
-    ie_skip_ws(&p);
-    if (*p == '}') {
-        p++;
-        ie_skip_ws(&p);
-    }
-    if (*p != '\0') return LOX_ERR_INVALID;
+    if (ie_finish_root(p) != LOX_OK) return LOX_ERR_INVALID;
     *out_imported = imported;
     *out_skipped = skipped;
     return LOX_OK;
@@ -668,9 +702,7 @@ lox_err_t lox_ie_import_ts_json(lox_t *db,
     uint32_t skipped = 0u;
 
     if (db == NULL || json == NULL || streams == NULL || out_imported == NULL || out_skipped == NULL) return LOX_ERR_INVALID;
-    p = ie_find_items_array(json);
-    if (p == NULL || *p != '[') return LOX_ERR_INVALID;
-    p++;
+    if (ie_parse_root_prefix(json, "loxdb.ts.v1", &p) != LOX_OK) return LOX_ERR_INVALID;
 
     for (;;) {
         char obj[1024];
@@ -757,12 +789,7 @@ lox_err_t lox_ie_import_ts_json(lox_t *db,
         return LOX_ERR_INVALID;
     }
 
-    ie_skip_ws(&p);
-    if (*p == '}') {
-        p++;
-        ie_skip_ws(&p);
-    }
-    if (*p != '\0') return LOX_ERR_INVALID;
+    if (ie_finish_root(p) != LOX_OK) return LOX_ERR_INVALID;
     *out_imported = imported;
     *out_skipped = skipped;
     return LOX_OK;
@@ -835,9 +862,7 @@ lox_err_t lox_ie_import_rel_json(lox_t *db,
     uint32_t skipped = 0u;
 
     if (db == NULL || json == NULL || tables == NULL || out_imported == NULL || out_skipped == NULL) return LOX_ERR_INVALID;
-    p = ie_find_items_array(json);
-    if (p == NULL || *p != '[') return LOX_ERR_INVALID;
-    p++;
+    if (ie_parse_root_prefix(json, "loxdb.rel.v1", &p) != LOX_OK) return LOX_ERR_INVALID;
 
     for (;;) {
         char obj[2048];
@@ -917,12 +942,7 @@ lox_err_t lox_ie_import_rel_json(lox_t *db,
         return LOX_ERR_INVALID;
     }
 
-    ie_skip_ws(&p);
-    if (*p == '}') {
-        p++;
-        ie_skip_ws(&p);
-    }
-    if (*p != '\0') return LOX_ERR_INVALID;
+    if (ie_finish_root(p) != LOX_OK) return LOX_ERR_INVALID;
     *out_imported = imported;
     *out_skipped = skipped;
     return LOX_OK;

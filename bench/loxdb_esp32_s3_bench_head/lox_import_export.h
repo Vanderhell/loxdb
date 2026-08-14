@@ -48,7 +48,12 @@ lox_err_t lox_ie_export_kv_json(lox_t *db,
                                         size_t *out_used,
                                         uint32_t *out_exported);
 
-/* Imports KV items from the same format produced by lox_ie_export_kv_json. */
+/* Imports the strict subset produced by lox_ie_export_kv_json. Root fields must
+ * be exactly `format` followed by `items`; duplicate item fields, trailing data,
+ * nested/reordered root fields, and unrelated JSON extensions are rejected.
+ * Strings accept standard one-byte escapes and `\u00XX`; general Unicode escape
+ * decoding is outside this module's byte-oriented subset.
+ */
 lox_err_t lox_ie_import_kv_json(lox_t *db,
                                         const char *json,
                                         const lox_ie_options_t *options,
