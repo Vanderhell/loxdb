@@ -1,35 +1,30 @@
-# Release Notes
+# Release Notes Draft (Next Release)
 
 ## Title
 
-`loxdb v1.5.2`
+`loxdb v1.5.3`
 
 ## Release text (GitHub Release body)
 
-This patch release hardens public buffer-boundary contracts, persistence
-recovery, backend capability checks, thread-safe metadata access, and the
-documented import/export JSON subset.
+This release prepares loxdb for its first Arduino Library Manager and
+PlatformIO Registry publication, restricted to the verified ESP32 Arduino
+scope.
 
 Highlights:
 
-- Relational setters, indexed lookups, and row getters now require explicit
-  lengths and destination capacities, preventing caller-buffer over-read and
-  overwrite. This is a source-breaking public API change.
-- No-WAL time-series and relational mutations are included in the synchronized
-  dual-bank snapshot before successful return.
-- Thread-safe relational row-count reads and invalid-handle callback admission
-  are synchronized and validated.
-- POSIX descriptor zero is handled as a valid descriptor, backend byte-write
-  capabilities are validated, and aligned-adapter capacity arithmetic is
-  checked.
-- Timestamp-width validation, JSON escaping, and strict import/export parsing
-  are covered by regression tests.
+- `lox.h` now has its own C++ linkage guard, so Arduino sketches can call the
+  C implementation without C++ name-mangling mismatches.
+- Forwarding headers in `src/` expose the canonical public headers from
+  `include/` to the Arduino build system without changing the CMake layout.
+- `examples/BasicKV/BasicKV.ino` verifies RAM-backed KV use from an ESP32
+  Arduino sketch.
+- Arduino lint, an ESP32-S3 Arduino compile, PlatformIO package packing, and
+  a PlatformIO ESP32-S3 consumer compile are CI gates.
+- The CMake SDK now installs `lox_wcet.h` with the other public headers.
 
-No-WAL media created by v1.5.1 and earlier uses different physical offsets
-because those releases reserved an unused minimum WAL region. The v1.5.2
-no-WAL layout starts its first superblock at offset zero, and existing media
-must be handled according to the persistence compatibility rules in the API
-reference.
+The Arduino and PlatformIO package scope is deliberately limited to Arduino
+on ESP32/espressif32. ESP-IDF and persistent ESP32-port integration are not
+claimed by this registry release.
 
 ## Contract links
 

@@ -102,7 +102,8 @@ endurance validation. See [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 
 ## Project status & roadmap
 
-- Current release line: `v1.5.2` (see `CHANGELOG.md`).
+- Latest release: `v1.5.2`. The `1.5.3` line is in preparation for Arduino
+  Library Manager and PlatformIO Registry publication (see `CHANGELOG.md`).
 - Verification status is tracked explicitly in [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
 
 ## Documentation

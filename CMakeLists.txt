@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(loxdb VERSION 1.5.2 LANGUAGES C CXX)
+project(loxdb VERSION 1.5.3 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -605,6 +605,7 @@ install(
         include/lox_config.h
         include/lox_json_wrapper.h
         include/lox_import_export.h
+        include/lox_wcet.h
         include/lox_backend_adapter.h
         include/lox_backend_compat.h
         include/lox_backend_decision.h

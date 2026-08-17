@@ -5,9 +5,7 @@
 #include <cstring>
 #include <type_traits>
 
-extern "C" {
 #include "lox.h"
-}
 
 namespace loxdb {
 namespace cpp {

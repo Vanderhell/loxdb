@@ -10,6 +10,8 @@ Status note:
   build output or `docs/results/` evidence says otherwise.
 - Package/consumer and metadata gates were verified in the current build tree
   during the 2026-08-17 Debug verification run.
+- Arduino ESP32-S3 and PlatformIO espressif32 consumer builds were verified
+  locally on 2026-08-17; Arduino lint remains a CI-only gate.
 
 ## 1. Validation Gates
 
@@ -31,6 +33,8 @@ Status note:
   - Clang strict C99 Debug/Release
   - ASan/UBSan gate wiring
 - [ ] Current ARM/ESP-IDF compile gates re-run in this environment, or else marked `NOT VERIFIED`
+- [x] Current Arduino ESP32-S3 compile gate re-run locally
+- [x] Current PlatformIO espressif32 package and consumer gates re-run locally
 
 ## 2. Product Contract Gates
 
@@ -52,15 +56,17 @@ Status note:
 - [x] Installed C consumer verified
 - [x] Installed C++ consumer verified
 - [x] Source-detached consumer verification verified
+- [x] Arduino ESP32-S3 `examples/BasicKV` compile verified
+- [x] PlatformIO `pio pkg pack` and ESP32-S3 consumer compile verified
 - [ ] Release archive names and package layout verified against the current release notes template
 - [ ] Release workflow consistency checked against the current metadata set
 
 ## 5. Release Metadata Gates
 
-- [x] `project(loxdb VERSION ...)` matches `library.json` (`1.5.2`)
-- [x] `library.properties` version matches `CMakeLists.txt` (`1.5.2`)
-- [x] `CHANGELOG.md` version entry matches `CMakeLists.txt` (`1.5.2`)
-- [x] `docs/internal/release-notes.md` matches the current release line (`1.5.2`)
+- [x] `project(loxdb VERSION ...)` matches `library.json` (`1.5.3`)
+- [x] `library.properties` version matches `CMakeLists.txt` (`1.5.3`)
+- [x] `CHANGELOG.md` version entry matches `CMakeLists.txt` (`1.5.3`)
+- [x] `docs/internal/release-notes.md` matches the current release line (`1.5.3`)
 - [x] `library.json` / `library.properties` / CMake / changelog consistency gate is wired
 
 ## 6. Final Go/No-Go

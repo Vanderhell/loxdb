@@ -8,6 +8,25 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 No changes recorded yet.
 
+## [1.5.3] - 2026-08-17
+
+### Added
+
+- Added Arduino-compatible public-header forwarding shims, an ESP32 Arduino
+  RAM-backed KV example, and CI gates for Arduino lint/compile and PlatformIO
+  package/consumer validation.
+
+### Changed
+
+- Prepared the package metadata for the `1.5.3` Arduino and PlatformIO release
+  line, limited to the verified Arduino ESP32 and PlatformIO espressif32 scope.
+- Made the C public API safe to include from C++ by adding an `extern "C"`
+  linkage guard to `lox.h`.
+
+### Fixed
+
+- Installed `lox_wcet.h` with the CMake SDK public headers.
+
 ## [1.5.2] - 2026-08-17
 
 ### Fixed

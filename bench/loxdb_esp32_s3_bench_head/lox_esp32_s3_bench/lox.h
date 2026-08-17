@@ -6,6 +6,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef LOX_PROFILE_CORE_MIN
 #define LOX_PROFILE_CORE_MIN 0
 #endif
@@ -609,5 +613,9 @@ lox_err_t lox_rel_iter(lox_t *db, lox_table_t *table, lox_rel_iter_cb_t cb, void
 /* Mutable table metadata query; acquires the owning database lock. */
 lox_err_t lox_rel_count(const lox_table_t *table, uint32_t *out_count);
 lox_err_t lox_rel_clear(lox_t *db, lox_table_t *table);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

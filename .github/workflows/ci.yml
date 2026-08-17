@@ -168,3 +168,43 @@ jobs:
         with:
           name: coverage-lcov
           path: coverage.info
+
+  arduino-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Arduino Library Manager lint
+        uses: arduino/arduino-lint-action@v3
+        with:
+          compliance: permissive
+          library-manager: submit
+          project-type: library
+          recursive: false
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+      - name: Install ESP32 Arduino core
+        run: |
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+      - name: Compile Arduino ESP32-S3 example
+        run: arduino-cli compile --fqbn esp32:esp32:esp32s3 --libraries .. examples/BasicKV
+
+  platformio-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PlatformIO Core
+        run: pipx install platformio
+      - name: Validate and pack PlatformIO library
+        run: pio pkg pack
+      - name: Compile PlatformIO ESP32-S3 consumer
+        env:
+          LOXDB_SOURCE_DIR: ${{ github.workspace }}
+        run: |
+          consumer_dir="${RUNNER_TEMP}/loxdb-platformio-consumer"
+          mkdir -p "${consumer_dir}/src"
+          cp tests/consumer/platformio_arduino/platformio.ini "${consumer_dir}/"
+          cp tests/consumer/platformio_arduino/src/main.cpp "${consumer_dir}/src/"
+          cd "${consumer_dir}"
+          pio run
