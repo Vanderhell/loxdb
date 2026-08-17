@@ -63,10 +63,10 @@ Status note:
 
 ## 5. Release Metadata Gates
 
-- [x] `project(loxdb VERSION ...)` matches `library.json` (`1.5.3`)
-- [x] `library.properties` version matches `CMakeLists.txt` (`1.5.3`)
-- [x] `CHANGELOG.md` version entry matches `CMakeLists.txt` (`1.5.3`)
-- [x] `docs/internal/release-notes.md` matches the current release line (`1.5.3`)
+- [x] `project(loxdb VERSION ...)` matches `library.json` (`1.5.4`)
+- [x] `library.properties` version matches `CMakeLists.txt` (`1.5.4`)
+- [x] `CHANGELOG.md` version entry matches `CMakeLists.txt` (`1.5.4`)
+- [x] `docs/internal/release-notes.md` matches the current release line (`1.5.4`)
 - [x] `library.json` / `library.properties` / CMake / changelog consistency gate is wired
 
 ## 6. Final Go/No-Go

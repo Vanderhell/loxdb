@@ -85,8 +85,8 @@ jobs:
       - name: Install
         run: cmake --install ${{ matrix.build_dir }} --config Release --prefix stage/loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}
 
-      - name: Package archive (Linux)
-        if: runner.os == 'Linux'
+      - name: Package archive (Unix)
+        if: runner.os != 'Windows'
         working-directory: stage
         run: tar -czf loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }} loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}
 
@@ -100,6 +100,11 @@ jobs:
         if: runner.os == 'Linux'
         working-directory: stage
         run: sha256sum loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }} > loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}.sha256
+
+      - name: Generate checksum (macOS)
+        if: runner.os == 'macOS'
+        working-directory: stage
+        run: shasum -a 256 loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }} > loxdb-sdk-${{ steps.version.outputs.value }}-${{ matrix.label }}.${{ matrix.archive_ext }}.sha256
 
       - name: Generate checksum (Windows)
         if: runner.os == 'Windows'

@@ -8,6 +8,13 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 No changes recorded yet.
 
+## [1.5.4] - 2026-08-17
+
+### Fixed
+
+- Package and checksum the macOS SDK bundle in the release workflow, alongside
+  the existing Linux and Windows SDK assets.
+
 ## [1.5.3] - 2026-08-17
 
 ### Added
