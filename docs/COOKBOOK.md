@@ -48,6 +48,6 @@ For a practical reference, inspect the port sources in `port/`.
 
 ## Verification Status
 
-- Host consumer recipes are verified through the phase-05 detached consumer tests.
+- Host consumer recipes are verified through the detached consumer tests.
 - Hardware and vendor-specific bring-up details are NOT VERIFIED here unless a
   concrete result is linked in `docs/EVIDENCE_MATRIX.md`.

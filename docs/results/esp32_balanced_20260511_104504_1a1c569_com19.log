@@ -5,23 +5,23 @@ loxdb-bench>
 [EFFECTIVE] kv_capacity=376 (target=320) wal_total=32736B
 [BENCH] kv_put           total=20.711 ms avg=64.722 us p50=65 p95=68 min=61 max=111 max_op~0 xmax/p50=1.7 spk>1ms=0@0 spk>5ms=0@0 ops/s=15450.7 MB/s=0.059 ops=320 samp=320 heap_d=0
 [SLO] kv_put           OK (max=111<=15000, spk>5ms=0<=12)
-[PHASE] kv_put           cold_ops=64 cold_avg=64.062 us steady_ops=256 steady_avg=64.887 us
+[SPLIT] kv_put           cold_ops=64 cold_avg=64.062 us steady_ops=256 steady_avg=64.887 us
 [BENCH] kv_get           total=2.858 ms avg=8.931 us p50=9 p95=10 min=6 max=24 max_op~15 xmax/p50=2.7 spk>1ms=0@0 spk>5ms=0@0 ops/s=111966.4 MB/s=0.427 ops=320 samp=320 heap_d=0
 [SLO] kv_get           OK (max=24<=15000, spk>5ms=0<=12)
-[PHASE] kv_get           cold_ops=64 cold_avg=8.938 us steady_ops=256 steady_avg=8.930 us
+[SPLIT] kv_get           cold_ops=64 cold_avg=8.938 us steady_ops=256 steady_avg=8.930 us
 [BENCH] kv_del           total=31.739 ms avg=99.184 us p50=97 p95=103 min=96 max=197 max_op~160 xmax/p50=2.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=10082.2 MB/s=0.000 ops=320 samp=320 heap_d=0
 [SLO] kv_del           OK (max=197<=15000, spk>5ms=0<=12)
-[PHASE] kv_del           cold_ops=64 cold_avg=99.234 us steady_ops=256 steady_avg=99.172 us
+[SPLIT] kv_del           cold_ops=64 cold_avg=99.234 us steady_ops=256 steady_avg=99.172 us
 [CHECK] KV benchmark: PASS
 [BENCH] ts_insert        total=20.696 ms avg=32.338 us p50=20 p95=21 min=20 max=7598 max_op~374 xmax/p50=379.9 spk>1ms=1@374 spk>5ms=1@374 ops/s=30923.9 MB/s=0.118 ops=640 samp=640 heap_d=0
 [SLO] ts_insert        OK (max=7598<=15000, spk>5ms=1<=12)
-[PHASE] ts_insert        cold_ops=64 cold_avg=21.375 us steady_ops=576 steady_avg=33.556 us
+[SPLIT] ts_insert        cold_ops=64 cold_avg=21.375 us steady_ops=576 steady_avg=33.556 us
 [TS] target=640 retained=640 dropped=0
 [BENCH] ts_query_buf     total=0.152 ms avg=152.000 us p50=152 p95=152 min=152 max=152 max_op~0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=6578.9 MB/s=8.031 ops=1 samp=1 heap_d=0
 [CHECK] TS benchmark: PASS
 [BENCH] rel_insert       total=40.338 ms avg=80.676 us p50=32 p95=206 min=23 max=226 max_op~258 xmax/p50=7.1 spk>1ms=0@0 spk>5ms=0@0 ops/s=12395.3 MB/s=0.095 ops=500 samp=500 heap_d=0
 [SLO] rel_insert       OK (max=226<=15000, spk>5ms=0<=12)
-[PHASE] rel_insert       cold_ops=64 cold_avg=25.453 us steady_ops=436 steady_avg=88.782 us
+[SPLIT] rel_insert       cold_ops=64 cold_avg=25.453 us steady_ops=436 steady_avg=88.782 us
 [BENCH] rel_find(index)  total=0.026 ms avg=26.000 us p50=26 p95=26 min=26 max=26 max_op~0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=38461.5 MB/s=0.293 ops=1 samp=1 heap_d=0
 [REL] rows_expected=500 rows_actual=500
 [CHECK] REL benchmark: PASS
@@ -29,7 +29,7 @@ loxdb-bench>
 [BENCH] wal_kv_put       total=27.707 ms avg=72.154 us p50=72 p95=76 min=69 max=83 max_op~0 xmax/p50=1.2 spk>1ms=0@0 spk>5ms=0@0 ops/s=13859.3 MB/s=0.423 ops=384 samp=77 heap_d=0
 [SLO] wal_kv_put       OK (max=83<=15000, spk>5ms=0<=12)
 [WAL] warmup target_fill=75% reached=75% peak=75% ops_done=384/9600 steady_ops=320 (min=128)
-[PHASE] wal_kv_put       cold_ops=64 cold_avg=71.266 us steady_ops=320 steady_avg=72.331 us
+[SPLIT] wal_kv_put       cold_ops=64 cold_avg=71.266 us steady_ops=320 steady_avg=72.331 us
 [WAL] before compact: used=24624 total=32736 fill=75%
 [BENCH] compact          total=12.614 ms avg=12614.000 us p50=12614 p95=12614 min=12614 max=12614 max_op~0 xmax/p50=1.0 spk>1ms=1@0 spk>5ms=1@0 ops/s=79.3 MB/s=0.000 ops=1 samp=1 heap_d=0
 [WAL] after compact:  used=0 total=32736 fill=0%

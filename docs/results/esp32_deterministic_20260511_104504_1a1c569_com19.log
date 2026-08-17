@@ -50,23 +50,23 @@ loxdb-bench> [NOTE] run_det validates deterministic profile latency, not all pro
 [EFFECTIVE] kv_capacity=376 (target=192) wal_total=32736B
 [BENCH] kv_put           total=12.368 ms avg=64.417 us p50=64 p95=68 min=61 max=131 max_op~0 xmax/p50=2.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=15523.9 MB/s=0.059 ops=192 samp=192 heap_d=0
 [SLO] kv_put           OK (max=131<=5000, spk>5ms=0<=0)
-[PHASE] kv_put           cold_ops=64 cold_avg=64.406 us steady_ops=128 steady_avg=64.422 us
+[SPLIT] kv_put           cold_ops=64 cold_avg=64.406 us steady_ops=128 steady_avg=64.422 us
 [BENCH] kv_get           total=1.692 ms avg=8.812 us p50=8 p95=10 min=6 max=31 max_op~0 xmax/p50=3.9 spk>1ms=0@0 spk>5ms=0@0 ops/s=113475.2 MB/s=0.433 ops=192 samp=192 heap_d=0
 [SLO] kv_get           OK (max=31<=5000, spk>5ms=0<=0)
-[PHASE] kv_get           cold_ops=64 cold_avg=9.047 us steady_ops=128 steady_avg=8.695 us
+[SPLIT] kv_get           cold_ops=64 cold_avg=9.047 us steady_ops=128 steady_avg=8.695 us
 [BENCH] kv_del           total=18.983 ms avg=98.870 us p50=97 p95=102 min=95 max=169 max_op~96 xmax/p50=1.7 spk>1ms=0@0 spk>5ms=0@0 ops/s=10114.3 MB/s=0.000 ops=192 samp=192 heap_d=0
 [SLO] kv_del           OK (max=169<=5000, spk>5ms=0<=0)
-[PHASE] kv_del           cold_ops=64 cold_avg=97.531 us steady_ops=128 steady_avg=99.539 us
+[SPLIT] kv_del           cold_ops=64 cold_avg=97.531 us steady_ops=128 steady_avg=99.539 us
 [CHECK] KV benchmark: PASS
 [BENCH] ts_insert        total=7.860 ms avg=20.469 us p50=20 p95=21 min=20 max=39 max_op~0 xmax/p50=2.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=48855.0 MB/s=0.186 ops=384 samp=384 heap_d=0
 [SLO] ts_insert        OK (max=39<=5000, spk>5ms=0<=0)
-[PHASE] ts_insert        cold_ops=64 cold_avg=20.672 us steady_ops=320 steady_avg=20.428 us
+[SPLIT] ts_insert        cold_ops=64 cold_avg=20.672 us steady_ops=320 steady_avg=20.428 us
 [TS] target=384 retained=384 dropped=0
 [BENCH] ts_query_buf     total=0.093 ms avg=93.000 us p50=93 p95=93 min=93 max=93 max_op~0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=10752.7 MB/s=13.126 ops=1 samp=1 heap_d=0
 [CHECK] TS benchmark: PASS
 [BENCH] rel_insert       total=6.848 ms avg=28.533 us p50=28 p95=32 min=23 max=56 max_op~0 xmax/p50=2.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=35046.7 MB/s=0.267 ops=240 samp=240 heap_d=0
 [SLO] rel_insert       OK (max=56<=5000, spk>5ms=0<=0)
-[PHASE] rel_insert       cold_ops=64 cold_avg=25.984 us steady_ops=176 steady_avg=29.460 us
+[SPLIT] rel_insert       cold_ops=64 cold_avg=25.984 us steady_ops=176 steady_avg=29.460 us
 [BENCH] rel_find(index)  total=0.014 ms avg=14.000 us p50=14 p95=14 min=14 max=14 max_op~0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=71428.6 MB/s=0.545 ops=1 samp=1 heap_d=0
 [REL] rows_expected=240 rows_actual=240
 [CHECK] REL benchmark: PASS
@@ -74,7 +74,7 @@ loxdb-bench> [NOTE] run_det validates deterministic profile latency, not all pro
 [BENCH] wal_kv_put       total=31.260 ms avg=69.777 us p50=70 p95=74 min=67 max=79 max_op~0 xmax/p50=1.1 spk>1ms=0@0 spk>5ms=0@0 ops/s=14331.4 MB/s=0.328 ops=448 samp=150 heap_d=0
 [SLO] wal_kv_put       OK (max=79<=5000, spk>5ms=0<=0)
 [WAL] warmup target_fill=70% reached=76% peak=76% ops_done=448/5600 steady_ops=384 (min=256)
-[PHASE] wal_kv_put       cold_ops=64 cold_avg=68.906 us steady_ops=384 steady_avg=69.922 us
+[SPLIT] wal_kv_put       cold_ops=64 cold_avg=68.906 us steady_ops=384 steady_avg=69.922 us
 [WAL] before compact: used=25136 total=32736 fill=76%
 [BENCH] compact          total=9.134 ms avg=9134.000 us p50=9134 p95=9134 min=9134 max=9134 max_op~0 xmax/p50=1.0 spk>1ms=1@0 spk>5ms=1@0 ops/s=109.5 MB/s=0.000 ops=1 samp=1 heap_d=0
 [WAL] after compact:  used=0 total=32736 fill=0%

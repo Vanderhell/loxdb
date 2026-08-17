@@ -163,13 +163,13 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ### Added
 
-- Phase 05 build/package/consumer verification:
+- Build/package/consumer verification:
   - detached installed-package C consumer
   - detached installed-package C++ consumer
   - installed-package version mismatch gate
   - installed header/package config mismatch gate
   - release metadata consistency gate
-- Phase 05 documentation truth cleanup:
+- Documentation accuracy cleanup:
   - `docs/API_REFERENCE.md`
   - `docs/COOKBOOK.md`
   - `docs/EVIDENCE_MATRIX.md`

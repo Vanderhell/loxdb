@@ -215,10 +215,10 @@ static void print_effective_capacity(void) {
                      (unsigned long)P()->kv_ops, (unsigned long)st.wal_bytes_total);
 }
 
-static void print_phase_split(const char *name, uint32_t cold_ops, uint64_t cold_total, uint32_t steady_ops, uint64_t steady_total) {
+static void print_workload_split(const char *name, uint32_t cold_ops, uint64_t cold_total, uint32_t steady_ops, uint64_t steady_total) {
   float cold_avg = (cold_ops > 0u) ? ((float)cold_total / (float)cold_ops) : 0.0f;
   float steady_avg = (steady_ops > 0u) ? ((float)steady_total / (float)steady_ops) : 0.0f;
-  MDB_CONSOLE.printf("[PHASE] %-16s cold_ops=%lu cold_avg=%.3f us steady_ops=%lu steady_avg=%.3f us\n", name,
+  MDB_CONSOLE.printf("[SPLIT] %-16s cold_ops=%lu cold_avg=%.3f us steady_ops=%lu steady_avg=%.3f us\n", name,
                      (unsigned long)cold_ops, (double)cold_avg, (unsigned long)steady_ops, (double)steady_avg);
 }
 
@@ -395,7 +395,7 @@ static bool run_kv_bench(void) {
   }
   heap1 = heap_free_8bit();
   emit_metric("kv_put", ops, total, bytes, g_lat, n, stride, heap0, heap1);
-  print_phase_split("kv_put", cold_ops, cold_total, steady_ops, steady_total);
+  print_workload_split("kv_put", cold_ops, cold_total, steady_ops, steady_total);
 
   heap0 = heap_free_8bit();
   n = 0u;
@@ -428,7 +428,7 @@ static bool run_kv_bench(void) {
   }
   heap1 = heap_free_8bit();
   emit_metric("kv_get", ops, total, bytes, g_lat, n, stride, heap0, heap1);
-  print_phase_split("kv_get", cold_ops, cold_total, steady_ops, steady_total);
+  print_workload_split("kv_get", cold_ops, cold_total, steady_ops, steady_total);
 
   heap0 = heap_free_8bit();
   n = 0u;
@@ -457,7 +457,7 @@ static bool run_kv_bench(void) {
   }
   heap1 = heap_free_8bit();
   emit_metric("kv_del", ops, total, 0u, g_lat, n, stride, heap0, heap1);
-  print_phase_split("kv_del", cold_ops, cold_total, steady_ops, steady_total);
+  print_workload_split("kv_del", cold_ops, cold_total, steady_ops, steady_total);
   return true;
 }
 
@@ -505,7 +505,7 @@ static bool run_ts_bench(void) {
   }
   heap1 = heap_free_8bit();
   emit_metric("ts_insert", ops, total, bytes, g_lat, n, stride, heap0, heap1);
-  print_phase_split("ts_insert", cold_ops, cold_total, steady_ops, steady_total);
+  print_workload_split("ts_insert", cold_ops, cold_total, steady_ops, steady_total);
   if (lox_ts_count(&g_db, "temp", 0u, (lox_timestamp_t)ops, &retained) == LOX_OK) {
     MDB_CONSOLE.printf("[TS] target=%lu retained=%lu dropped=%lu\n", (unsigned long)ops, (unsigned long)retained,
                        (unsigned long)((ops > retained) ? (ops - retained) : 0u));
@@ -591,7 +591,7 @@ static bool run_rel_bench(void) {
   }
   heap1 = heap_free_8bit();
   emit_metric("rel_insert", rows, total, bytes, g_lat, n, stride, heap0, heap1);
-  print_phase_split("rel_insert", cold_ops, cold_total, steady_ops, steady_total);
+  print_workload_split("rel_insert", cold_ops, cold_total, steady_ops, steady_total);
 
   g_rel_found = false;
   {
@@ -711,7 +711,7 @@ static bool run_wal_compact_bench(void) {
   if (peak_fill >= target_fill && before.wal_fill_pct < target_fill) {
     MDB_CONSOLE.println("[WAL][WARN] fill crossed target earlier but dropped before compact (WAL churn).");
   }
-  print_phase_split("wal_kv_put", cold_ops, cold_total, steady_ops, steady_total);
+  print_workload_split("wal_kv_put", cold_ops, cold_total, steady_ops, steady_total);
 
   MDB_CONSOLE.printf("[WAL] before compact: used=%lu total=%lu fill=%u%%\n", (unsigned long)before.wal_bytes_used,
                      (unsigned long)before.wal_bytes_total, (unsigned)before.wal_fill_pct);

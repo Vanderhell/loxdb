@@ -1,4 +1,4 @@
-﻿profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,wal_fill_before_pct,wal_fill_after_pct,compact_count_before,compact_count_after,compactions_during_measure,slo_pass,slo_fail_mask
+profile,workload,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,wal_fill_before_pct,wal_fill_after_pct,compact_count_before,compact_count_after,compactions_during_measure,slo_pass,slo_fail_mask
 stress,fresh,10,86,21723,41121,46451,0,0,45883,0,736,15,0,86,86,2,2,0,1,0
 stress,aged,10,99,0,0,0,0,0,240185,0,0,0,0,99,99,206,206,0,1,0
 stress,fresh,50,86,22731,40460,44931,0,0,44675,0,736,16,0,86,86,2,2,0,1,0

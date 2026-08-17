@@ -1,4 +1,4 @@
-﻿profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,slo_pass
+profile,workload,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,slo_pass
 deterministic,fresh,10,86,23252,30881,33917,33226,61538,28655,56599,865,212,0,1
 deterministic,aged,10,80,28265,28625,27841,26553,28195,24712,52127,865,20,0,1
 deterministic,fresh,50,86,17749,25192,28087,27931,28377,24932,56652,865,19,0,1

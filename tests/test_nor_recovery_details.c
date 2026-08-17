@@ -10,8 +10,8 @@
 #include <string.h>
 
 enum {
-    PHASE02_CAPACITY = 131072u,
-    PHASE02_ERASE_SIZE = 4096u
+    NOR_TEST_CAPACITY = 131072u,
+    NOR_TEST_ERASE_SIZE = 4096u
 };
 
 static nor_flash_ctx_t g_media;
@@ -33,7 +33,7 @@ static lox_err_t init_db(bool reset_media) {
 
     memset(&g_db, 0, sizeof(g_db));
     memset(&g_storage, 0, sizeof(g_storage));
-    nor_flash_bind_storage(&g_storage, &g_media, PHASE02_ERASE_SIZE, 1u);
+    nor_flash_bind_storage(&g_storage, &g_media, NOR_TEST_ERASE_SIZE, 1u);
 
     memset(&cfg, 0, sizeof(cfg));
     cfg.storage = &g_storage;
@@ -94,7 +94,7 @@ static uint32_t storage_read_u32(uint32_t offset) {
 }
 
 static void storage_force_patch(uint32_t offset, const void *buf, size_t len) {
-    ASSERT_LE((uint64_t)offset + (uint64_t)len, PHASE02_CAPACITY);
+    ASSERT_LE((uint64_t)offset + (uint64_t)len, NOR_TEST_CAPACITY);
     memcpy(g_media.durable + offset, buf, len);
     memcpy(g_media.working + offset, buf, len);
 }
@@ -187,7 +187,7 @@ static void teardown_fixture(void) {
     close_db_clean();
 }
 
-MDB_TEST(phase02_torn_final_append_reports_detail) {
+MDB_TEST(nor_recovery_torn_final_append_reports_detail) {
     uint8_t base = 1u;
     uint8_t tail = 2u;
     uint8_t out = 0u;
@@ -205,7 +205,7 @@ MDB_TEST(phase02_torn_final_append_reports_detail) {
     ASSERT_EQ(stats.recovery_detail, LOX_RECOVERY_DETAIL_TORN_FINAL_APPEND);
 }
 
-MDB_TEST(phase02_discarded_uncommitted_txn_reports_detail) {
+MDB_TEST(nor_recovery_discarded_uncommitted_txn_reports_detail) {
     uint8_t payload[64];
     uint16_t payload_len = 0u;
     uint32_t txid = 0x13572468u;
@@ -220,7 +220,7 @@ MDB_TEST(phase02_discarded_uncommitted_txn_reports_detail) {
     ASSERT_EQ(stats.recovery_detail, LOX_RECOVERY_DETAIL_DISCARDED_UNCOMMITTED_TXN);
 }
 
-MDB_TEST(phase02_degraded_fallback_reports_detail) {
+MDB_TEST(nor_recovery_degraded_fallback_reports_detail) {
     uint8_t value = 5u;
     uint8_t zero = 0u;
     lox_db_stats_t stats;
@@ -238,7 +238,7 @@ MDB_TEST(phase02_degraded_fallback_reports_detail) {
     ASSERT_EQ(stats.recovery_detail, LOX_RECOVERY_DETAIL_DEGRADED_FALLBACK);
 }
 
-MDB_TEST(phase02_unsupported_format_returns_invalid) {
+MDB_TEST(nor_recovery_unsupported_format_returns_invalid) {
     const lox_core_t *core;
     uint8_t header[LOX_PAGE_HEADER_SIZE];
     uint32_t future_version = 0x00040000u;
@@ -262,7 +262,7 @@ MDB_TEST(phase02_unsupported_format_returns_invalid) {
     ASSERT_EQ(reopen_after_power_loss(), LOX_ERR_INVALID);
 }
 
-MDB_TEST(phase02_txn_identity_mismatch_is_rejected) {
+MDB_TEST(nor_recovery_txn_identity_mismatch_is_rejected) {
     uint8_t value = 9u;
     uint32_t entry_offset = 0u;
     uint8_t payload[8];
@@ -287,10 +287,10 @@ MDB_TEST(phase02_txn_identity_mismatch_is_rejected) {
 }
 
 int main(void) {
-    MDB_RUN_TEST(setup_fixture, teardown_fixture, phase02_torn_final_append_reports_detail);
-    MDB_RUN_TEST(setup_fixture, teardown_fixture, phase02_discarded_uncommitted_txn_reports_detail);
-    MDB_RUN_TEST(setup_fixture, teardown_fixture, phase02_degraded_fallback_reports_detail);
-    MDB_RUN_TEST(setup_fixture, teardown_fixture, phase02_unsupported_format_returns_invalid);
-    MDB_RUN_TEST(setup_fixture, teardown_fixture, phase02_txn_identity_mismatch_is_rejected);
+    MDB_RUN_TEST(setup_fixture, teardown_fixture, nor_recovery_torn_final_append_reports_detail);
+    MDB_RUN_TEST(setup_fixture, teardown_fixture, nor_recovery_discarded_uncommitted_txn_reports_detail);
+    MDB_RUN_TEST(setup_fixture, teardown_fixture, nor_recovery_degraded_fallback_reports_detail);
+    MDB_RUN_TEST(setup_fixture, teardown_fixture, nor_recovery_unsupported_format_returns_invalid);
+    MDB_RUN_TEST(setup_fixture, teardown_fixture, nor_recovery_txn_identity_mismatch_is_rejected);
     return MDB_RESULT();
 }

@@ -67,4 +67,4 @@ Status note:
 - [ ] No unresolved `FAIL` in the current validation summary
 - [ ] No unresolved contract/documentation mismatch
 - [ ] No unsupported hardware or power-loss claim without concrete evidence
-- [ ] Tag and release publish approved only after current phase gates are verified
+- [ ] Tag and release publish approved only after current release gates are verified

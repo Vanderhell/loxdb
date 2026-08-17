@@ -5,23 +5,23 @@ microdb-bench>
 [EFFECTIVE] kv_capacity=376 (target=320) wal_total=32736B
 [BENCH] kv_put           total=21.921 ms avg=68.503 us p50=68 p95=73 min=64 max=127 max_op~0 xmax/p50=1.9 spk>1ms=0@0 spk>5ms=0@0 ops/s=14597.9 MB/s=0.056 ops=320 samp=320 heap_d=0
 [SLO] kv_put           OK (max=127<=15000, spk>5ms=0<=12)
-[PHASE] kv_put           cold_ops=64 cold_avg=67.938 us steady_ops=256 steady_avg=68.645 us
+[SPLIT] kv_put           cold_ops=64 cold_avg=67.938 us steady_ops=256 steady_avg=68.645 us
 [BENCH] kv_get           total=2.846 ms avg=8.894 us p50=9 p95=10 min=6 max=31 max_op~0 xmax/p50=3.4 spk>1ms=0@0 spk>5ms=0@0 ops/s=112438.5 MB/s=0.429 ops=320 samp=320 heap_d=0
 [SLO] kv_get           OK (max=31<=15000, spk>5ms=0<=12)
-[PHASE] kv_get           cold_ops=64 cold_avg=8.422 us steady_ops=256 steady_avg=9.012 us
+[SPLIT] kv_get           cold_ops=64 cold_avg=8.422 us steady_ops=256 steady_avg=9.012 us
 [BENCH] kv_del           total=32.928 ms avg=102.900 us p50=101 p95=106 min=98 max=224 max_op~160 xmax/p50=2.2 spk>1ms=0@0 spk>5ms=0@0 ops/s=9718.2 MB/s=0.000 ops=320 samp=320 heap_d=0
 [SLO] kv_del           OK (max=224<=15000, spk>5ms=0<=12)
-[PHASE] kv_del           cold_ops=64 cold_avg=103.844 us steady_ops=256 steady_avg=102.664 us
+[SPLIT] kv_del           cold_ops=64 cold_avg=103.844 us steady_ops=256 steady_avg=102.664 us
 [CHECK] KV benchmark: PASS
 [BENCH] ts_insert        total=22.808 ms avg=35.638 us p50=21 p95=22 min=20 max=9487 max_op~374 xmax/p50=451.8 spk>1ms=1@374 spk>5ms=1@374 ops/s=28060.3 MB/s=0.107 ops=640 samp=640 heap_d=0
 [SLO] ts_insert        OK (max=9487<=15000, spk>5ms=1<=12)
-[PHASE] ts_insert        cold_ops=64 cold_avg=21.234 us steady_ops=576 steady_avg=37.238 us
+[SPLIT] ts_insert        cold_ops=64 cold_avg=21.234 us steady_ops=576 steady_avg=37.238 us
 [TS] target=640 retained=640 dropped=0
 [BENCH] ts_query_buf     total=0.121 ms avg=121.000 us p50=121 p95=121 min=121 max=121 max_op~0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=8264.5 MB/s=10.088 ops=1 samp=1 heap_d=0
 [CHECK] TS benchmark: PASS
 [BENCH] rel_insert       total=40.628 ms avg=81.256 us p50=33 p95=206 min=24 max=224 max_op~261 xmax/p50=6.8 spk>1ms=0@0 spk>5ms=0@0 ops/s=12306.8 MB/s=0.094 ops=500 samp=500 heap_d=0
 [SLO] rel_insert       OK (max=224<=15000, spk>5ms=0<=12)
-[PHASE] rel_insert       cold_ops=64 cold_avg=26.203 us steady_ops=436 steady_avg=89.337 us
+[SPLIT] rel_insert       cold_ops=64 cold_avg=26.203 us steady_ops=436 steady_avg=89.337 us
 [BENCH] rel_find(index)  total=0.021 ms avg=21.000 us p50=21 p95=21 min=21 max=21 max_op~0 xmax/p50=1.0 spk>1ms=0@0 spk>5ms=0@0 ops/s=47619.0 MB/s=0.363 ops=1 samp=1 heap_d=0
 [REL] rows_expected=500 rows_actual=500
 [CHECK] REL benchmark: PASS
@@ -29,7 +29,7 @@ microdb-bench>
 [BENCH] wal_kv_put       total=30.363 ms avg=79.070 us p50=79 p95=84 min=74 max=106 max_op~0 xmax/p50=1.3 spk>1ms=0@0 spk>5ms=0@0 ops/s=12647.0 MB/s=0.386 ops=384 samp=77 heap_d=0
 [SLO] wal_kv_put       OK (max=106<=15000, spk>5ms=0<=12)
 [WAL] warmup target_fill=75% reached=75% peak=75% ops_done=384/9600 steady_ops=320 (min=128)
-[PHASE] wal_kv_put       cold_ops=64 cold_avg=76.344 us steady_ops=320 steady_avg=79.616 us
+[SPLIT] wal_kv_put       cold_ops=64 cold_avg=76.344 us steady_ops=320 steady_avg=79.616 us
 [WAL] before compact: used=24624 total=32736 fill=75%
 [BENCH] compact          total=14.852 ms avg=14852.000 us p50=14852 p95=14852 min=14852 max=14852 max_op~0 xmax/p50=1.0 spk>1ms=1@0 spk>5ms=1@0 ops/s=67.3 MB/s=0.000 ops=1 samp=1 heap_d=0
 [WAL] after compact:  used=0 total=32736 fill=0%

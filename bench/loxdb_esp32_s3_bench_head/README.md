@@ -93,7 +93,7 @@ loxdb-bench> run
 === loxdb ESP32-S3 benchmark start (profile=balanced) ===
 [BENCH] kv_put           total=... ms avg=... us p50=... p95=... min=... max=... max_op~... xmax/p50=... spk>1ms=...@... spk>5ms=...@... ops/s=... MB/s=... ops=... heap_d=...
 [SLO] kv_put           OK/WARN (...)
-[PHASE] kv_put           cold_ops=... cold_avg=... steady_ops=... steady_avg=...
+[SPLIT] kv_put           cold_ops=... cold_avg=... steady_ops=... steady_avg=...
 ...
 === loxdb ESP32-S3 benchmark end ===
 loxdb-bench>
@@ -105,7 +105,7 @@ loxdb-bench>
 - `spk>1ms=a@b`: `a` samples above 1ms, `b` first index above 1ms
 - `spk>5ms=a@b`: key metric for deterministic tail behavior
 - `xmax/p50`: extreme-to-median ratio; lower is more stable
-- `[PHASE] cold/steady`: separates startup from steady-state behavior
+- `[SPLIT] cold/steady`: separates startup from steady-state behavior
 - `[SLO]`: profile-aware tail checks (`OK` / `WARN`)
 
 ## POSIX vs ESP32 Interpretation

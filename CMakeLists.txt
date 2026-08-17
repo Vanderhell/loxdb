@@ -696,9 +696,9 @@ if(LOX_BUILD_TESTS)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_benchmark_bundles.cmake
     )
     if(CMAKE_CONFIGURATION_TYPES)
-        set(LOX_PHASE05_INSTALL_CONFIG "$<CONFIG>")
+        set(LOX_CONSUMER_INSTALL_CONFIG "$<CONFIG>")
     else()
-        set(LOX_PHASE05_INSTALL_CONFIG "${CMAKE_BUILD_TYPE}")
+        set(LOX_CONSUMER_INSTALL_CONFIG "${CMAKE_BUILD_TYPE}")
     endif()
     add_executable(test_kv tests/test_kv.c)
     target_include_directories(test_kv PRIVATE include tests port/ram src)
@@ -821,13 +821,13 @@ if(LOX_BUILD_TESTS)
     target_link_libraries(test_thread_safety PRIVATE lox_thread_safe)
     add_test(NAME test_thread_safety COMMAND test_thread_safety)
 
-    add_executable(test_phase04_posix_port tests/test_phase04_posix_port.c)
-    target_include_directories(test_phase04_posix_port PRIVATE include tests port/posix src)
-    add_test(NAME test_phase04_posix_port COMMAND test_phase04_posix_port)
+    add_executable(test_posix_port tests/test_posix_port.c)
+    target_include_directories(test_posix_port PRIVATE include tests port/posix src)
+    add_test(NAME test_posix_port COMMAND test_posix_port)
 
-    add_executable(test_phase04_esp32_port tests/test_phase04_esp32_port.c)
-    target_include_directories(test_phase04_esp32_port PRIVATE include tests port/esp32 src)
-    add_test(NAME test_phase04_esp32_port COMMAND test_phase04_esp32_port)
+    add_executable(test_esp32_port tests/test_esp32_port.c)
+    target_include_directories(test_esp32_port PRIVATE include tests port/esp32 src)
+    add_test(NAME test_esp32_port COMMAND test_esp32_port)
 
     add_executable(test_compact tests/test_compact.c)
     target_include_directories(test_compact PRIVATE include tests port/ram port/posix src)
@@ -1097,11 +1097,11 @@ if(LOX_BUILD_TESTS)
         NAME test_source_detached_consumer_c
         COMMAND ${CMAKE_COMMAND}
             -DBUILD_DIR=$<SHELL_PATH:${CMAKE_CURRENT_BINARY_DIR}>
-            -DINSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/phase05-install-c
+            -DINSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/consumer-install-c
             -DCONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/consumer/install_c
-            -DCONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/phase05-consumer-c
+            -DCONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/consumer-build-c
             -DCONSUMER_EXE_NAME=loxdb_installed_consumer_c
-            -DINSTALL_CONFIG=${LOX_PHASE05_INSTALL_CONFIG}
+            -DINSTALL_CONFIG=${LOX_CONSUMER_INSTALL_CONFIG}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_installed_consumer.cmake
     )
 
@@ -1109,11 +1109,11 @@ if(LOX_BUILD_TESTS)
         NAME test_source_detached_consumer_cpp
         COMMAND ${CMAKE_COMMAND}
             -DBUILD_DIR=$<SHELL_PATH:${CMAKE_CURRENT_BINARY_DIR}>
-            -DINSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/phase05-install-cpp
+            -DINSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/consumer-install-cpp
             -DCONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/consumer/install_cpp
-            -DCONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/phase05-consumer-cpp
+            -DCONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/consumer-build-cpp
             -DCONSUMER_EXE_NAME=loxdb_installed_consumer_cpp
-            -DINSTALL_CONFIG=${LOX_PHASE05_INSTALL_CONFIG}
+            -DINSTALL_CONFIG=${LOX_CONSUMER_INSTALL_CONFIG}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_installed_consumer.cmake
     )
 
@@ -1121,11 +1121,11 @@ if(LOX_BUILD_TESTS)
         NAME test_installed_package_version_mismatch
         COMMAND ${CMAKE_COMMAND}
             -DBUILD_DIR=$<SHELL_PATH:${CMAKE_CURRENT_BINARY_DIR}>
-            -DINSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/phase05-install-mismatch
+            -DINSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/consumer-install-mismatch
             -DCONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/consumer/version_mismatch
-            -DCONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/phase05-consumer-mismatch
+            -DCONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/consumer-build-mismatch
             -DCONSUMER_EXE_NAME=unused
-            -DINSTALL_CONFIG=${LOX_PHASE05_INSTALL_CONFIG}
+            -DINSTALL_CONFIG=${LOX_CONSUMER_INSTALL_CONFIG}
             -DEXPECT_CONFIGURE_FAILURE=1
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_installed_consumer.cmake
     )
@@ -1135,9 +1135,9 @@ if(LOX_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND}
             -DCC=${CMAKE_C_COMPILER}
             -DCOMPILER_ID=${CMAKE_C_COMPILER_ID}
-            -DINCLUDE_DIR=${CMAKE_CURRENT_BINARY_DIR}/phase05-install-c/include
+            -DINCLUDE_DIR=${CMAKE_CURRENT_BINARY_DIR}/consumer-install-c/include
             -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/tests/config_identity_mismatch_handle.c
-            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/phase05-config-mismatch.obj
+            -DOBJ=${CMAKE_CURRENT_BINARY_DIR}/consumer-config-mismatch.obj
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_config_identity_mismatch.cmake
     )
 
@@ -1623,16 +1623,16 @@ if(LOX_BUILD_TESTS)
             message(STATUS "Skipping test_backend_fs_recovery: requires fs/block stub targets")
         endif()
 
-        add_executable(test_phase02_nor_recovery tests/test_phase02_nor_recovery.c)
-        target_include_directories(test_phase02_nor_recovery PRIVATE include tests src)
-        target_link_libraries(test_phase02_nor_recovery PRIVATE loxdb)
-        add_test(NAME test_phase02_nor_recovery COMMAND test_phase02_nor_recovery)
+        add_executable(test_nor_recovery_details tests/test_nor_recovery_details.c)
+        target_include_directories(test_nor_recovery_details PRIVATE include tests src)
+        target_link_libraries(test_nor_recovery_details PRIVATE loxdb)
+        add_test(NAME test_nor_recovery_details COMMAND test_nor_recovery_details)
 
-        add_executable(test_phase03_checked_arith tests/test_phase03_checked_arith.c)
-        target_include_directories(test_phase03_checked_arith PRIVATE include tests port/ram src)
-        target_sources(test_phase03_checked_arith PRIVATE port/ram/lox_port_ram.c)
-        target_link_libraries(test_phase03_checked_arith PRIVATE loxdb)
-        add_test(NAME test_phase03_checked_arith COMMAND test_phase03_checked_arith)
+        add_executable(test_checked_arithmetic tests/test_checked_arithmetic.c)
+        target_include_directories(test_checked_arithmetic PRIVATE include tests port/ram src)
+        target_sources(test_checked_arithmetic PRIVATE port/ram/lox_port_ram.c)
+        target_link_libraries(test_checked_arithmetic PRIVATE loxdb)
+        add_test(NAME test_checked_arithmetic COMMAND test_checked_arithmetic)
 
         add_executable(test_backend_fs_matrix tests/test_backend_fs_matrix.c)
         target_include_directories(test_backend_fs_matrix PRIVATE include tests src)

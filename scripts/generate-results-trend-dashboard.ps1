@@ -76,7 +76,7 @@ function Get-WorstcaseRows {
                 file = $f.Name
                 ts = $ts
                 profile = [string]$r.profile
-                phase = [string]$r.phase
+                workload = [string]$r.workload
                 max_kv_put_us = [double]$r.max_kv_put_us
                 max_ts_insert_us = [double]$r.max_ts_insert_us
                 max_rel_insert_us = [double]$r.max_rel_insert_us
@@ -140,14 +140,14 @@ if ($worstRows.Count -eq 0) {
             Sort-Object @{ Expression = { if ($_.ts -eq $null) { [DateTime]::MinValue } else { $_.ts } } } -Descending |
             Select-Object -First ($TopRuns * 2)
     )
-    $byProfilePhase = $latestWorst | Group-Object profile, phase
-    $md += "| Profile | Phase | Samples | SLO Pass Rate | Max KV Put (us) | Max TS Insert (us) | Max REL Insert (us) | Max TXN Commit (us) | Max Compact (us) | Max Reopen (us) | Max Spikes >5ms |"
+    $byProfileWorkload = $latestWorst | Group-Object profile, workload
+    $md += "| Profile | Workload | Samples | SLO Pass Rate | Max KV Put (us) | Max TS Insert (us) | Max REL Insert (us) | Max TXN Commit (us) | Max Compact (us) | Max Reopen (us) | Max Spikes >5ms |"
     $md += "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
-    foreach ($g in ($byProfilePhase | Sort-Object Name)) {
+    foreach ($g in ($byProfileWorkload | Sort-Object Name)) {
         $rows = @($g.Group)
         $pass = @($rows | Where-Object { $_.slo_pass -eq "1" }).Count
         $rate = [math]::Round((100.0 * $pass) / $rows.Count, 2)
-        $md += "| $($rows[0].profile) | $($rows[0].phase) | $($rows.Count) | $rate% | $([math]::Round(($rows | Measure-Object max_kv_put_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_ts_insert_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_rel_insert_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_txn_commit_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_compact_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_reopen_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object spikes_gt_5ms -Maximum).Maximum, 2)) |"
+        $md += "| $($rows[0].profile) | $($rows[0].workload) | $($rows.Count) | $rate% | $([math]::Round(($rows | Measure-Object max_kv_put_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_ts_insert_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_rel_insert_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_txn_commit_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_compact_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object max_reopen_us -Maximum).Maximum, 2)) | $([math]::Round(($rows | Measure-Object spikes_gt_5ms -Maximum).Maximum, 2)) |"
     }
 }
 $md += ""

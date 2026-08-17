@@ -12,7 +12,7 @@
 | stress | 6 | 100% | 91778 | 95051 | 75104 | 37801 | 80781 | 2032 |
 
 ## Worstcase Matrix Trend
-| Profile | Phase | Samples | SLO Pass Rate | Max KV Put (us) | Max TS Insert (us) | Max REL Insert (us) | Max TXN Commit (us) | Max Compact (us) | Max Reopen (us) | Max Spikes >5ms |
+| Profile | Workload | Samples | SLO Pass Rate | Max KV Put (us) | Max TS Insert (us) | Max REL Insert (us) | Max TXN Commit (us) | Max Compact (us) | Max Reopen (us) | Max Spikes >5ms |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | balanced | aged | 5 | 100% | 0 | 0 | 0 | 0 | 171104 | 0 | 0 |
 | balanced | fresh | 5 | 100% | 21719 | 39668 | 41280 | 0 | 43490 | 0 | 13 |

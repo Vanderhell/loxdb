@@ -1,4 +1,4 @@
-﻿profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,slo_pass
+profile,workload,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,slo_pass
 balanced,fresh,10,86,18902,29540,31639,1903,32617,28858,60923,1089,24,0,1
 balanced,aged,10,80,32395,32328,31327,3689,31714,27893,63179,1089,24,0,1
 balanced,fresh,50,86,18815,35195,33093,1964,32185,28647,62504,1089,24,0,1

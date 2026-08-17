@@ -177,7 +177,7 @@ MDB_TEST(posix_short_io_and_eintr_are_retried) {
     reset_fake_file();
     g_write_eintr_once = 1;
     g_read_eintr_once = 1;
-    ASSERT_EQ(lox_port_posix_init(&storage, "phase04-posix.bin", 256u), LOX_OK);
+    ASSERT_EQ(lox_port_posix_init(&storage, "posix-port.bin", 256u), LOX_OK);
     ASSERT_EQ(g_open_calls, 1);
     ASSERT_EQ(storage.capacity, 256u);
     ASSERT_EQ(storage.erase_size, 256u);
@@ -205,7 +205,7 @@ MDB_TEST(posix_init_sync_failure_cleans_up_storage) {
 
     reset_fake_file();
     g_sync_fail_once = 1;
-    ASSERT_EQ(lox_port_posix_init(&storage, "phase04-posix-fail.bin", 256u), LOX_ERR_STORAGE);
+    ASSERT_EQ(lox_port_posix_init(&storage, "posix-port-fail.bin", 256u), LOX_ERR_STORAGE);
     ASSERT_EQ(g_open_calls, 1);
     ASSERT_EQ(g_close_calls, 1);
     ASSERT_EQ(storage.ctx == NULL, 1);
@@ -218,7 +218,7 @@ MDB_TEST(posix_descriptor_zero_is_a_valid_open_file) {
 
     reset_fake_file();
     g_open_fd = 0;
-    ASSERT_EQ(lox_port_posix_init(&storage, "phase04-posix-fd0.bin", 256u), LOX_OK);
+    ASSERT_EQ(lox_port_posix_init(&storage, "posix-port-fd0.bin", 256u), LOX_OK);
     ASSERT_EQ(storage.write(storage.ctx, 0u, &value, sizeof(value)), LOX_OK);
     ASSERT_EQ(storage.read(storage.ctx, 0u, &out, sizeof(out)), LOX_OK);
     ASSERT_EQ(out, value);

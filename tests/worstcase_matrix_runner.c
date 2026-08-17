@@ -45,7 +45,7 @@ typedef struct {
 } cfg_t;
 
 typedef struct {
-    const char *phase;
+    const char *workload;
     const char *profile;
     uint32_t fill_target_pct;
     uint32_t fill_reached_pct;
@@ -308,7 +308,7 @@ static int age_workload(uint32_t age_ops, uint32_t cycle_count) {
     return 1;
 }
 
-static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *phase, row_t *out) {
+static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *workload, row_t *out) {
     uint32_t i;
     uint32_t fill_reached = 0u;
     uint8_t vbuf[16];
@@ -324,7 +324,7 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
     lox_db_stats_t db_stats;
 
     memset(out, 0, sizeof(*out));
-    out->phase = phase;
+    out->workload = workload;
     out->profile = cfg->profile;
     out->fill_target_pct = fill_target_pct;
 
@@ -332,7 +332,7 @@ static int run_measure(const cfg_t *cfg, uint32_t fill_target_pct, const char *p
     if (!ensure_ts_stream()) return 0;
     if (!ensure_rel_table(&t)) return 0;
 
-    if (strcmp(phase, "aged") == 0) {
+    if (strcmp(workload, "aged") == 0) {
         if (!age_workload(cfg->age_ops, cfg->cycle_count)) return 0;
     }
 
@@ -571,7 +571,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    printf("profile,phase,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,wal_fill_before_pct,wal_fill_after_pct,compact_count_before,compact_count_after,compactions_during_measure,slo_pass,slo_fail_mask\n");
+    printf("profile,workload,fill_target,fill_reached,max_kv_put_us,max_ts_insert_us,max_rel_insert_us,max_rel_delete_us,max_txn_commit_us,max_compact_us,max_reopen_us,spikes_gt_1ms,spikes_gt_5ms,fail_count,wal_fill_before_pct,wal_fill_after_pct,compact_count_before,compact_count_after,compactions_during_measure,slo_pass,slo_fail_mask\n");
 
     for (i = 0u; i < sizeof(fills) / sizeof(fills[0]); ++i) {
         if (!run_measure(&cfg, fills[i], "fresh", &row)) {
@@ -581,7 +581,7 @@ int main(int argc, char **argv) {
         }
         printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u,%u\n",
                row.profile,
-               row.phase,
+               row.workload,
                (unsigned)row.fill_target_pct,
                (unsigned)row.fill_reached_pct,
                (unsigned long long)row.max_kv_put_us,
@@ -609,7 +609,7 @@ int main(int argc, char **argv) {
         }
         printf("%s,%s,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%u,%u,%u,%u\n",
                row.profile,
-               row.phase,
+               row.workload,
                (unsigned)row.fill_target_pct,
                (unsigned)row.fill_reached_pct,
                (unsigned long long)row.max_kv_put_us,
