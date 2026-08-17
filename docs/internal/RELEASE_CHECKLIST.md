@@ -9,7 +9,7 @@ Status note:
 - Historical verification entries below remain historical unless the current
   build output or `docs/results/` evidence says otherwise.
 - Package/consumer and metadata gates were verified in the current build tree
-  during this turn.
+  during the 2026-08-17 Debug verification run.
 
 ## 1. Validation Gates
 
@@ -19,7 +19,8 @@ Status note:
   - latest recorded run: `docs/results/validation_summary_20260419_193234.md`
 - [x] Historical hard verdict exists in `docs/results/`
   - latest recorded: `docs/results/hard_verdict_20260419.md`
-- [ ] Current consumer/package gates re-run in this environment
+- [x] Current consumer/package gates re-run in this environment (2026-08-17
+  Debug verification build)
   - `test_release_metadata_consistency`
   - `test_source_detached_consumer_c`
   - `test_source_detached_consumer_cpp`
@@ -48,18 +49,18 @@ Status note:
 
 - [ ] GCC strict C99 Debug/Release build verified
 - [ ] Clang strict C99 Debug/Release build verified
-- [ ] Installed C consumer verified
-- [ ] Installed C++ consumer verified
-- [ ] Source-detached consumer verification verified
+- [x] Installed C consumer verified
+- [x] Installed C++ consumer verified
+- [x] Source-detached consumer verification verified
 - [ ] Release archive names and package layout verified against the current release notes template
 - [ ] Release workflow consistency checked against the current metadata set
 
 ## 5. Release Metadata Gates
 
-- [x] `project(loxdb VERSION ...)` matches `library.json`
-- [x] `library.properties` version matches `CMakeLists.txt`
-- [x] `CHANGELOG.md` version entry matches `CMakeLists.txt`
-- [x] `docs/internal/release-notes.md` matches the current release line
+- [x] `project(loxdb VERSION ...)` matches `library.json` (`1.5.2`)
+- [x] `library.properties` version matches `CMakeLists.txt` (`1.5.2`)
+- [x] `CHANGELOG.md` version entry matches `CMakeLists.txt` (`1.5.2`)
+- [x] `docs/internal/release-notes.md` matches the current release line (`1.5.2`)
 - [x] `library.json` / `library.properties` / CMake / changelog consistency gate is wired
 
 ## 6. Final Go/No-Go

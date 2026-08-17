@@ -6,6 +6,10 @@ The format is inspired by Keep a Changelog and follows semantic versioning inten
 
 ## [Unreleased]
 
+No changes recorded yet.
+
+## [1.5.2] - 2026-08-17
+
 ### Fixed
 
 - Hardened relational row and indexed-key APIs against caller-buffer over-read

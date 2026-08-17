@@ -6,14 +6,8 @@
 [![Language: C99](https://img.shields.io/badge/language-C99-blue)](https://en.wikipedia.org/wiki/C99)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform: MCU | Linux | Windows | macOS](https://img.shields.io/badge/platform-MCU%20%7C%20Linux%20%7C%20Windows%20%7C%20macOS-informational)](https://github.com/Vanderhell/loxdb)
-[![Tests](https://img.shields.io/badge/tests-571%20microtests-brightgreen)](docs/TEST_SUITE_SIZE.md)
+[![Tests](https://img.shields.io/badge/tests-595%20microtests-brightgreen)](docs/TEST_SUITE_SIZE.md)
 [![Release](https://img.shields.io/github/v/release/Vanderhell/loxdb)](https://github.com/Vanderhell/loxdb/releases)
-
-## Release artifacts
-
-- GitHub "Source code (zip/tar.gz)" assets are automatic tag snapshots (source tree).
-- `loxdb-source-vX.Y.Z.zip` is the explicit source distribution asset (source + tests + tooling).
-- `loxdb-sdk-vX.Y.Z-<platform>.(zip|tar.gz)` assets are install-prefix SDK bundles (headers + libraries + CMake package files) and are not expected to include `src/*.c`.
 
 ## What is loxdb?
 
@@ -25,7 +19,13 @@ that heap. Ports and user callbacks may allocate independently and are outside
 this core guarantee.
 Persistence is optional via a small storage HAL (read/write/erase/sync), with WAL + recovery when enabled.
 
-Test suite size: **571 microtest cases across 61 C test files, plus one C++ wrapper test.**
+Test suite size: **595 microtest cases across 61 C test files, plus one C++ wrapper test.**
+
+## Release artifacts
+
+- GitHub "Source code (zip/tar.gz)" assets are automatic tag snapshots (source tree).
+- `loxdb-source-vX.Y.Z.zip` is the explicit source distribution asset (source + tests + tooling).
+- `loxdb-sdk-vX.Y.Z-<platform>.(zip|tar.gz)` assets are install-prefix SDK bundles (headers + libraries + CMake package files) and are not expected to include `src/*.c`.
 
 ## Why loxdb? (When to use / when not to)
 
@@ -102,7 +102,7 @@ endurance validation. See [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 
 ## Project status & roadmap
 
-- Current release line: `v1.5.1` (see `CHANGELOG.md`).
+- Current release line: `v1.5.2` (see `CHANGELOG.md`).
 - Verification status is tracked explicitly in [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
 
 ## Documentation

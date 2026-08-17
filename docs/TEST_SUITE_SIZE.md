@@ -5,7 +5,7 @@ microtest harness in `tests/microtest.h`.
 
 Current source count:
 
-- 571 `MDB_RUN_TEST(` call sites across `tests/*.c`;
+- 595 `MDB_RUN_TEST(` call sites across `tests/*.c`;
 - 61 `tests/test_*.c` files;
 - one C++ wrapper test file, `tests/test_cpp_wrapper.cpp`.
 

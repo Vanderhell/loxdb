@@ -14,7 +14,7 @@ margin.
 
 ## How to use WCET bounds
 
-1. Include [lox_wcet.h](/include/lox_wcet.h).
+1. Include [`lox_wcet.h`](../include/lox_wcet.h).
 2. Measure primitive costs once on your target:
    - `T_hash`
    - `T_strncmp(n)`
